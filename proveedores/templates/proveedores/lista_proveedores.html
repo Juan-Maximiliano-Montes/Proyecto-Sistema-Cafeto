@@ -1,0 +1,421 @@
+{% extends 'base.html' %}
+
+{% block titulo %}Cafeto · Proveedores{% endblock %}
+
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-truck me-2"></i>Proveedores</h3>
+    {% if 'crear_proveedor' in permisos_usuario or es_administrador %}
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrear">
+        <i class="bi bi-plus-lg me-1"></i> Nuevo proveedor
+    </button>
+    {% endif %}
+</div>
+
+{# ---------- BUSQUEDA (lupa) Y FILTROS (embudo) ---------- #}
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small text-muted">
+                    <i class="bi bi-search me-1"></i>Buscar
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="busqueda" value="{{ busqueda }}"
+                           class="form-control" placeholder="Nombre, CUIT, email, domicilio o localidad...">
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label small text-muted">
+                    <i class="bi bi-funnel me-1"></i>Condición de pago
+                </label>
+                <select name="condicion" class="form-select">
+                    <option value="">Todas</option>
+                    {% for valor, etiqueta in condiciones %}
+                        <option value="{{ valor }}" {% if condicion == valor %}selected{% endif %}>
+                            {{ etiqueta }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small text-muted">
+                    <i class="bi bi-toggle-on me-1"></i>Estado
+                </label>
+                <select name="estado" class="form-select">
+                    <option value="activos"   {% if estado == 'activos' %}selected{% endif %}>Activos</option>
+                    <option value="inactivos" {% if estado == 'inactivos' %}selected{% endif %}>Inactivos</option>
+                    <option value="todos"     {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+                </select>
+            </div>
+
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="bi bi-funnel-fill"></i> Filtrar
+                </button>
+                <a href="{% url 'proveedores:lista' %}" class="btn btn-outline-secondary"
+                   title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ---------- TABLA ---------- #}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            <i class="bi bi-info-circle me-1"></i>{{ total }} proveedor{{ total|pluralize:"es" }} encontrado{{ total|pluralize:"s" }}
+        </p>
+
+        <table id="tablaProveedores" class="table table-striped table-hover align-middle w-100">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>CUIT</th>
+                    <th>Teléfono</th>
+                    <th>Email</th>
+                    <th>Domicilio</th>
+                    <th>Localidad</th>
+                    <th>Condición de pago</th>
+                    <th>Estado</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in proveedores %}
+                <tr data-id="{{ p.id_proveedor }}"
+                    data-nombre="{{ p.nombre_proveedor }}"
+                    data-cuit="{{ p.cuit_proveedor }}"
+                    data-telefono="{{ p.telefono_proveedor }}"
+                    data-email="{{ p.email_proveedor }}"
+                    data-domicilio="{{ p.domicilio }}"
+                    data-localidad-id="{{ p.id_localidad_id|default_if_none:'' }}"
+                    data-localidad="{% if p.id_localidad %}{{ p.id_localidad.nombre_localidad }} ({{ p.id_localidad.id_provincia.nombre_provincia }}){% endif %}"
+                    data-modificado="{{p.fecha_modificacion|date:'d/m/Y H:i'}}"
+                    data-alta="{{p.fecha_alta|date:'d/m/Y H:i'}}"
+                    data-modificado-por="{{ p.usuario_modificacion.nombre_usuario|default_if_none:'' }}"
+                    data-condicion="{{ p.condicion_pago }}"
+                    data-condicion-texto="{{ p.get_condicion_pago_display }}"
+                    data-borrado="{% if p.borrado_logico %}1{% else %}0{% endif %}"
+                    data-url-editar="{% url 'proveedores:editar' p.id_proveedor %}"
+                    data-url-eliminar="{% url 'proveedores:eliminar' p.id_proveedor %}"
+                    data-url-reactivar="{% url 'proveedores:reactivar' p.id_proveedor %}">
+
+                    <td>{{ p.id_proveedor }}</td>
+                    <td>{{ p.nombre_proveedor }}</td>
+                    <td>{{ p.cuit_proveedor }}</td>
+                    <td>{{ p.telefono_proveedor|default:"—" }}</td>
+                    <td>{{ p.email_proveedor|default:"—" }}</td>
+                    <td>{{ p.domicilio|default:"—"}}</td>
+                    <td>{{ p.id_localidad.nombre_localidad|default:"—" }}</td>
+                    <td>{{ p.get_condicion_pago_display }}</td>
+                    <td>
+                        {% comment %}
+                        borrado_logico = False -> vigente / True -> eliminado.
+                        {% endcomment %}
+                        {% if not p.borrado_logico %}
+                            <span class="badge text-bg-success">Activo</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center text-nowrap">
+                        {% comment %}
+                        Cada boton se dibuja solo si el perfil tiene SU permiso
+                        granular. Ocultarlo es cosmetico: la seguridad de verdad
+                        la hace @requiere_permiso en la vista.
+                        El ojo no lleva condicional porque entrar a esta pantalla
+                        ya exigio 'ver_proveedores'.
+                        {% endcomment %}
+                        <button class="btn btn-sm btn-outline-info btn-ver" title="Ver detalle">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        {% if 'editar_proveedor' in permisos_usuario or es_administrador %}
+                        <button class="btn btn-sm btn-outline-primary btn-editar" title="Editar">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        {% endif %}
+                        {% if p.borrado_logico %}
+                            {% if 'reactivar_proveedor' in permisos_usuario or es_administrador %}
+                            <button class="btn btn-sm btn-outline-success btn-reactivar" title="Reactivar">
+                                <i class="bi bi-arrow-counterclockwise"></i>
+                            </button>
+                            {% endif %}
+                        {% else %}
+                            {% if 'eliminar_proveedor' in permisos_usuario or es_administrador %}
+                            <button class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ---------- MODAL: CREAR ---------- #}
+{# El formulario no se manda al navegador si el perfil no puede usarlo. #}
+{% if 'crear_proveedor' in permisos_usuario or es_administrador %}
+<div class="modal fade" id="modalCrear" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="{% url 'proveedores:crear' %}" class="modal-content">
+            {% csrf_token %}
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuevo proveedor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% for campo in form %}
+                    <div class="mb-3">
+                        <label for="{{ campo.id_for_label }}" class="form-label">{{ campo.label }}</label>
+                        {{ campo }}
+                        {% if campo.errors %}
+                            <div class="text-danger small mt-1">{{ campo.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+{# ---------- MODAL: EDITAR ---------- #}
+{% if 'editar_proveedor' in permisos_usuario or es_administrador %}
+<div class="modal fade" id="modalEditar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" id="formEditar" class="modal-content">
+            {% csrf_token %}
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Editar proveedor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" name="nombre_proveedor" id="edit_nombre"
+                           class="form-control" maxlength="80" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">CUIT</label>
+                    <input type="text" name="cuit_proveedor" id="edit_cuit"
+                           class="form-control" maxlength="13" pattern="\d{2}-\d{8}-\d" title="Formato: 30-12345678-9" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Teléfono</label>
+                    <input type="text" name="telefono_proveedor" id="edit_telefono"
+                           class="form-control" maxlength="20">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email_proveedor" id="edit_email"
+                           class="form-control" maxlength="60">
+                </div>
+                 <div class="mb-3">
+                    <label class="form-label">Domicilio</label>
+                    <input type="text" name="domicilio" id="edit_domicilio"
+                           class="form-control" maxlength="120">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Localidad</label>
+                    <select name="id_localidad" id="edit_localidad" class="form-select">
+                        <option value="">— Sin especificar —</option>
+                        {% for loc in form.fields.id_localidad.queryset %}
+                            <option value="{{ loc.id_localidad }}">{{ loc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Condición de pago</label>
+                    <select name="condicion_pago" id="edit_condicion" class="form-select">
+                        {% for valor, etiqueta in condiciones %}
+                            <option value="{{ valor }}">{{ etiqueta }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+{# ---------- MODAL: VER DETALLE (ojo) ---------- #}
+<div class="modal fade" id="modalDetalle" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Detalle del proveedor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                 <dl class="row mb-0">
+                    <dt class="col-4">ID</dt>          <dd class="col-8" id="ver_id"></dd>
+                    <dt class="col-4">Nombre</dt>      <dd class="col-8" id="ver_nombre"></dd>
+                    <dt class="col-4">CUIT</dt>        <dd class="col-8" id="ver_cuit"></dd>
+                    <dt class="col-4">Teléfono</dt>    <dd class="col-8" id="ver_telefono"></dd>
+                    <dt class="col-4">Email</dt>       <dd class="col-8" id="ver_email"></dd>
+                    <dt class="col-4">Domicilio</dt>   <dd class="col-8" id="ver_domicilio"></dd>
+                    <dt class="col-4">Localidad</dt>   <dd class="col-8" id="ver_localidad"></dd>
+                    <dt class="col-4">Condición</dt>   <dd class="col-8" id="ver_condicion"></dd>
+                    <dt class="col-4">Estado</dt>      <dd class="col-8" id="ver_estado"></dd>
+                    <dt class="col-4">Alta</dt>        <dd class="col-8 text-muted small" id="ver_alta"></dd>
+                    <dt class="col-4">Últ. modif.</dt> <dd class="col-8 text-muted small" id="ver_modificado"></dd>
+                    <dt class="col-4">Modificado por</dt> <dd class="col-8 text-muted small" id="ver_modificado_por"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Formulario invisible que dispara la baja / reactivacion tras confirmar en SweetAlert #}
+<form method="post" id="formAccion">{% csrf_token %}</form>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+$(document).ready(function () {
+
+    // ---------- DataTables ----------
+    $('#tablaProveedores').DataTable({
+        dom: "<'row mb-2'<'col-sm-6'B><'col-sm-6 text-end'l>>rt<'row mt-2'<'col-sm-5'i><'col-sm-7'p>>",
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                className: 'btn btn-sm btn-success',
+                text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel',
+                title: 'Proveedores - Cafeto',
+                exportOptions: { columns: ':not(:last-child)' }
+            },
+            {
+                extend: 'pdfHtml5',
+                className: 'btn btn-sm btn-danger',
+                text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',
+                title: 'Proveedores - Cafeto',
+                exportOptions: { columns: ':not(:last-child)' }
+            }
+        ],
+        searching: false,            // la busqueda la hace Django, no DataTables
+        pageLength: 10,
+        order: [[1, 'asc']],
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-AR.json' }
+    });
+
+    // OJO: jQuery convierte data-url-editar  ->  .data('urlEditar')  (camelCase)
+
+    // ---------- Ver detalle (ojo) ----------
+    $(document).on('click', '.btn-ver', function () {
+        const fila = $(this).closest('tr');
+        $('#ver_id').text(fila.data('id'));
+        $('#ver_nombre').text(fila.data('nombre'));
+        $('#ver_cuit').text(fila.data('cuit'));
+        $('#ver_telefono').text(fila.data('telefono') || '—');
+        $('#ver_email').text(fila.data('email') || '—');
+        $('#ver_domicilio').text(fila.data('domicilio') || '—');
+        $('#ver_localidad').text(fila.data('localidad') || '—');
+        $('#ver_condicion').text(fila.data('condicionTexto'));
+        $('#ver_estado').html(fila.data('borrado') === 1
+            ? '<span class="badge text-bg-secondary">Inactivo</span>'
+            : '<span class="badge text-bg-success">Activo</span>');
+        $('#ver_alta').text(fila.data('alta')|| '—');
+        $('#ver_modificado').text(fila.data('modificado')|| '—');
+        $('#ver_modificado_por').text(fila.data('modificadoPor') || '—');
+        new bootstrap.Modal('#modalDetalle').show();
+    });
+
+    // ---------- Editar (lapiz) ----------
+    $(document).on('click', '.btn-editar', function () {
+        const fila = $(this).closest('tr');
+        $('#formEditar').attr('action', fila.data('urlEditar'));
+        $('#edit_nombre').val(fila.data('nombre'));
+        $('#edit_cuit').val(fila.data('cuit'));
+        $('#edit_telefono').val(fila.data('telefono'));
+        $('#edit_email').val(fila.data('email'));
+        $('#edit_domicilio').val(fila.data('domicilio'));
+        $('#edit_localidad').val(fila.data('localidadId') || '');
+        $('#edit_condicion').val(fila.data('condicion'));
+        new bootstrap.Modal('#modalEditar').show();
+    });
+
+    // ---------- Dar de baja (tacho) ----------
+    $(document).on('click', '.btn-eliminar', function () {
+        const fila = $(this).closest('tr');
+        Swal.fire({
+            title: '¿Dar de baja este proveedor?',
+            html: '<b>' + fila.data('nombre') + '</b><br>' +
+                  '<small class="text-muted">No se borra de la base de datos: ' +
+                  'queda inactivo y podés reactivarlo cuando quieras.</small>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, dar de baja',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d'
+        }).then(function (r) {
+            if (r.isConfirmed) {
+                $('#formAccion').attr('action', fila.data('urlEliminar')).submit();
+            }
+        });
+    });
+
+    // ---------- Reactivar ----------
+    $(document).on('click', '.btn-reactivar', function () {
+        const fila = $(this).closest('tr');
+        Swal.fire({
+            title: '¿Reactivar este proveedor?',
+            html: '<b>' + fila.data('nombre') + '</b>',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, reactivar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#198754',
+            cancelButtonColor: '#6c757d'
+        }).then(function (r) {
+            if (r.isConfirmed) {
+                $('#formAccion').attr('action', fila.data('urlReactivar')).submit();
+            }
+        });
+    });
+
+    // ---------- Reabrir modales si el formulario tuvo errores ----------
+    {% if abrir_modal_crear %}
+        new bootstrap.Modal('#modalCrear').show();
+    {% endif %}
+
+    {% if abrir_modal_editar %}
+        $('#formEditar').attr('action', '{% url "proveedores:editar" editar_id %}');
+        $('#edit_nombre').val('{{ form_editar.data.nombre_proveedor|escapejs }}');
+        $('#edit_cuit').val('{{ form_editar.data.cuit_proveedor|escapejs }}');
+        $('#edit_telefono').val('{{ form_editar.data.telefono_proveedor|escapejs }}');
+        $('#edit_email').val('{{ form_editar.data.email_proveedor|escapejs }}');
+        $('#edit_domicilio').val('{{ form_editar.data.domicilio|escapejs }}');
+        $('#edit_localidad').val('{{ form_editar.data.id_localidad|escapejs }}');
+        $('#edit_condicion').val('{{ form_editar.data.condicion_pago|escapejs }}');
+        new bootstrap.Modal('#modalEditar').show();
+    {% endif %}
+
+});
+</script>
+{% endblock %}

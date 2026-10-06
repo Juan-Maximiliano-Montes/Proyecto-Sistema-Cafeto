@@ -1,0 +1,24 @@
+# Credenciales: nunca se suben
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Base de datos local (si se usa sqlite en pruebas)
+db.sqlite3
+
+# Script temporal de rescate del admin (no debe vivir en el repo)
+rescate.py
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

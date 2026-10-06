@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+
+{% block titulo %}Cafeto · Permisos{% endblock %}
+
+{% block contenido %}
+
+{% comment %}
+Panel de Permisos en modo SÓLO LECTURA.
+
+El catálogo de permisos no se administra desde acá: cada código existe
+porque una vista lo exige con @requiere_permiso. Un permiso creado desde
+la pantalla no tendría ninguna vista detrás que lo consulte, y renombrar
+un código rompería en silencio el match con el decorador. Por eso esta
+pantalla sólo lista y muestra el detalle.
+
+Lo que el Administrador SÍ hace es asignar o desasignar estos permisos a
+los perfiles, y eso vive en la pantalla de Perfiles (modal "Editar
+perfil", con el tilde de permisos agrupado por módulo).
+{% endcomment %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-key me-2"></i>Permisos</h3>
+    {% if 'ver_perfiles' in permisos_usuario or es_administrador %}
+    <a href="{% url 'usuarios:perfiles' %}" class="btn btn-outline-primary">
+        <i class="bi bi-person-vcard me-1"></i> Asignar a perfiles
+    </a>
+    {% endif %}
+</div>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small text-secondary">
+                    <i class="bi bi-search me-1"></i>Buscar
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="busqueda" value="{{ busqueda }}"
+                           class="form-control" placeholder="Código, nombre o descripción...">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-secondary">
+                    <i class="bi bi-funnel me-1"></i>Módulo
+                </label>
+                <select name="modulo" class="form-select">
+                    <option value="">Todos</option>
+                    {% for valor, etiqueta in modulos %}
+                        <option value="{{ valor }}" {% if modulo == valor %}selected{% endif %}>
+                            {{ etiqueta }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="bi bi-funnel-fill"></i> Filtrar
+                </button>
+                <a href="{% url 'usuarios:permisos' %}" class="btn btn-outline-secondary"
+                   title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <p class="text-secondary small mb-3">
+            <i class="bi bi-info-circle me-1"></i>{{ total }} permiso{{ total|pluralize:"s" }} encontrado{{ total|pluralize:"s" }}
+        </p>
+
+        <table id="tablaPermisos" class="table table-striped table-hover align-middle w-100">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    <th>Código</th>
+                    <th>Módulo</th>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Perfiles que lo tienen</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for perm in permisos %}
+                <tr data-id="{{ perm.id_permiso }}"
+                    data-codigo="{{ perm.codigo }}"
+                    data-nombre="{{ perm.nombre }}"
+                    data-descripcion="{{ perm.descripcion }}"
+                    data-modulo-texto="{{ perm.get_modulo_display }}"
+                    data-modificado="{{ perm.fecha_modificacion|date:'d/m/Y H:i' }}"
+                    data-modificado-por="{{ perm.usuario_modificacion.nombre_usuario|default_if_none:'' }}"
+                    data-perfiles="{% for pf in perm.perfiles.all %}{{ pf.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+
+                    <td>{{ perm.id_permiso }}</td>
+                    <td><code class="text-cafeto">{{ perm.codigo }}</code></td>
+                    <td><span class="badge text-bg-dark">{{ perm.get_modulo_display }}</span></td>
+                    <td>{{ perm.nombre }}</td>
+                    <td class="text-secondary">{{ perm.descripcion|default:"—" }}</td>
+                    <td>
+                        {% for pf in perm.perfiles.all %}
+                            <span class="badge text-bg-secondary">{{ pf.nombre }}</span>
+                        {% empty %}
+                            <span class="text-secondary small">Ningún perfil</span>
+                        {% endfor %}
+                    </td>
+                    <td class="text-center text-nowrap">
+                        {# Única acción del panel: ver la ficha en modo lectura. #}
+                        <button class="btn btn-sm btn-outline-secondary btn-detalle" title="Ver detalle">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalDetalle" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Detalle del permiso</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-secondary small py-2">
+                    <i class="bi bi-info-circle me-1"></i>Ficha en <b>modo lectura</b>.
+                    Para cambiar qué perfiles tienen este permiso, usá la
+                    pantalla de <b>Perfiles</b>.
+                </div>
+                <dl class="row mb-0">
+                    <dt class="col-5 text-secondary">ID</dt>
+                    <dd class="col-7" id="det_id"></dd>
+
+                    <dt class="col-5 text-secondary">Código</dt>
+                    <dd class="col-7"><code class="text-cafeto" id="det_codigo"></code></dd>
+
+                    <dt class="col-5 text-secondary">Módulo</dt>
+                    <dd class="col-7" id="det_modulo"></dd>
+
+                    <dt class="col-5 text-secondary">Nombre</dt>
+                    <dd class="col-7" id="det_nombre"></dd>
+
+                    <dt class="col-5 text-secondary">Descripción</dt>
+                    <dd class="col-7" id="det_descripcion"></dd>
+
+                    <dt class="col-5 text-secondary">Perfiles que lo usan</dt>
+                    <dd class="col-7" id="det_perfiles"></dd>
+
+                    <dt class="col-5 text-secondary">Última modificación</dt>
+                    <dd class="col-7 text-secondary small" id="det_modificado"></dd>
+
+                    <dt class="col-5 text-secondary">Modificado por</dt>
+                    <dd class="col-7 text-secondary small" id="det_modificado_por"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+$(document).ready(function () {
+
+    $('#tablaPermisos').DataTable({
+        dom: "<'row mb-2'<'col-sm-6'B><'col-sm-6 text-end'l>>rt<'row mt-2'<'col-sm-5'i><'col-sm-7'p>>",
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                className: 'btn btn-sm btn-success',
+                text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel',
+                title: 'Permisos - Cafeto',
+                exportOptions: { columns: ':not(:last-child)' }
+            },
+            {
+                extend: 'pdfHtml5',
+                className: 'btn btn-sm btn-danger',
+                text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',
+                title: 'Permisos - Cafeto',
+                exportOptions: { columns: ':not(:last-child)' }
+            }
+        ],
+        searching: false,
+        pageLength: 10,
+        order: [[1, 'asc']],
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-AR.json' }
+    });
+
+    $(document).on('click', '.btn-detalle', function () {
+        const fila = $(this).closest('tr');
+        $('#det_id').text(fila.data('id'));
+        $('#det_codigo').text(fila.data('codigo'));
+        $('#det_nombre').text(fila.data('nombre'));
+        $('#det_descripcion').text(fila.data('descripcion') || '—');
+        $('#det_modulo').html('<span class="badge text-bg-dark">' +
+            fila.data('moduloTexto') + '</span>');
+        $('#det_modificado').text(fila.data('modificado') || '—');
+        $('#det_modificado_por').text(fila.data('modificadoPor') || '—');
+
+        const perfiles = String(fila.data('perfiles') || '').trim();
+        if (perfiles) {
+            $('#det_perfiles').html(perfiles.split(', ').map(function (n) {
+                return '<span class="badge text-bg-secondary me-1 mb-1">' + n + '</span>';
+            }).join(''));
+        } else {
+            $('#det_perfiles').text('Ningún perfil');
+        }
+
+        new bootstrap.Modal('#modalDetalle').show();
+    });
+
+});
+</script>
+{% endblock %}

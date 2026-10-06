@@ -1,0 +1,5 @@
+# Librerias del proyecto. Las instala el Dockerfile al construir la imagen:
+#   docker compose up -d --build
+
+Django==4.2.16
+psycopg2-binary==2.9.9

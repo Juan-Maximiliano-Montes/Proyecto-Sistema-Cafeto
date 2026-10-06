@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block titulo %}Cafeto{% endblock %}</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons: plus, lapiz, tacho, ojo, lupa, embudo, llave -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- DataTables + extension Buttons (apunte 07 de la cursada) -->
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css" rel="stylesheet">
+
+    {# ---------- PALETA CORPORATIVA "CAFETO LAS LOMITAS" ---------- #}
+    <style>
+        :root {
+            --cafeto-oro:        #F6C138;
+            --cafeto-oro-oscuro: #E8B425;
+            --cafeto-fondo:      #111111;
+            --cafeto-panel:      #1a1a1a;
+            --cafeto-borde:      #2b2b2b;
+        }
+        body { background-color: var(--cafeto-fondo); color: #ececec; }
+
+        .navbar {
+            background-color: #0d0d0d !important;
+            border-bottom: 2px solid var(--cafeto-oro);
+        }
+        .navbar-brand { color: var(--cafeto-oro) !important; font-weight: 700; letter-spacing: .5px; }
+        .navbar .nav-link.active { color: var(--cafeto-oro) !important; }
+
+        .card { background-color: var(--cafeto-panel); border: 1px solid var(--cafeto-borde); }
+        .modal-content { background-color: var(--cafeto-panel); }
+
+        a { color: var(--cafeto-oro); }
+        a:hover { color: var(--cafeto-oro-oscuro); }
+        .text-cafeto { color: var(--cafeto-oro) !important; }
+
+        /* Botón principal = Amarillo / Dorado Cafeto */
+        .btn-primary {
+            --bs-btn-bg:            var(--cafeto-oro);
+            --bs-btn-border-color:  var(--cafeto-oro);
+            --bs-btn-color:         #111;
+            --bs-btn-hover-bg:      var(--cafeto-oro-oscuro);
+            --bs-btn-hover-border-color: var(--cafeto-oro-oscuro);
+            --bs-btn-hover-color:   #111;
+            --bs-btn-active-bg:     var(--cafeto-oro-oscuro);
+            --bs-btn-active-border-color: var(--cafeto-oro-oscuro);
+            --bs-btn-active-color:  #111;
+            font-weight: 600;
+        }
+        .btn-outline-primary {
+            --bs-btn-color: var(--cafeto-oro);
+            --bs-btn-border-color: var(--cafeto-oro);
+            --bs-btn-hover-bg: var(--cafeto-oro);
+            --bs-btn-hover-border-color: var(--cafeto-oro);
+            --bs-btn-hover-color: #111;
+        }
+        .modal-header.bg-primary { background-color: var(--cafeto-oro) !important; color: #111 !important; }
+        .modal-header.bg-primary .btn-close { filter: none; }
+
+        .table { --bs-table-bg: transparent; }
+        thead.table-dark th { background-color: #0d0d0d; color: var(--cafeto-oro); }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--cafeto-oro);
+            box-shadow: 0 0 0 .25rem rgba(246, 193, 56, .25);
+        }
+        .login-wrap { min-height: 100vh; display: flex; align-items: center; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg">
+    <div class="container">
+        <a class="navbar-brand" href="{% url 'home' %}">
+            <i class="bi bi-cup-hot-fill me-1"></i> CAFETO
+        </a>
+        {% if request.usuario_actual %}
+        {% comment %}
+        El menú se arma en usuarios/menu.py, agrupado por área de trabajo y
+        filtrado por los permisos del perfil. Un grupo sin ítems visibles no
+        se dibuja, así que cada quien ve sólo lo suyo.
+        {% endcomment %}
+        <div class="navbar-nav me-auto">
+            {% for grupo in menu_sistema %}
+                {% if grupo.items|length == 1 %}
+                    {% with item=grupo.items.0 %}
+                    <a class="nav-link" href="{{ item.url }}">
+                        <i class="bi {{ item.icono }} me-1"></i>{{ item.titulo }}
+                    </a>
+                    {% endwith %}
+                {% else %}
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button"
+                       data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi {{ grupo.icono }} me-1"></i>{{ grupo.titulo }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        {% for item in grupo.items %}
+                        <li>
+                            <a class="dropdown-item" href="{{ item.url }}">
+                                <i class="bi {{ item.icono }} me-2"></i>{{ item.titulo }}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            {% empty %}
+                <a class="nav-link" href="{% url 'mi_perfil' %}">
+                    <i class="bi bi-person-badge me-1"></i> Mi Perfil
+                </a>
+            {% endfor %}
+        </div>
+        <div class="navbar-nav">
+            <span class="nav-link text-secondary">
+                <i class="bi bi-person-circle me-1"></i>{{ request.usuario_actual.nombre }} {{ request.usuario_actual.apellido }}
+            </span>
+            <a class="nav-link text-cafeto" href="{% url 'usuarios:logout' %}">
+                <i class="bi bi-box-arrow-right me-1"></i> Salir
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</nav>
+
+<main class="container my-4">
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    {% endfor %}
+
+    {% block contenido %}{% endblock %}
+</main>
+
+<!-- jQuery SIEMPRE primero: DataTables depende de el -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

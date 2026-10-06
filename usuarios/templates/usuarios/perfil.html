@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block titulo %}Cafeto · Mi Perfil{% endblock %}
+
+{% block contenido %}
+
+<div class="d-flex align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-person-badge me-2"></i>Mi Perfil</h3>
+</div>
+
+<div class="card shadow-sm" style="max-width: 640px;">
+    <div class="card-header bg-primary text-dark fw-semibold">
+        <i class="bi bi-person-circle me-2"></i>{{ usuario.nombre }} {{ usuario.apellido }}
+    </div>
+    <div class="card-body">
+        <div class="alert alert-secondary small py-2">
+            <i class="bi bi-lock me-1"></i>Estos datos son de <b>sólo lectura</b>.
+            Si algo está mal, avisá a un Administrador.
+        </div>
+
+        <dl class="row mb-0">
+            <dt class="col-sm-5 text-secondary">DNI</dt>
+            <dd class="col-sm-7">{{ usuario.dni_usuario }}</dd>
+
+            <dt class="col-sm-5 text-secondary">Nombre completo</dt>
+            <dd class="col-sm-7">{{ usuario.nombre }} {{ usuario.apellido }}</dd>
+
+            <dt class="col-sm-5 text-secondary">Correo</dt>
+            <dd class="col-sm-7">{{ usuario.correo }}</dd>
+
+            <dt class="col-sm-5 text-secondary">Usuario (autogenerado)</dt>
+            <dd class="col-sm-7"><code class="text-cafeto">{{ usuario.nombre_usuario }}</code></dd>
+
+            <dt class="col-sm-5 text-secondary">Perfil</dt>
+            <dd class="col-sm-7">{{ usuario.id_perfil.nombre }}</dd>
+
+            <dt class="col-sm-5 text-secondary">Estado</dt>
+            <dd class="col-sm-7">
+                {% if not usuario.borrado_logico %}
+                    <span class="badge text-bg-success">Activo</span>
+                {% else %}
+                    <span class="badge text-bg-secondary">Inactivo</span>
+                {% endif %}
+                {% if usuario.debe_cambiar_clave %}
+                    <span class="badge text-bg-warning">Clave provisoria</span>
+                {% endif %}
+            </dd>
+
+            <dt class="col-sm-5 text-secondary">Última modificación</dt>
+            <dd class="col-sm-7">{{ usuario.fecha_ultima_modificacion|date:'d/m/Y H:i' }}</dd>
+
+            <dt class="col-sm-5 text-secondary">Fecha de baja</dt>
+            <dd class="col-sm-7">{{ usuario.fecha_baja|date:'d/m/Y H:i'|default:'—' }}</dd>
+        </dl>
+    </div>
+    <div class="card-footer d-flex gap-2">
+        <a href="{% url 'usuarios:cambiar_clave' %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-key me-1"></i>Cambiar mi clave
+        </a>
+    </div>
+</div>
+
+{% endblock %}

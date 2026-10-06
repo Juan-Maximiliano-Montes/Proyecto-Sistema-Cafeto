@@ -1,0 +1,499 @@
+{% extends 'base.html' %}
+
+{% block titulo %}Cafeto · Usuarios{% endblock %}
+
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi bi-people me-2"></i>Usuarios</h3>
+    {# Botón visible sólo si el perfil tiene el permiso 'crear_usuario' (o es Administrador) #}
+    {% if 'crear_usuario' in permisos_usuario or es_administrador %}
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrear">
+        <i class="bi bi-plus-lg me-1"></i> Nuevo usuario
+    </button>
+    {% endif %}
+</div>
+
+{# ---------- BÚSQUEDA (lupa) Y FILTROS (embudo) ---------- #}
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label small text-secondary">
+                    <i class="bi bi-search me-1"></i>Buscar
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="busqueda" value="{{ busqueda }}"
+                           class="form-control" placeholder="Nombre, Apellido o DNI...">
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label small text-secondary">
+                    <i class="bi bi-funnel me-1"></i>Perfil
+                </label>
+                <select name="perfil" class="form-select">
+                    <option value="">Todos</option>
+                    {% for p in perfiles %}
+                        <option value="{{ p.id_perfil }}" {% if perfil == p.id_perfil|stringformat:'s' %}selected{% endif %}>
+                            {{ p.nombre }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small text-secondary">
+                    <i class="bi bi-toggle-on me-1"></i>Estado
+                </label>
+                <select name="estado" class="form-select">
+                    <option value="activos"   {% if estado == 'activos' %}selected{% endif %}>Activos</option>
+                    <option value="inactivos" {% if estado == 'inactivos' %}selected{% endif %}>Inactivos</option>
+                    <option value="todos"     {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+                </select>
+            </div>
+
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="bi bi-funnel-fill"></i> Filtrar
+                </button>
+                <a href="{% url 'usuarios:lista' %}" class="btn btn-outline-secondary"
+                   title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ---------- TABLA ---------- #}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <p class="text-secondary small mb-3">
+            <i class="bi bi-info-circle me-1"></i>{{ total }} usuario{{ total|pluralize:"s" }} encontrado{{ total|pluralize:"s" }}
+        </p>
+
+        <table id="tablaUsuarios" class="table table-striped table-hover align-middle w-100">
+            <thead class="table-dark">
+                <tr>
+                    <th>DNI</th>
+                    <th>Usuario</th>
+                    <th>Apellido</th>
+                    <th>Nombre</th>
+                    <th>Correo</th>
+                    <th>Perfil</th>
+                    <th>Estado</th>
+                    <th>Últ. modif.</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in usuarios %}
+                <tr data-id="{{ u.id_usuario }}"
+                    data-dni="{{ u.dni_usuario }}"
+                    data-usuario="{{ u.nombre_usuario }}"
+                    data-apellido="{{ u.apellido }}"
+                    data-nombre="{{ u.nombre }}"
+                    data-correo="{{ u.correo }}"
+                    data-perfil="{{ u.id_perfil.nombre }}"
+                    data-url-detalle="{% url 'usuarios:detalle' u.id_usuario %}"
+                    data-url-editar="{% url 'usuarios:editar' u.id_usuario %}"
+                    data-url-eliminar="{% url 'usuarios:eliminar' u.id_usuario %}"
+                    data-url-reactivar="{% url 'usuarios:reactivar' u.id_usuario %}"
+                    data-url-restablecer="{% url 'usuarios:restablecer_clave' u.id_usuario %}">
+
+                    <td>{{ u.dni_usuario }}</td>
+                    <td><code class="text-cafeto">{{ u.nombre_usuario }}</code></td>
+                    <td>{{ u.apellido }}</td>
+                    <td>{{ u.nombre }}</td>
+                    <td>{{ u.correo }}</td>
+                    <td>{{ u.id_perfil.nombre }}</td>
+                    <td>
+                        {% comment %}
+                        borrado_logico = False -> el registro está vigente.
+                        borrado_logico = True  -> está eliminado (baja lógica).
+                        {% endcomment %}
+                        {% if not u.borrado_logico %}
+                            <span class="badge text-bg-success">Activo</span>
+                        {% else %}
+                            <span class="badge text-bg-secondary">Inactivo</span>
+                        {% endif %}
+                        {% if u.debe_cambiar_clave %}
+                            <span class="badge text-bg-warning" title="Tiene una clave provisoria">
+                                <i class="bi bi-key"></i>
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="text-secondary small">{{ u.fecha_ultima_modificacion|date:'d/m/Y H:i' }}</td>
+                    <td class="text-center text-nowrap">
+                        {# Ver detalle (ojo): SÓLO LECTURA, siempre disponible #}
+                        <button class="btn btn-sm btn-outline-secondary btn-detalle" title="Ver detalle">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        {% if 'editar_usuario' in permisos_usuario or es_administrador %}
+                        <button class="btn btn-sm btn-outline-primary btn-editar" title="Editar correo">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        {% endif %}
+                        {% comment %}
+                        Llave amarilla: la ÚNICA condición es tener el permiso
+                        'restablecer_clave' (o ser Administrador). El estado
+                        de la clave provisoria del registro NO influye acá.
+                        {% endcomment %}
+                        {% if 'restablecer_clave' in permisos_usuario or es_administrador %}
+                        <button class="btn btn-sm btn-outline-warning btn-restablecer" title="Restablecer clave">
+                            <i class="bi bi-key"></i>
+                        </button>
+                        {% endif %}
+                        {% if u.borrado_logico %}
+                            {% if 'reactivar_usuario' in permisos_usuario or es_administrador %}
+                                <button class="btn btn-sm btn-outline-success btn-reactivar" title="Reactivar">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
+                            {% endif %}
+                        {% elif 'baja_usuario' in permisos_usuario or es_administrador %}
+                            {% if u.es_ultimo_administrador %}
+                                {% comment %}
+                                Candado "último administrador en pie": si es el
+                                único Administrador vigente, el tacho rojo NO
+                                se muestra. La vista igual lo frena si alguien
+                                fuerza la URL.
+                                {% endcomment %}
+                                <span class="btn btn-sm btn-outline-secondary disabled"
+                                      title="No se puede dar de baja: es el único administrador activo del sistema">
+                                    <i class="bi bi-shield-lock"></i>
+                                </span>
+                            {% else %}
+                                <button class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ---------- MODAL: CREAR ---------- #}
+{# El formulario no se manda al navegador si el perfil no puede usarlo. #}
+{% if 'crear_usuario' in permisos_usuario or es_administrador %}
+<div class="modal fade" id="modalCrear" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="{% url 'usuarios:crear' %}" class="modal-content" id="formCrear">
+            {% csrf_token %}
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuevo usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary small">
+                    El nombre de usuario y la clave temporal (DNI) se generan automáticamente.
+                    El sistema exigirá el cambio de clave en el primer inicio de sesión.
+                </p>
+
+                <div class="mb-3">
+                    <label for="id_dni_usuario" class="form-label">DNI</label>
+                    {{ form.dni_usuario }}
+                    <div id="avisoDni" class="text-danger small mt-1" style="display:none;">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>Ya existe un usuario con ese DNI.
+                    </div>
+                    {% if form.dni_usuario.errors %}<div class="text-danger small mt-1">{{ form.dni_usuario.errors|striptags }}</div>{% endif %}
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="{{ form.apellido.id_for_label }}" class="form-label">Apellido</label>
+                        {{ form.apellido }}
+                        {% if form.apellido.errors %}<div class="text-danger small mt-1">{{ form.apellido.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="{{ form.nombre.id_for_label }}" class="form-label">Nombre</label>
+                        {{ form.nombre }}
+                        {% if form.nombre.errors %}<div class="text-danger small mt-1">{{ form.nombre.errors|striptags }}</div>{% endif %}
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ form.correo.id_for_label }}" class="form-label">Correo</label>
+                    {{ form.correo }}
+                    {% if form.correo.errors %}<div class="text-danger small mt-1">{{ form.correo.errors|striptags }}</div>{% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label for="{{ form.id_perfil.id_for_label }}" class="form-label">Perfil</label>
+                    {{ form.id_perfil }}
+                    {% if form.id_perfil.errors %}<div class="text-danger small mt-1">{{ form.id_perfil.errors|striptags }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="btnGuardarCrear">
+                    <i class="bi bi-check-lg me-1"></i>Guardar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+{# ---------- MODAL: EDITAR (SÓLO CORREO) ---------- #}
+{% if 'editar_usuario' in permisos_usuario or es_administrador %}
+<div class="modal fade" id="modalEditar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" id="formEditar" class="modal-content">
+            {% csrf_token %}
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Editar usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-secondary small py-2">
+                    <i class="bi bi-lock me-1"></i>Por regla del sistema sólo se puede modificar el <b>correo</b>.
+                </div>
+                <dl class="row mb-3 small">
+                    <dt class="col-4 text-secondary">DNI</dt>      <dd class="col-8" id="edit_dni_txt"></dd>
+                    <dt class="col-4 text-secondary">Usuario</dt>  <dd class="col-8" id="edit_usuario_txt"></dd>
+                    <dt class="col-4 text-secondary">Nombre</dt>   <dd class="col-8" id="edit_nombre_txt"></dd>
+                </dl>
+                <div class="mb-2">
+                    <label class="form-label">Correo</label>
+                    <input type="email" name="correo" id="edit_correo" class="form-control" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Actualizar correo</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+{# ---------- MODAL: VER DETALLE (SÓLO LECTURA) ---------- #}
+<div class="modal fade" id="modalDetalle" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Detalle del usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-secondary small py-2">
+                    <i class="bi bi-info-circle me-1"></i>Ficha completa en <b>modo lectura</b>.
+                    Para cambiar el correo, usá el botón de editar.
+                </div>
+                <dl class="row mb-0">
+                    <dt class="col-5 text-secondary">DNI</dt>
+                    <dd class="col-7" id="det_dni"></dd>
+
+                    <dt class="col-5 text-secondary">Nombre completo</dt>
+                    <dd class="col-7" id="det_nombre"></dd>
+
+                    <dt class="col-5 text-secondary">Correo</dt>
+                    <dd class="col-7" id="det_correo"></dd>
+
+                    <dt class="col-5 text-secondary">Usuario (autogenerado)</dt>
+                    <dd class="col-7"><code class="text-cafeto" id="det_usuario"></code></dd>
+
+                    <dt class="col-5 text-secondary">Perfil</dt>
+                    <dd class="col-7" id="det_perfil"></dd>
+
+                    <dt class="col-5 text-secondary">Estado</dt>
+                    <dd class="col-7" id="det_estado"></dd>
+
+                    <dt class="col-5 text-secondary">Última modificación</dt>
+                    <dd class="col-7" id="det_fecha_mod"></dd>
+
+                    <dt class="col-5 text-secondary">Fecha de baja</dt>
+                    <dd class="col-7" id="det_fecha_baja"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Formulario invisible que dispara baja / reactivación / restablecer tras confirmar #}
+<form method="post" id="formAccion">{% csrf_token %}</form>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+$(document).ready(function () {
+
+    // ---------- DataTables ----------
+    $('#tablaUsuarios').DataTable({
+        dom: "<'row mb-2'<'col-sm-6'B><'col-sm-6 text-end'l>>rt<'row mt-2'<'col-sm-5'i><'col-sm-7'p>>",
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                className: 'btn btn-sm btn-success',
+                text: '<i class="bi bi-file-earmark-excel me-1"></i>Excel',
+                title: 'Usuarios - Cafeto',
+                exportOptions: { columns: ':not(:last-child)' }
+            },
+            {
+                extend: 'pdfHtml5',
+                className: 'btn btn-sm btn-danger',
+                text: '<i class="bi bi-file-earmark-pdf me-1"></i>PDF',
+                title: 'Usuarios - Cafeto',
+                exportOptions: { columns: ':not(:last-child)' }
+            }
+        ],
+        searching: false,            // la búsqueda la hace Django, no DataTables
+        pageLength: 10,
+        order: [[2, 'asc']],
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-AR.json' }
+    });
+
+    // ============================================================
+    //  VALIDACIÓN AJAX: ¿el DNI ya existe?  (modal de Alta)
+    // ============================================================
+    let timerDni = null;
+    $('#id_dni_usuario').on('keyup', function () {
+        const dni = $(this).val().trim();
+        clearTimeout(timerDni);
+
+        if (dni.length < 7) {
+            $('#avisoDni').hide();
+            $('#btnGuardarCrear').prop('disabled', false);
+            return;
+        }
+
+        // Espera 300 ms a que el operador deje de tipear (debounce)
+        timerDni = setTimeout(function () {
+            $.getJSON("{% url 'usuarios:verificar_dni' %}", { dni: dni }, function (resp) {
+                if (resp.existe) {
+                    $('#avisoDni').show();
+                    $('#btnGuardarCrear').prop('disabled', true);
+                } else {
+                    $('#avisoDni').hide();
+                    $('#btnGuardarCrear').prop('disabled', false);
+                }
+            });
+        }, 300);
+    });
+
+    // ---------- Ver detalle (ojo): SÓLO LECTURA ----------
+    $(document).on('click', '.btn-detalle', function () {
+        const fila = $(this).closest('tr');
+        // Pide la ficha completa al servidor por AJAX (misma idea que verificar-dni)
+        $.getJSON(fila.data('urlDetalle'), function (u) {
+            $('#det_dni').text(u.dni_usuario);
+            $('#det_nombre').text(u.nombre_completo);
+            $('#det_correo').text(u.correo);
+            $('#det_usuario').text(u.nombre_usuario);
+            $('#det_perfil').text(u.perfil);
+
+            // borrado_logico = true significa "dado de baja"
+            let estado = u.borrado_logico
+                ? '<span class="badge text-bg-secondary">Inactivo</span>'
+                : '<span class="badge text-bg-success">Activo</span>';
+            if (u.debe_cambiar_clave) {
+                estado += ' <span class="badge text-bg-warning">Clave provisoria</span>';
+            }
+            if (u.es_ultimo_administrador) {
+                estado += ' <span class="badge text-bg-info">Único administrador activo</span>';
+            }
+            $('#det_estado').html(estado);
+
+            $('#det_fecha_mod').text(u.fecha_ultima_modificacion);
+            $('#det_fecha_baja').text(u.fecha_baja);
+
+            new bootstrap.Modal('#modalDetalle').show();
+        });
+    });
+
+    // ---------- Editar (lápiz): sólo correo ----------
+    $(document).on('click', '.btn-editar', function () {
+        const fila = $(this).closest('tr');
+        $('#formEditar').attr('action', fila.data('urlEditar'));
+        $('#edit_dni_txt').text(fila.data('dni'));
+        $('#edit_usuario_txt').text(fila.data('usuario'));
+        $('#edit_nombre_txt').text(fila.data('nombre') + ' ' + fila.data('apellido'));
+        $('#edit_correo').val(fila.data('correo'));
+        new bootstrap.Modal('#modalEditar').show();
+    });
+
+    // ---------- Restablecer clave (llave) ----------
+    $(document).on('click', '.btn-restablecer', function () {
+        const fila = $(this).closest('tr');
+        Swal.fire({
+            title: '¿Restablecer la clave?',
+            html: '<b>' + fila.data('usuario') + '</b><br>' +
+                  '<small class="text-muted">Se genera una clave provisoria nueva. ' +
+                  'El usuario tendrá que cambiarla al ingresar.</small>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, restablecer',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#E8B425',
+            cancelButtonColor: '#6c757d'
+        }).then(function (r) {
+            if (r.isConfirmed) {
+                $('#formAccion').attr('action', fila.data('urlRestablecer')).submit();
+            }
+        });
+    });
+
+    // ---------- Dar de baja (tacho): baja lógica ----------
+    $(document).on('click', '.btn-eliminar', function () {
+        const fila = $(this).closest('tr');
+        Swal.fire({
+            title: '¿Dar de baja este usuario?',
+            html: '<b>' + fila.data('usuario') + '</b><br>' +
+                  '<small class="text-muted">No se borra de la base: queda inactivo ' +
+                  'y se registra la fecha de baja.</small>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, dar de baja',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d'
+        }).then(function (r) {
+            if (r.isConfirmed) {
+                $('#formAccion').attr('action', fila.data('urlEliminar')).submit();
+            }
+        });
+    });
+
+    // ---------- Reactivar ----------
+    $(document).on('click', '.btn-reactivar', function () {
+        const fila = $(this).closest('tr');
+        Swal.fire({
+            title: '¿Reactivar este usuario?',
+            html: '<b>' + fila.data('usuario') + '</b>',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, reactivar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#198754',
+            cancelButtonColor: '#6c757d'
+        }).then(function (r) {
+            if (r.isConfirmed) {
+                $('#formAccion').attr('action', fila.data('urlReactivar')).submit();
+            }
+        });
+    });
+
+    // ---------- Reabrir modales si el formulario tuvo errores ----------
+    {% if abrir_modal_crear %}
+        new bootstrap.Modal('#modalCrear').show();
+    {% endif %}
+    {% if abrir_modal_editar %}
+        $('#formEditar').attr('action', '{% url "usuarios:editar" editar_id %}');
+        $('#edit_correo').val('{{ form_editar.data.correo|escapejs }}');
+        new bootstrap.Modal('#modalEditar').show();
+    {% endif %}
+
+});
+</script>
+{% endblock %}

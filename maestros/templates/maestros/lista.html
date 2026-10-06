@@ -1,0 +1,442 @@
+{% extends 'base.html' %}
+{% load maestros_extras %}
+{% comment %}
+Pantalla única de los nueve CRUD de datos maestros.
+
+Todo lo que cambia entre una entidad y otra viene en `cfg`
+(ConfiguracionCRUD): el título, el ícono, las columnas, los filtros y los
+nombres de los permisos. Así la pantalla de rubros y la de beneficios son
+literalmente la misma, y una corrección de usabilidad vale para las nueve.
+
+Los botones se muestran sólo con el permiso correspondiente. Eso es
+cosmético: la seguridad de verdad la hace el decorador `exige()` en la
+vista, que corta el acceso aunque alguien escriba la URL a mano.
+{% endcomment %}
+
+{% block titulo %}Cafeto · {{ cfg.titulo }}{% endblock %}
+
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0"><i class="bi {{ cfg.icono }} me-2"></i>{{ cfg.titulo }}</h3>
+    {% if permiso_crear in permisos_usuario or es_administrador %}
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrear">
+        <i class="bi bi-plus-lg me-1"></i> Nuevo
+    </button>
+    {% endif %}
+</div>
+
+{# ---------- BÚSQUEDA Y FILTROS ---------- #}
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">
+                    <i class="bi bi-search me-1"></i>Buscar
+                </label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" name="busqueda" value="{{ busqueda }}"
+                           class="form-control" placeholder="Escribí parte del nombre...">
+                </div>
+            </div>
+
+            {% for filtro, opciones, elegido in filtros %}
+            <div class="col-md-3">
+                <label class="form-label small text-muted">
+                    <i class="bi bi-funnel me-1"></i>{{ filtro.etiqueta }}
+                </label>
+                <select name="{{ filtro.clave }}" class="form-select">
+                    <option value="">Todos</option>
+                    {% for valor, etiqueta in opciones %}
+                        <option value="{{ valor }}" {% if elegido == valor|stringformat:"s" %}selected{% endif %}>{{ etiqueta }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endfor %}
+
+            {% if cfg.tiene_baja %}
+            <div class="col-md-2">
+                <label class="form-label small text-muted">
+                    <i class="bi bi-toggle-on me-1"></i>Estado
+                </label>
+                <select name="estado" class="form-select">
+                    <option value="vigentes" {% if estado == 'vigentes' %}selected{% endif %}>Vigentes</option>
+                    <option value="baja"     {% if estado == 'baja' %}selected{% endif %}>Dados de baja</option>
+                    <option value="todos"    {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+                </select>
+            </div>
+            {% endif %}
+
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">
+                    <i class="bi bi-funnel-fill"></i> Filtrar
+                </button>
+                <a href="{{ url_lista }}" class="btn btn-outline-secondary"
+                   title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ---------- TABLA ---------- #}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            <i class="bi bi-list-ol me-1"></i>{{ total }} registro{{ total|pluralize }}
+        </p>
+
+        <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle w-100">
+            <thead class="table-dark">
+                <tr>
+                    <th>ID</th>
+                    {% for columna in cfg.columnas %}<th>{{ columna.etiqueta }}</th>{% endfor %}
+                    {% if cfg.tiene_baja %}<th>Estado</th>{% endif %}
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in filas %}
+                <tr>
+                    <td class="text-muted">{{ fila.pk }}</td>
+                    {% for columna in cfg.columnas %}
+                        {% with valor=fila|valor_de:columna.atributo %}
+                        <td>
+                            {% if columna.formato == 'si_no' %}
+                                {% if valor %}<i class="bi bi-check-circle-fill text-success"></i> Sí
+                                {% else %}<i class="bi bi-dash-circle text-secondary"></i> No{% endif %}
+                            {% elif columna.formato == 'dinero' %}
+                                {% if valor == None %}—{% else %}$ {{ valor|floatformat:2 }}{% endif %}
+                            {% elif columna.formato == 'numero' %}
+                                {# default_if_none y no default: un 0 es un valor, no un vacío. #}
+                                {{ valor|default_if_none:"—" }}
+                            {% else %}
+                                {{ valor|default:"—" }}
+                            {% endif %}
+                        </td>
+                        {% endwith %}
+                    {% endfor %}
+
+                    {% if cfg.tiene_baja %}
+                    <td>
+                        {% if fila.borrado_logico %}
+                            <span class="badge bg-secondary">Dado de baja</span>
+                        {% else %}
+                            <span class="badge bg-success">Vigente</span>
+                        {% endif %}
+                    </td>
+                    {% endif %}
+
+                    <td class="text-center text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary boton-ver"
+                                data-pk="{{ fila.pk }}"
+                                data-nombre="{{ fila }}"
+                                title="Ver ficha">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        {% if not cfg.tiene_baja or not fila.borrado_logico %}
+                            {% if permiso_editar in permisos_usuario or es_administrador %}
+                            <button class="btn btn-sm btn-outline-primary boton-editar"
+                                    data-url="{{ cfg.espacio_urls }}:{{ cfg.clave }}_editar"
+                                    data-pk="{{ fila.pk }}"
+                                    title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            {% endif %}
+                            {% if cfg.tiene_baja and permiso_eliminar in permisos_usuario or cfg.tiene_baja and es_administrador %}
+                            <form method="post" action="{% url cfg.espacio_urls|add:':'|add:cfg.clave|add:'_eliminar' fila.pk %}"
+                                  class="d-inline form-confirmar"
+                                  data-pregunta="¿Dar de baja «{{ fila }}»? La fila queda en la base y se puede reactivar.">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        {% else %}
+                            {% if permiso_reactivar in permisos_usuario or es_administrador %}
+                            <form method="post" action="{% url cfg.espacio_urls|add:':'|add:cfg.clave|add:'_reactivar' fila.pk %}"
+                                  class="d-inline form-confirmar"
+                                  data-pregunta="¿Reactivar «{{ fila }}»?">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-success" title="Reactivar">
+                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="20" class="text-center text-muted py-4">
+                        No hay registros que coincidan con la búsqueda.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+{# ---------- MODAL: FICHA DE SÓLO LECTURA ---------- #}
+{# Sin botón de guardar: lo único que se puede hacer acá es cerrar. #}
+<div class="modal fade" id="modalVer" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary">
+                <h5 class="modal-title">
+                    <i class="bi bi-eye me-2"></i><span id="tituloVer">Ficha</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="cuerpoVer">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border" role="status"></div>
+                    <p class="mt-2 mb-0">Cargando…</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---------- MODAL: ALTA ---------- #}
+{% if permiso_crear in permisos_usuario or es_administrador %}
+<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="{{ url_crear }}" class="modal-content form-una-vez">
+            {% csrf_token %}
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title"><i class="bi {{ cfg.icono }} me-2"></i>Nuevo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% include 'maestros/_campos.html' with form=formulario %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ---------- MODAL: EDICIÓN ---------- #}
+{% if permiso_editar in permisos_usuario or es_administrador %}
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="" id="formEditar" class="modal-content form-una-vez">
+            {% csrf_token %}
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="cuerpoEditar">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border" role="status"></div>
+                    <p class="mt-2 mb-0">Cargando…</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# El servidor devolvió errores: reabrimos el modal con lo que se escribió. #}
+{% if abrir_modal_crear %}
+<div class="modal fade" id="modalCrearErrores" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="{{ url_crear }}" class="modal-content form-una-vez">
+            {% csrf_token %}
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title">Nuevo — revisá los datos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">{% include 'maestros/_campos.html' with form=formulario %}</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if abrir_modal_editar %}
+<div class="modal fade" id="modalEditarErrores" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="{% url cfg.espacio_urls|add:':'|add:cfg.clave|add:'_editar' editar_pk %}"
+              class="modal-content form-una-vez">
+            {% csrf_token %}
+            <div class="modal-header bg-primary">
+                <h5 class="modal-title">Editar — revisá los datos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">{% include 'maestros/_campos.html' with form=formulario_editar %}</div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+// ---- Confirmación antes de una acción que cambia el estado ---------------
+document.querySelectorAll('.form-confirmar').forEach(function (form) {
+    form.addEventListener('submit', function (evento) {
+        if (form.dataset.confirmado === '1') { return; }
+        evento.preventDefault();
+        Swal.fire({
+            text: form.dataset.pregunta,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, continuar',
+            cancelButtonText: 'Cancelar',
+            background: '#1a1a1a',
+            color: '#ececec',
+            confirmButtonColor: '#F6C138',
+        }).then(function (resultado) {
+            if (resultado.isConfirmed) {
+                form.dataset.confirmado = '1';
+                form.submit();
+            }
+        });
+    });
+});
+
+// ---- Confirmación de guardado + V-G12 (el botón se apaga una vez) -------
+// Los dos viven en el MISMO manejador, y el orden importa. Si fueran dos
+// manejadores sueltos, el que apaga el botón correría también cuando la
+// persona todavía no confirmó, y se quedaría con un "Guardando…" eterno
+// sobre un formulario que nunca se envió.
+function resumenDelFormulario(form) {
+    // Se lee del DOM y no del contexto de Django porque el formulario de
+    // edición llega por fetch: cuando se arma esta página todavía no existe.
+    var filas = [];
+    form.querySelectorAll('.modal-body [name]').forEach(function (control) {
+        if (control.type === 'hidden' || control.name === 'csrfmiddlewaretoken') { return; }
+
+        var etiqueta = form.querySelector('label[for="' + control.id + '"]');
+        var nombre = etiqueta ? etiqueta.textContent.replace('*', '').trim()
+                              : control.name;
+        var valor;
+        if (control.type === 'checkbox') {
+            valor = control.checked ? 'Sí' : 'No';
+        } else if (control.tagName === 'SELECT') {
+            valor = control.selectedIndex >= 0
+                  ? control.options[control.selectedIndex].text : '';
+        } else {
+            valor = control.value;
+        }
+        valor = (valor || '').trim();
+        filas.push('<tr><th class="text-start text-muted fw-normal pe-3">' +
+                   nombre + '</th><td class="text-start">' +
+                   (valor === '' ? '<span class="text-muted">—</span>' : valor) +
+                   '</td></tr>');
+    });
+    if (!filas.length) { return ''; }
+    return '<table class="table table-sm mb-0"><tbody>' +
+           filas.join('') + '</tbody></table>';
+}
+
+function apagarBotones(form) {
+    form.querySelectorAll('button[type=submit]').forEach(function (boton) {
+        boton.disabled = true;
+        boton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando…';
+    });
+}
+
+document.querySelectorAll('.form-una-vez').forEach(function (form) {
+    form.addEventListener('submit', function (evento) {
+        if (form.dataset.confirmado === '1') { apagarBotones(form); return; }
+        evento.preventDefault();
+        Swal.fire({
+            title: '¿Confirma que desea guardar estos datos?',
+            html: resumenDelFormulario(form),
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, guardar',
+            cancelButtonText: 'Volver a revisar',
+            background: '#1a1a1a',
+            color: '#ececec',
+            confirmButtonColor: '#F6C138',
+            width: '38rem',
+        }).then(function (resultado) {
+            if (resultado.isConfirmed) {
+                form.dataset.confirmado = '1';
+                // requestSubmit y no submit: submit se saltea este mismo
+                // manejador, y con él se perdería el apagado del botón.
+                form.requestSubmit();
+            }
+        });
+    });
+});
+
+// ---- Ficha de sólo lectura ----------------------------------------------
+document.querySelectorAll('.boton-ver').forEach(function (boton) {
+    boton.addEventListener('click', function () {
+        var destino = '{{ url_lista }}' + boton.dataset.pk + '/ver/';
+        var cuerpo = document.getElementById('cuerpoVer');
+        document.getElementById('tituloVer').textContent = boton.dataset.nombre;
+        cuerpo.innerHTML = '<div class="text-center text-muted py-4">' +
+            '<div class="spinner-border"></div><p class="mt-2 mb-0">Cargando…</p></div>';
+        new bootstrap.Modal(document.getElementById('modalVer')).show();
+        fetch(destino, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.text(); })
+            .then(function (html) { cuerpo.innerHTML = html; })
+            .catch(function () {
+                cuerpo.innerHTML = '<div class="alert alert-danger mb-0">' +
+                    'No se pudo cargar la ficha. Recargá la página.</div>';
+            });
+    });
+});
+
+// ---- Edición: el formulario se pide al servidor --------------------------
+// Así el modal siempre muestra los datos ACTUALES de la fila, incluido el
+// testigo de versión del bloqueo optimista (V-G11). Si lo armáramos con lo
+// que ya está en la tabla, podría venir de una página cargada hace rato.
+document.querySelectorAll('.boton-editar').forEach(function (boton) {
+    boton.addEventListener('click', function () {
+        var destino = '{{ url_lista }}' + boton.dataset.pk + '/editar/';
+        var modal = new bootstrap.Modal(document.getElementById('modalEditar'));
+        var cuerpo = document.getElementById('cuerpoEditar');
+        document.getElementById('formEditar').action = destino;
+        cuerpo.innerHTML = '<div class="text-center text-muted py-4">' +
+            '<div class="spinner-border"></div><p class="mt-2 mb-0">Cargando…</p></div>';
+        modal.show();
+        fetch(destino + '?formulario=1', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.text(); })
+            .then(function (html) { cuerpo.innerHTML = html; })
+            .catch(function () {
+                cuerpo.innerHTML = '<div class="alert alert-danger mb-0">' +
+                    'No se pudo cargar el formulario. Recargá la página.</div>';
+            });
+    });
+});
+
+// ---- Reapertura automática del modal cuando el servidor devolvió errores --
+{% if abrir_modal_crear %}
+new bootstrap.Modal(document.getElementById('modalCrearErrores')).show();
+{% endif %}
+{% if abrir_modal_editar %}
+new bootstrap.Modal(document.getElementById('modalEditarErrores')).show();
+{% endif %}
+</script>
+{% endblock %}

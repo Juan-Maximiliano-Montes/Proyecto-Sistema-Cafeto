@@ -1,0 +1,50 @@
+{% comment %}
+Ficha de sólo lectura de una fila, para el modal del ojo.
+
+No hay un solo control de formulario acá: ni input, ni select, ni botón de
+guardar. Es a propósito. Una pantalla de consulta que se parece a una de
+edición invita a tocar, y después hay que explicar por qué el cambio no se
+guardó. Lo que no se puede modificar, no se dibuja como modificable.
+
+Los datos vienen armados de `datos_de_la_ficha()`: ya traen la etiqueta y
+el valor legible, así que acá no se decide nada.
+{% endcomment %}
+
+<dl class="row mb-0">
+    <dt class="col-sm-4 text-muted fw-normal">ID</dt>
+    <dd class="col-sm-8"><span class="badge bg-secondary">{{ fila.pk }}</span></dd>
+
+    {% for etiqueta, valor in datos %}
+    <dt class="col-sm-4 text-muted fw-normal">{{ etiqueta }}</dt>
+    <dd class="col-sm-8">
+        {% if valor is True %}
+            <i class="bi bi-check-circle-fill text-success"></i> Sí
+        {% elif valor is False %}
+            <i class="bi bi-dash-circle text-secondary"></i> No
+        {% else %}
+            {{ valor|default_if_none:"—" }}
+        {% endif %}
+    </dd>
+    {% endfor %}
+
+    {% if cfg.tiene_baja %}
+    <dt class="col-sm-4 text-muted fw-normal">Estado</dt>
+    <dd class="col-sm-8">
+        {% if fila.borrado_logico %}
+            <span class="badge bg-secondary">Dado de baja</span>
+        {% else %}
+            <span class="badge bg-success">Vigente</span>
+        {% endif %}
+    </dd>
+    {% endif %}
+
+    {% if fila.fecha_modificacion %}
+    <dt class="col-sm-4 text-muted fw-normal">Última modificación</dt>
+    <dd class="col-sm-8">
+        {{ fila.fecha_modificacion|date:"d/m/Y H:i" }}
+        {% if fila.usuario_modificacion %}
+            · {{ fila.usuario_modificacion }}
+        {% endif %}
+    </dd>
+    {% endif %}
+</dl>

@@ -1,0 +1,81 @@
+# docker-compose.yml
+# Orquesta tres contenedores: PostgreSQL, Adminer y la aplicacion Django.
+#
+# El contenedor "web" se construye con el Dockerfile de esta carpeta: las
+# dependencias quedan instaladas en la imagen y las migraciones se aplican
+# solas al arrancar. Ya no hay instalacion manual dentro del contenedor.
+#
+#   docker compose up -d --build
+#
+# "name" fija el nombre del proyecto para que el volumen de datos siga
+# siendo "proyecto-cafeto_db_data" y la base existente no se pierda.
+name: proyecto-cafeto
+
+services:
+
+  # ---------- Servicio 1: Base de datos PostgreSQL ----------
+  db:
+    image: postgres:16
+    container_name: cafeto_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # ---------- Servicio 2: Adminer (administrador web de la BD) ----------
+  adminer:
+    image: adminer:latest
+    container_name: cafeto_adminer
+    restart: always
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    ports:
+      - "9090:8080"
+    depends_on:
+      - db
+
+  # ---------- Servicio 3: Aplicacion Django ----------
+  web:
+    build: .
+    container_name: cafeto_web
+    restart: always
+    working_dir: /opt/app
+    volumes:
+      # El codigo se monta para poder editarlo sin reconstruir la imagen.
+      # Adentro viaja "base_de_datos/", con los guiones que las migraciones
+      # ejecutan para instalar triggers, historico y procedimientos.
+      #
+      # Antes esos guiones se montaban de afuera, desde "04 - Base de Datos":
+      # eso ataba el arranque a una carpeta que NO esta en este repositorio,
+      # asi que un clon limpio no levantaba. La copia interna la mantiene al
+      # dia "02 - Scripts/sync_bd_django.py".
+      - .:/opt/app
+    ports:
+      - "8000:8000"
+    environment:
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 5432
+      # Si el .env todavia no define estas claves, valen los de desarrollo.
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-solo-para-desarrollo}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+    depends_on:
+      db:
+        condition: service_healthy
+
+# Volumen nombrado: conserva los datos aunque se borre el contenedor
+volumes:
+  db_data:
