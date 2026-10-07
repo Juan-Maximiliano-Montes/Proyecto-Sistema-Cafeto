@@ -44,3 +44,10 @@ ENTIDADES = ['rubros', 'marcas', 'productos', 'tipos_egreso', 'medios_pago',
              'cajas_registradoras', 'categorias', 'beneficios']
 
 urlpatterns = [ruta for clave in ENTIDADES for ruta in rutas_de(clave)]
+
+# Fuera del molde de las seis rutas: el buscador que alimenta el selector
+# de productos de la receta de un beneficio. No es un CRUD, es una
+# consulta de lectura que devuelve JSON.
+urlpatterns += [
+    path('api/productos/', views.buscar_productos, name='buscar_productos'),
+]

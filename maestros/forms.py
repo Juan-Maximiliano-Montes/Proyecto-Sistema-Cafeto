@@ -20,6 +20,7 @@ lo que el usuario escribió.
 """
 from django import forms
 from django.core.exceptions import ValidationError
+from django.urls import reverse_lazy
 
 from proveedores.models import Proveedor
 
@@ -420,6 +421,74 @@ class BeneficioForm(FormularioMaestro):
                 'demás, dalo de baja y creá uno nuevo.')
 
 
+class SelectorBuscado(forms.Select):
+    """``<select>`` que dibuja SÓLO la opción elegida; el resto se busca.
+
+    Por qué existe
+    --------------
+    Un ``ModelChoiceField`` normal escribe un ``<option>`` por cada fila
+    del queryset. Para elegir un producto entre 5.000 eso son 5.000
+    opciones **por renglón**, y el formset dibuja además un molde oculto
+    para los renglones nuevos: la pantalla de Beneficios llegó a 705 KB y
+    8,4 segundos de armado, con el navegador clavado mientras parsea el
+    HTML. Medido, no estimado.
+
+    Acá el control nace vacío (o con la única opción que ya está elegida,
+    para que la edición muestre lo que tiene cargado) y las opciones las
+    trae el JS de ``lista.html`` desde ``maestros:buscar_productos``, de a
+    20 y filtrando por lo que se tipea.
+
+    Lo importante: esto cambia sólo lo que se DIBUJA. La validación sigue
+    siendo la del ``ModelChoiceField``, que comprueba el id recibido
+    contra su ``queryset`` completo (V-G7). Mandar un id que no está en la
+    lista visible no sirve de nada: el campo lo rechaza igual.
+    """
+
+    def __init__(self, *args, url_busqueda='', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.url_busqueda = url_busqueda
+
+    def optgroups(self, name, value, attrs=None):
+        """Las opciones se recortan a la vacía más la que esté elegida.
+
+        ``self.choices`` es el iterador perezoso del ``ModelChoiceField``:
+        recorrerlo entero traería las 5.000 filas, que es justo lo que se
+        quiere evitar. Se lo reemplaza por la lista corta ANTES de que
+        ``Select.optgroups()`` lo recorra.
+
+        La opción vacía se conserva siempre: es la que muestra
+        "— Buscá un producto —". Sin ella el control queda en blanco y
+        parece roto.
+        """
+        iterador = self.choices
+        queryset = getattr(iterador, 'queryset', None)
+        if queryset is None:          # no es un ModelChoiceField: sin cambios
+            return super().optgroups(name, value, attrs)
+
+        campo = getattr(iterador, 'field', None)
+        etiqueta_vacia = getattr(campo, 'empty_label', None)
+        cortas = [('', etiqueta_vacia)] if etiqueta_vacia is not None else []
+
+        seleccionados = {str(v) for v in value if v not in (None, '')}
+        if seleccionados:
+            cortas += [(str(o.pk), str(o))
+                       for o in queryset.filter(pk__in=seleccionados)]
+
+        self.choices = cortas
+        try:
+            return super().optgroups(name, value, attrs)
+        finally:
+            # Se devuelve el iterador original: el widget se reutiliza
+            # entre renglones del formset, y dejarlo recortado haría que
+            # el siguiente no encontrara su propia opción elegida.
+            self.choices = iterador
+
+    def build_attrs(self, base_attrs, extra_attrs=None):
+        attrs = super().build_attrs(base_attrs, extra_attrs)
+        attrs['data-busca-en'] = self.url_busqueda
+        return attrs
+
+
 class BeneficioProductoForm(FormularioMaestro):
     """Un renglón de la receta de un beneficio en especie."""
 
@@ -429,8 +498,17 @@ class BeneficioProductoForm(FormularioMaestro):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['id_producto'].queryset = Producto.objects.filter(
-            borrado_logico=False).select_related('id_rubro')
+        # El queryset completo SÍ se declara: es contra esto que se valida
+        # el id que llegue. Lo que no se dibuja son sus 5.000 opciones
+        # (ver SelectorBuscado).
+        campo = self.fields['id_producto']
+        campo.queryset = Producto.objects.filter(
+            borrado_logico=False).select_related('id_marca')
+        campo.widget = SelectorBuscado(
+            url_busqueda=reverse_lazy('maestros:buscar_productos'),
+            attrs={'class': 'form-select js-producto-buscado'})
+        campo.widget.choices = campo.choices
+        campo.empty_label = '— Buscá un producto —'
         self.fields['cantidad'].widget.attrs.update({'min': 1, 'max': 99})
 
 

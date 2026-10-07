@@ -151,6 +151,77 @@
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+<script>
+// ---- Formateadores de documento ----------------------------------------
+// Ponen los separadores MIENTRAS se tipea, para que el usuario pueda
+// escribir los 11 dígitos del CUIT de corrido y los vea quedar como
+// 30-71234567-1 sin tener que acomodarlos a mano.
+//
+// Es SÓLO una ayuda visual. Quien valida y normaliza de verdad es el
+// modelo: `normalizar_cuit()` saca cualquier separador, exige 11 dígitos
+// y arma la forma canónica, y `validar_cuit()` comprueba el prefijo y el
+// dígito verificador. Si este script no corre, el campo sigue andando
+// igual — por eso el input no lleva `pattern`, que lo haría cumplir el
+// navegador antes de que el servidor pueda normalizar nada.
+//
+// Se engancha por `data-formato` y se aplica también a los campos que
+// llegan después (los modales de datos maestros se arman por fetch), así
+// que el listener va en `document` y no en cada input.
+(function () {
+    // Dónde van los guiones, contando sobre los dígitos pelados.
+    var CORTES = {cuit: [2, 10], dni: [], telefono: [3]};
+    var MAXIMOS = {cuit: 11, dni: 8, telefono: 15};
+
+    function formatear(digitos, tipo) {
+        var cortes = CORTES[tipo] || [];
+        var partes = [];
+        var desde = 0;
+        for (var i = 0; i < cortes.length; i++) {
+            if (digitos.length <= cortes[i]) { break; }
+            partes.push(digitos.slice(desde, cortes[i]));
+            desde = cortes[i];
+        }
+        partes.push(digitos.slice(desde));
+        return partes.join('-');
+    }
+
+    function aplicar(campo) {
+        var tipo = campo.dataset.formato;
+        if (!CORTES.hasOwnProperty(tipo)) { return; }
+
+        // Se cuenta cuántos dígitos había ANTES del cursor y se lo vuelve
+        // a poner después del mismo dígito: sin esto, al reescribir el
+        // valor el cursor salta al final y editar el medio es imposible.
+        var digitosAntesDelCursor = campo.value
+            .slice(0, campo.selectionStart).replace(/\D/g, '').length;
+
+        var digitos = campo.value.replace(/\D/g, '').slice(0, MAXIMOS[tipo]);
+        campo.value = formatear(digitos, tipo);
+
+        var posicion = 0, contados = 0;
+        while (posicion < campo.value.length && contados < digitosAntesDelCursor) {
+            if (/\d/.test(campo.value[posicion])) { contados++; }
+            posicion++;
+        }
+        try { campo.setSelectionRange(posicion, posicion); } catch (e) { /* no editable */ }
+    }
+
+    document.addEventListener('input', function (evento) {
+        if (evento.target.dataset && evento.target.dataset.formato) {
+            aplicar(evento.target);
+        }
+    });
+
+    // Al perder el foco se formatea de nuevo: cubre el pegado con el
+    // mouse y el autocompletado del navegador, que no disparan 'input'.
+    document.addEventListener('blur', function (evento) {
+        if (evento.target.dataset && evento.target.dataset.formato) {
+            aplicar(evento.target);
+        }
+    }, true);
+})();
+</script>
+
 {% block scripts %}{% endblock %}
 </body>
 </html>

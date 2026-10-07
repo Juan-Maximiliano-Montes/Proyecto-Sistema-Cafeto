@@ -28,6 +28,7 @@ from cafeto.validaciones import (
     VALIDADOR_CUIT,
     VALIDADOR_TELEFONO,
     clave_normalizada,
+    normalizar_cuit,
     normalizar_telefono,
     texto_de_catalogo,
     validar_codigo_postal,
@@ -36,10 +37,10 @@ from cafeto.validaciones import (
 )
 from usuarios.models import sello_fecha_modificacion, sello_usuario_modificacion
 
-# Re-exportado para no romper los imports que ya existían
+# Re-exportados para no romper los imports que ya existían
 # (``from .models import normalizar_telefono`` en forms.py).
 __all__ = ['Provincia', 'Localidad', 'Proveedor', 'CondicionPago',
-           'normalizar_telefono']
+           'normalizar_cuit', 'normalizar_telefono']
 
 
 # ===========================================================================
@@ -185,10 +186,61 @@ class Proveedor(ConSelloDeModificacion,
             models.UniqueConstraint(
                 fields=['cuit_proveedor'],
                 name='uq_proveedores_cuit_proveedor'),
+            # La razón social, única por CLAVE NORMALIZADA (DD-50), igual
+            # que en todas las maestras: "Arcor SA", "ARCOR SA" y
+            # "arcor  sa" son el mismo proveedor.
+            #
+            # Va además del UNIQUE del CUIT, que es la identidad fiscal y
+            # no alcanza: dos altas del mismo proveedor con el CUIT mal
+            # tipeado pasaban las dos, y quedaban dos razones sociales
+            # iguales compitiendo en el combo de productos y de compras.
+            #
+            # Se usa ``ClaveNormalizada`` y no ``Lower``: además de las
+            # mayúsculas, saca los acentos y colapsa los espacios
+            # internos, así "Café del Valle" y "cafe del valle" también
+            # chocan. ``Lower`` sólo cubriría las mayúsculas.
+            models.UniqueConstraint(
+                ClaveNormalizada('nombre_proveedor'),
+                name='uq_proveedores_nombre_norm'),
         ]
 
     def __str__(self):
         return self.nombre_proveedor
+
+    def _exigir_nombre_sin_duplicado(self):
+        """Razón social repetida: se corta acá y se explica (V-G8).
+
+        El índice único ya lo impide, pero un IntegrityError de PostgreSQL
+        le llega al usuario como un error 500 que no dice nada. Acá se
+        busca con la MISMA función que usa el índice
+        (``f_clave_normalizada``), así lo que se rechaza en Python es
+        exactamente lo que rechazaría la base, y se puede decir en
+        castellano qué fila está ocupando el nombre.
+
+        Se compara sobre ``self.nombre_proveedor``, que en este punto ya
+        pasó por ``texto_de_catalogo()``: viene sin espacios de sobra en
+        las puntas ni espacios internos repetidos.
+        """
+        if not self.nombre_proveedor:
+            return
+        candidatos = type(self).objects.annotate(
+            _clave=ClaveNormalizada('nombre_proveedor')
+        ).filter(_clave=clave_normalizada(self.nombre_proveedor))
+        if self.pk is not None:
+            candidatos = candidatos.exclude(pk=self.pk)
+        duplicado = candidatos.first()
+        if duplicado is None:
+            return
+        if duplicado.borrado_logico:
+            raise ValidationError({'nombre_proveedor': (
+                f'Ya existe un registro con este nombre («{duplicado}», CUIT '
+                f'{duplicado.cuit_proveedor}), pero está dado de baja. '
+                'Buscalo con el filtro "Dados de baja" y reactivalo en vez '
+                'de crear uno nuevo.')})
+        raise ValidationError({'nombre_proveedor': (
+            'Ya existe un registro con este nombre (CUIT '
+            f'{duplicado.cuit_proveedor}). No se distinguen mayúsculas, '
+            'acentos ni espacios de más.')})
 
     # ------------------------------------------------------------------
     #  Limpieza y validación (capa 2 de 4.4.V)
@@ -200,12 +252,14 @@ class Proveedor(ConSelloDeModificacion,
         self.cuit_proveedor = validar_cuit(self.cuit_proveedor)
         self.telefono_proveedor = validar_telefono(self.telefono_proveedor)
 
-        # El UNIQUE del CUIT no distingue vigentes de dados de baja: sin
-        # esto, recargar un proveedor dado de baja terminaba en un error
-        # 500 de PostgreSQL en vez de decir qué hacer con él.
+        # Los UNIQUE no distinguen vigentes de dados de baja: sin esto,
+        # recargar un proveedor dado de baja terminaba en un error 500 de
+        # PostgreSQL en vez de decir qué hacer con él.
         exigir_que_no_este_dado_de_baja(
             type(self), self, {'cuit_proveedor': self.cuit_proveedor},
             etiqueta='El proveedor con CUIT %s' % self.cuit_proveedor)
+
+        self._exigir_nombre_sin_duplicado()
 
         if self.email_proveedor:
             correo = self.email_proveedor.strip().lower()

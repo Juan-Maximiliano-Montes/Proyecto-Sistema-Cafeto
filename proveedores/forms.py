@@ -1,7 +1,8 @@
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .models import Localidad, Proveedor, Provincia, normalizar_telefono
+from .models import (Localidad, Proveedor, Provincia, normalizar_cuit,
+                     normalizar_telefono)
 
 
 class ProveedorForm(forms.ModelForm):
@@ -21,10 +22,28 @@ class ProveedorForm(forms.ModelForm):
         widgets = {
             'nombre_proveedor': forms.TextInput(
                 attrs={'class': 'form-control', 'placeholder': 'Razón social'}),
+            # SIN ``pattern``, y es a propósito. El atributo que había
+            # (``\d{2}-\d{8}-\d``) lo hacía cumplir el NAVEGADOR antes de
+            # enviar, así que escribir los 11 dígitos de corrido
+            # —30712345671— se rechazaba en el cliente y nunca llegaba al
+            # servidor, que sí lo acepta: ``normalizar_cuit()`` saca los
+            # separadores y lo deja como 30-71234567-1.
+            #
+            # ``data-formato="cuit"`` es el enganche del formateador de
+            # ``base.html``: pone los guiones mientras se tipea. Es una
+            # ayuda visual; quien valida y normaliza sigue siendo el
+            # modelo, que es lo que vale si el JS no corre.
             'cuit_proveedor': forms.TextInput(
-                attrs={'class': 'form-control', 'placeholder': '30-12345678-9', 'pattern': r'\d{2}-\d{8}-\d', 'title': 'Formato: 30-12345678-9'}),
+                attrs={'class': 'form-control',
+                       'placeholder': '30712345671 o 30-71234567-1',
+                       'data-formato': 'cuit',
+                       'inputmode': 'numeric',
+                       'maxlength': 13,
+                       'title': 'Los 11 dígitos, con o sin guiones. '
+                                'Se guarda como 30-71234567-1.'}),
             'telefono_proveedor': forms.TextInput(
                 attrs={'class': 'form-control', 'placeholder': '387-4123456',
+                       'inputmode': 'tel',
                        'title': 'Se guarda estandarizado como 387-4123456'}),
             'email_proveedor': forms.EmailInput(
                 attrs={'class': 'form-control', 'placeholder': 'ventas@proveedor.com'}),
@@ -51,6 +70,36 @@ class ProveedorForm(forms.ModelForm):
         # normalizado (Django lo vuelve a correr en _post_clean, cuando
         # valida la instancia del modelo).
         self.fields['telefono_proveedor'].validators = []
+
+        # Lo mismo con el CUIT, y además su ``max_length``. El usuario
+        # tiene que poder tipear los 11 dígitos de corrido —30712345671—
+        # o con los separadores que le salgan: "30.712.345.671" son 14
+        # caracteres y el MaxLengthValidator(13) heredado del modelo lo
+        # rechazaba con un "máximo 13 caracteres" que no explica nada.
+        #
+        # Los validadores de campo corren en ``_clean_fields()``, ANTES
+        # que ``clean_cuit_proveedor()``, así que se los saca del
+        # formulario para que la normalización pueda actuar primero. El
+        # largo no queda sin controlar: ``normalizar_cuit()`` devuelve
+        # siempre 13 caracteres, y Django vuelve a correr los validadores
+        # del modelo en ``_post_clean()`` sobre el valor ya normalizado.
+        self.fields['cuit_proveedor'].validators = []
+        self.fields['cuit_proveedor'].max_length = None
+
+    def clean_cuit_proveedor(self):
+        """Acepta el CUIT como lo tipeen y lo deja en ``NN-NNNNNNNN-N``.
+
+        Saca cualquier carácter que no sea un dígito, exige que queden 11
+        y arma la forma canónica. Lo mismo que hace el modelo en su
+        ``clean()``; se repite acá para que ``cleaned_data`` ya tenga el
+        valor normalizado y el mensaje salga al lado del campo y no en el
+        bloque de errores generales del formulario.
+
+        El dígito verificador NO se controla acá: eso lo hace
+        ``validar_cuit()`` en el modelo, que es la capa que vale para
+        cualquier camino de entrada (shell, importación, /admin).
+        """
+        return normalizar_cuit(self.cleaned_data.get('cuit_proveedor'))
 
     def clean_telefono_proveedor(self):
         """Estandariza el teléfono ANTES del RegexValidator del modelo.

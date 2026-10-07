@@ -34,7 +34,11 @@ class UsuarioAltaForm(forms.ModelForm):
                 'class': 'form-control', 'placeholder': '12345678',
                 'id': 'id_dni_usuario', 'maxlength': 8,
                 'inputmode': 'numeric', 'pattern': r'\d{7,8}',
-                'title': '7 u 8 dígitos, sin puntos',
+                # El formateador de base.html le saca los puntos mientras
+                # se tipea, así "12.345.678" queda "12345678" y el
+                # ``pattern`` del navegador pasa igual.
+                'data-formato': 'dni',
+                'title': '7 u 8 dígitos; los puntos se quitan solos',
             }),
             'apellido': forms.TextInput(attrs={
                 'class': 'form-control', 'placeholder': 'Pérez'}),

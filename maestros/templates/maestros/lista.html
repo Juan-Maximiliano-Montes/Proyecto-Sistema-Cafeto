@@ -439,6 +439,8 @@ function activarRenglones(raiz) {
             envase.innerHTML = html;
             cuerpo.appendChild(envase.firstElementChild);
             total.value = indice + 1;
+            // El renglón recién clonado trae su buscador sin enganchar.
+            enchufarBuscadorDeProductos(cuerpo);
             repintar();
         });
 
@@ -477,6 +479,103 @@ function activarRenglones(raiz) {
 
 activarRenglones(document);
 
+// ---- Buscador del combo de productos ------------------------------------
+// El combo de la receta llega vacío: con el catálogo entero adentro la
+// pantalla pesaba 705 KB y tardaba 8,4 s en armarse (5.000 productos, dos
+// veces por renglón contando el molde del formset). Acá se piden de a 20
+// contra `maestros:buscar_productos`, filtrando por lo que se tipea.
+//
+// El `<select>` sigue siendo un `<select>` y el campo sigue siendo un
+// ModelChoiceField: el id que se mande se valida igual contra el queryset
+// completo en el servidor. Esto cambia qué se DIBUJA, no qué se acepta.
+var ESPERA_ANTES_DE_BUSCAR = 250;   // ms desde la última tecla
+
+function enchufarBuscadorDeProductos(raiz) {
+    raiz.querySelectorAll('.js-buscar-producto').forEach(function (buscador) {
+        if (buscador.dataset.activo === '1') { return; }
+        buscador.dataset.activo = '1';
+
+        var combo = buscador.parentElement.querySelector('select[data-busca-en]');
+        if (!combo) { return; }
+
+        var reloj = null;
+
+        function pintar(resultados, tope) {
+            // Se conserva la opción elegida: si el usuario ya había
+            // seleccionado algo, una búsqueda nueva no se lo borra.
+            var elegido = combo.value;
+            var textoElegido = combo.selectedIndex >= 0
+                ? combo.options[combo.selectedIndex].text : '';
+
+            combo.innerHTML = '';
+            var vacia = document.createElement('option');
+            vacia.value = '';
+            vacia.textContent = resultados.length
+                ? '— Elegí uno de los ' + resultados.length + ' —'
+                : '— Sin resultados —';
+            combo.appendChild(vacia);
+
+            var yaEsta = false;
+            resultados.forEach(function (fila) {
+                var opcion = document.createElement('option');
+                opcion.value = fila.id;
+                opcion.textContent = fila.texto;
+                if (String(fila.id) === elegido) { yaEsta = true; }
+                combo.appendChild(opcion);
+            });
+
+            if (elegido && !yaEsta) {
+                var conservada = document.createElement('option');
+                conservada.value = elegido;
+                conservada.textContent = textoElegido;
+                combo.appendChild(conservada);
+            }
+            combo.value = elegido;
+
+            if (resultados.length >= tope) {
+                combo.lastElementChild.insertAdjacentElement(
+                    'afterend', document.createElement('option'));
+                var aviso = combo.lastElementChild;
+                aviso.disabled = true;
+                aviso.textContent = 'Hay más: afiná la búsqueda';
+            }
+        }
+
+        function buscar() {
+            var destino = combo.dataset.buscaEn +
+                          '?q=' + encodeURIComponent(buscador.value.trim());
+            fetch(destino, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(function (r) {
+                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
+                    return r.json();
+                })
+                .then(function (datos) { pintar(datos.resultados, datos.tope); })
+                .catch(function () {
+                    combo.innerHTML =
+                        '<option value="">— No se pudo buscar; reintentá —</option>';
+                });
+        }
+
+        buscador.addEventListener('input', function () {
+            // Se espera a que deje de tipear: una consulta por tecla
+            // sobre 5.000 productos es justo lo que estábamos evitando.
+            clearTimeout(reloj);
+            reloj = setTimeout(buscar, ESPERA_ANTES_DE_BUSCAR);
+        });
+
+        // Enter en el buscador NO envía el formulario: busca.
+        buscador.addEventListener('keydown', function (evento) {
+            if (evento.key === 'Enter') {
+                evento.preventDefault();
+                clearTimeout(reloj);
+                buscar();
+            }
+        });
+    });
+}
+
+enchufarBuscadorDeProductos(document);
+
 // ---- Ficha de sólo lectura ----------------------------------------------
 document.querySelectorAll('.boton-ver').forEach(function (boton) {
     boton.addEventListener('click', function () {
@@ -514,8 +613,9 @@ document.querySelectorAll('.boton-editar').forEach(function (boton) {
             .then(function (html) {
                 cuerpo.innerHTML = html;
                 // El fragmento llega después de que corrió el script: sus
-                // renglones hay que engancharlos a mano.
+                // renglones y buscadores hay que engancharlos a mano.
                 activarRenglones(cuerpo);
+                enchufarBuscadorDeProductos(cuerpo);
             })
             .catch(function () {
                 cuerpo.innerHTML = '<div class="alert alert-danger mb-0">' +

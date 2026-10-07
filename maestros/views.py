@@ -9,6 +9,7 @@ Provincias y localidades no están acá: viven en la app ``proveedores``,
 donde nacieron y donde las usa el alta de proveedores.
 """
 from django.db.models import Q
+from django.http import JsonResponse
 
 from maestros.crud import Columna, ConfiguracionCRUD, Filtro, registrar
 from proveedores.models import Proveedor
@@ -25,6 +26,54 @@ from .models import (
     Rubro,
     TipoEgreso,
 )
+
+
+# ---------------------------------------------------------------------------
+#  BÚSQUEDA DE PRODUCTOS (para la receta de los beneficios)
+# ---------------------------------------------------------------------------
+#  Cuántos resultados devuelve como máximo. El número tiene que ser chico:
+#  el punto de este endpoint es que el navegador NUNCA reciba el catálogo
+#  entero. Con 20 alcanza para elegir y la respuesta pesa menos de 2 KB.
+TOPE_DE_BUSQUEDA = 20
+
+
+def buscar_productos(request):
+    """Productos que coinciden con ``?q=``, en JSON y de a pocos.
+
+    Es el back del selector de la receta de un beneficio en especie. Antes
+    el ``<select>`` traía un ``<option>`` por producto —5.000 filas por
+    renglón, más el molde del formset— y la pantalla de Beneficios tardaba
+    8,4 segundos en armarse y pesaba 705 KB. Acá se devuelven como máximo
+    ``TOPE_DE_BUSQUEDA`` coincidencias.
+
+    Permiso: ``ver_productos``. Es el mismo que hace falta para ver el
+    listado de productos, así que no expone nada que el usuario no pudiera
+    mirar entrando por la pantalla. Se comprueba en el SERVIDOR, igual que
+    en el resto del módulo: esconder el control no alcanza.
+
+    Sólo devuelve productos VIGENTES (V-G7): no se puede armar una receta
+    con algo que está dado de baja.
+    """
+    usuario = getattr(request, 'usuario_actual', None)
+    if usuario is None:
+        return JsonResponse({'detalle': 'Sesión no iniciada.'}, status=401)
+    if not usuario.tiene_permiso('ver_productos'):
+        return JsonResponse({'detalle': 'Sin permiso.'}, status=403)
+
+    busqueda = request.GET.get('q', '').strip()
+    productos = Producto.objects.filter(
+        borrado_logico=False).select_related('id_marca')
+    if busqueda:
+        productos = productos.filter(
+            Q(nombre_producto__icontains=busqueda)
+            | Q(codigo_barras__icontains=busqueda)
+            | Q(id_marca__nombre_marca__icontains=busqueda))
+
+    productos = productos.order_by('nombre_producto')[:TOPE_DE_BUSQUEDA]
+    return JsonResponse({
+        'resultados': [{'id': p.pk, 'texto': str(p)} for p in productos],
+        'tope': TOPE_DE_BUSQUEDA,
+    })
 
 
 # ---------------------------------------------------------------------------
