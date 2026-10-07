@@ -1,8 +1,7 @@
 """Ventas: registrar un ticket y anularlo.
 
-Reemplaza a ``sp_registrar_venta`` y ``sp_anular_venta``, y a los triggers
-T08 (``fn_venta_alta`` / ``fn_venta_modificacion``) y T09
-(``fn_detalle_venta_valida`` / ``fn_detalle_venta_efectos``).
+Los dos procesos del ticket —registrarlo y anularlo— más los controles de
+la venta (T08) y de sus renglones (T09), todo en Python.
 
 Tres ideas que conviene tener claras antes de leer el código:
 
@@ -44,7 +43,7 @@ def _redondear(valor):
 #  T09 · EFECTOS DE UN RENGLÓN
 # ===========================================================================
 def _descontar_stock(renglon, usuario):
-    """Saca la mercadería del stock al vender (``fn_detalle_venta_efectos``).
+    """Saca la mercadería del stock al vender.
 
     Un producto que no controla vencimiento descuenta del saldo general.
     Uno que sí lo controla descuenta por lote con criterio **FEFO**:
@@ -133,7 +132,7 @@ def _agregar_renglon(venta, usuario, *, tipo, descripcion, cantidad,
 @transaction.atomic
 def registrar(turno, usuario, medio_pago, items, cliente=None,
               beneficio=None, monto_recibido=None):
-    """Arma el ticket completo (``sp_registrar_venta``).
+    """Arma el ticket completo.
 
     ``items`` es una lista de diccionarios::
 
@@ -258,7 +257,7 @@ def registrar(turno, usuario, medio_pago, items, cliente=None,
 # ===========================================================================
 @transaction.atomic
 def anular(venta, usuario, motivo):
-    """Contra-asienta la venta; no la borra (``sp_anular_venta``, DD-26).
+    """Contra-asienta la venta; no la borra (DD-26).
 
     Una venta borrada se lleva puesto el arqueo del día y la trazabilidad
     del stock. Anular deja el ticket donde está, lo marca ANULADA y escribe

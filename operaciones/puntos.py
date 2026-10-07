@@ -1,7 +1,7 @@
 """Fidelización: acumular, canjear y revertir puntos.
 
-Reemplaza a ``sp_acumular_puntos``, ``sp_registrar_canje``,
-``sp_revertir_puntos`` y al trigger T10 (``fn_movimiento_puntos_valida``).
+Los controles del asiento de puntos (T10) y los tres procesos que lo
+escriben: acumular, canjear y revertir.
 La parte que mueve los saldos y recategoriza vive en
 ``MovimientoPuntos.save()``, porque tiene que correr aunque el asiento se
 escriba desde otro lado.
@@ -20,7 +20,7 @@ from .models import MovimientoPuntos, Venta
 
 
 def _validar(cliente, venta, tipo, beneficio=None):
-    """Los controles de ``fn_movimiento_puntos_valida``."""
+    """Los controles del asiento de puntos (T10)."""
     if venta is not None:
         if venta.id_cliente_id != getattr(cliente, 'pk', cliente):
             raise ValidationError(
@@ -37,7 +37,7 @@ def _validar(cliente, venta, tipo, beneficio=None):
 
 @transaction.atomic
 def acumular(venta):
-    """Suma los puntos que la venta generó (``sp_acumular_puntos``).
+    """Suma los puntos que la venta generó.
 
     DD-49: hacen falta ``importe_por_punto`` pesos para ganar un punto, y
     el divisor es el de la categoría del cliente. La división se trunca
@@ -64,9 +64,9 @@ def acumular(venta):
 
 @transaction.atomic
 def registrar_canje(venta, beneficio):
-    """Descuenta los puntos que cuesta el beneficio (``sp_registrar_canje``).
+    """Descuenta los puntos que cuesta el beneficio.
 
-    Cuatro controles, todos del trigger T10. El del saldo va último y con
+    Cuatro controles, todos de T10. El del saldo va último y con
     el cliente bloqueado: si no, dos canjes simultáneos leerían el mismo
     saldo y el cliente gastaría puntos que no tiene.
     """
@@ -104,7 +104,7 @@ def registrar_canje(venta, beneficio):
 
 @transaction.atomic
 def revertir(venta, usuario=None):
-    """Deshace los puntos de una venta anulada (``sp_revertir_puntos``).
+    """Deshace los puntos de una venta anulada.
 
     Cada movimiento se revierte **una sola vez** (DD-33): si la anulación
     se reintentara, el cliente terminaría con puntos de regalo. Por eso se

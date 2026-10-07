@@ -19,6 +19,7 @@ from .models import (
     CategoriaFidelizacion,
     Marca,
     MedioPago,
+    ModoEntrega,
     Producto,
     CajaRegistradora,
     Rubro,
@@ -220,4 +221,15 @@ BENEFICIOS = registrar(ConfiguracionCRUD(
     ),
     relaciones=('id_categoria',),
     orden=('id_categoria__puntos_minimos', 'descripcion_beneficio'),
+    # La receta: qué productos se le entregan al cliente cuando el
+    # beneficio es EN ESPECIE. Se carga en el mismo modal que el
+    # beneficio y se guarda en la misma transacción, porque un beneficio
+    # en especie sin receta no se puede entregar (ver validar_receta).
+    formset=forms.RecetaFormSet,
+    formset_titulo='Receta del beneficio (productos que se entregan)',
+    formset_vacio='Todavía no hay productos en la receta. Agregá al menos '
+                  'uno: es lo que se le entrega al cliente.',
+    formset_agregar='Agregar producto',
+    formset_depende_de='modo_entrega',
+    formset_visible_si=ModoEntrega.ESPECIE,
 ))

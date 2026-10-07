@@ -6,7 +6,7 @@ dicen lo mismo:
   1. el formulario, con un mensaje claro al lado del campo;
   2. el modelo (``clean()``), para cualquier otro camino de entrada
      (shell, /admin, importaciones);
-  3. la base (CHECK, UNIQUE, FK, NOT NULL, triggers), que es la última
+  3. la base (CHECK, UNIQUE, FK, NOT NULL), que es la última
      barrera y la única que nadie puede saltear.
 
 Este módulo es la capa 1 y 2: funciones puras, sin Django adentro salvo

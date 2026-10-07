@@ -13,12 +13,14 @@ Reglas que comparten todos:
     son el mismo rubro. Lo garantiza un índice único por expresión sobre
     ``f_clave_normalizada()``.
   * SELLO DE MODIFICACIÓN (DD-17): ``fecha_modificacion`` y
-    ``usuario_modificacion`` los escribe el trigger ``trg_sello_modificacion``
-    de la base, leyendo la variable de sesión ``cafeto.id_usuario`` que fija
-    el middleware.
+    ``usuario_modificacion`` los escribe el ``save()`` del modelo, vía el
+    mixin ``ConSelloDeModificacion``, leyendo del contexto del pedido el
+    usuario que dejó el middleware.
 
-Cada modelo trae además sus reglas propias en ``clean()`` (capa 2 de la
-sección 4.4.V) y un ``motivos_que_impiden_la_baja()`` que explica, en
+Toda la lógica transaccional y de validación vive en Django: en el
+``clean()`` de cada modelo (capa 2 de la sección 4.4.V), en los mixins de
+``cafeto/reglas.py`` y en los servicios de ``operaciones/``. Cada modelo
+trae además un ``motivos_que_impiden_la_baja()`` que explica, en
 castellano y con números, por qué no se puede dar de baja todavía.
 """
 from decimal import Decimal
@@ -33,6 +35,7 @@ from cafeto.reglas import (
     ManagerSinBajaFisica,
     SinBajaFisica,
 )
+from cafeto.motivos import MotivoCompleto
 from cafeto.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 from cafeto.validaciones import (
     NO_NEGATIVO,
@@ -49,12 +52,11 @@ from usuarios.models import sello_fecha_modificacion, sello_usuario_modificacion
 class Maestra(ConSelloDeModificacion, SinBajaFisica, models.Model):
     """Lo que tienen en común las tablas de catálogo con baja lógica.
 
-    Los dos mixins reemplazan a sendos triggers de PostgreSQL:
+    Los dos mixins aportan una invariante cada uno:
 
-    * ``ConSelloDeModificacion`` hace lo de ``fn_sello_modificacion``:
-      anota cuándo y quién tocó la fila (DD-17).
-    * ``SinBajaFisica`` hace lo de ``fn_sin_baja_fisica``: acá la baja es
-      ``borrado_logico``, el DELETE no corre (RN-8.1.1).
+    * ``ConSelloDeModificacion`` anota cuándo y quién tocó la fila (DD-17).
+    * ``SinBajaFisica``: acá la baja es ``borrado_logico``, el DELETE no
+      corre (RN-8.1.1).
     """
 
     borrado_logico = models.BooleanField('Borrado lógico', default=False)
@@ -210,13 +212,13 @@ class Producto(ConSaldosDerivados, Maestra):
     """Artículo de cafetería o de minisuper.
 
     ``stock_actual`` NO se edita: lo mueven los movimientos de stock
-    (RN-5.1.1) y la base lo protege con el trigger ``trg_protege_derivados``.
+    (RN-5.1.1) y lo protege el mixin ``ConSaldosDerivados``.
     ``precio_costo`` se carga una vez en el alta y después lo actualiza la
     compra (RN-4.2.4).
     """
 
     # Lo mueve el libro de movimientos de stock, nunca una pantalla
-    # (reemplaza a fn_saldos_nacen_en_cero y fn_protege_derivados).
+    # (lo hace cumplir ConSaldosDerivados, en cafeto/reglas.py).
     SALDOS_DERIVADOS = {'stock_actual': 0}
 
     id_producto = models.AutoField('ID', primary_key=True)
@@ -535,9 +537,13 @@ class MedioPago(Maestra):
     def motivos_que_impiden_la_baja(self):
         motivos = []
         if self.es_efectivo:
-            motivos.append(
-                'es el medio de pago en efectivo, del que dependen el vuelto '
-                'y el arqueo de caja')
+            # Mensaje COMPLETO y no fragmento: el efectivo no se bloquea por
+            # tener dependientes —se bloquea por lo que ES—, así que la frase
+            # no encaja detrás del "No se puede dar de baja X porque..." que
+            # arma el CRUD para los demás casos.
+            motivos.append(MotivoCompleto(
+                "El medio de pago 'Efectivo' es el método por defecto del "
+                'sistema y no puede ser deshabilitado.'))
         quedan = type(self).objects.filter(borrado_logico=False).exclude(
             pk=self.pk).count()
         if not quedan:

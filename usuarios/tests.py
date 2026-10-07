@@ -318,18 +318,32 @@ class CatalogoDePermisosTest(TestCase):
         'ver_auditoria',
     }
 
-    # Fase 4: los nueve CRUD de "Mantener datos maestros" (DFD 10). Se
-    # arman con la misma regla que la migración que los carga, en vez de
-    # repetir 41 códigos a mano: si mañana se agrega una entidad, el test
-    # la exige sola.
+    # Los CRUD de "Mantener datos maestros" (DFD 10). Los códigos NO se
+    # repiten a mano: se le preguntan al REGISTRO de ``maestros/crud.py``,
+    # que es el que los consume. Cada pantalla declara su
+    # ``ConfiguracionCRUD`` y el decorador ``exige()`` pide
+    # ``cfg.permiso(accion)``; si esos códigos no están sembrados, nadie
+    # salvo el perfil de sistema puede entrar.
+    #
+    # Preguntarle al registro y no a una lista escrita al lado tiene dos
+    # ventajas: si mañana se agrega una entidad, el test la exige solo, y
+    # lo que se compara es la semilla contra lo que el código REALMENTE
+    # pide, no contra otra copia de la misma lista.
     @property
     def CODIGOS_DE_DATOS_MAESTROS(self):
-        from maestros.migrations import (
-            __name__ as _)   # noqa: F401  (fuerza el paquete)
-        from importlib import import_module
-        modulo = import_module(
-            'maestros.migrations.0003_permisos_datos_maestros')
-        return {codigo for codigo, _n, _d, _m in modulo.catalogo()}
+        import maestros.views      # noqa: F401  (llena el REGISTRO)
+        import proveedores.views   # noqa: F401
+        from maestros.crud import REGISTRO
+
+        codigos = set()
+        for configuracion in REGISTRO.values():
+            codigos.update({configuracion.permiso('ver'),
+                            configuracion.permiso('crear'),
+                            configuracion.permiso('editar')})
+            if configuracion.tiene_baja:
+                codigos.update({configuracion.permiso('eliminar'),
+                                configuracion.permiso('reactivar')})
+        return codigos
 
     @property
     def TODOS_LOS_CODIGOS(self):

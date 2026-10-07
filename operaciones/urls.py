@@ -6,9 +6,9 @@ Dos rutas, las dos de LECTURA:
     /actividad/<pk>/       la ficha de un registro (fragmento para el modal)
 
 No hay ``crear/``, ``editar/`` ni ``baja/``, y no es un olvido:
-LOG_AUDITORIA es un libro append-only y el trigger ``trg_libro_inmutable``
-rechaza en la base cualquier UPDATE o DELETE. La ausencia de esas rutas es
-parte de la garantía: lo que no se puede nombrar, no se puede pedir.
+LOG_AUDITORIA es un libro append-only y el mixin ``LibroInmutable`` rechaza
+cualquier UPDATE o DELETE. La ausencia de esas rutas es parte de la
+garantía: lo que no se puede nombrar, no se puede pedir.
 """
 from django.urls import path
 

@@ -2,7 +2,9 @@
 
 Cuatro tablas del DER de alto refinamiento:
 
-    PERFILES            un rol (Administrador, Operador...)
+    PERFILES            un rol (Administrador, Operador...). El perfil
+                        núcleo lleva ``es_sistema=True``: acceso total,
+                        y no se renombra ni se da de baja.
     PERMISOS            una acción concreta que se puede habilitar
     PERFILES_PERMISOS   tabla intermedia: qué permisos tiene cada perfil
     USUARIOS            la persona que entra al sistema
@@ -11,11 +13,12 @@ El USUARIO de este módulo es propio: NO usamos el modelo User de Django.
 La clave se guarda siempre **hasheada** con las funciones de
 ``django.contrib.auth.hashers``.
 
-Alineación con la base (Fase 4)
--------------------------------
-Las tablas y las columnas se llaman EXACTAMENTE como en
-``04 - Base de Datos/01_esquema.sql``: ``perfiles.nombre_perfil``,
-``usuarios.contrasena_hash``, etc. Los atributos de Python conservan los
+Alineación con el DER
+---------------------
+Las tablas y las columnas se llaman EXACTAMENTE como las nombra el DER:
+``perfiles.nombre_perfil``, ``usuarios.contrasena_hash``, etc. Las crean
+y las mantienen las migraciones de Django, que son la única fuente del
+esquema. Los atributos de Python conservan los
 nombres cortos que ya usaban las vistas y los templates (``perfil.nombre``,
 ``usuario.clave``) y se mapean con ``db_column``. Así el esquema físico es
 el del DER y el código existente sigue andando.
@@ -38,6 +41,7 @@ from django.db import models
 from django.utils import timezone
 
 from cafeto import contexto
+from cafeto.motivos import MotivoCompleto
 from cafeto.reglas import ManagerSinBajaFisica, SinBajaFisica
 from cafeto.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 
@@ -78,11 +82,11 @@ def sello_usuario_modificacion(related_name):
 
 
 def sello_fecha_modificacion():
-    """``fecha_modificacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP``.
+    """``fecha_modificacion TIMESTAMPTZ NOT NULL`` (DD-17).
 
-    No lleva ``auto_now``: en la base, el trigger ``trg_sello_modificacion``
-    es el que pisa la fecha en cada UPDATE (T01). Django sólo aporta el
-    valor del alta.
+    No lleva ``auto_now``: quien pisa la fecha en cada UPDATE es el
+    ``save()`` del modelo, vía el mixin ``ConSelloDeModificacion``. Acá
+    sólo se aporta el valor del alta.
     """
     return models.DateTimeField(
         'Última modificación', default=timezone.now, editable=False)
@@ -108,6 +112,23 @@ class Perfil(SinBajaFisica, models.Model):
         related_name='perfiles',
         blank=True,
     )
+
+    # Marca de NÚCLEO. Un perfil de sistema tiene acceso total y no se
+    # puede renombrar, dar de baja ni dejar sin permisos.
+    #
+    # Antes esto se deducía de ``nombre == 'Administrador'``. El nombre es
+    # un campo que el propio Administrador puede editar desde la pantalla
+    # de Perfiles, así que la protección se caía sola: bastaba renombrar
+    # "Administrador" a "Admin" para que el perfil dejara de estar
+    # protegido —y, peor, para que ``tiene_permiso`` le cortara el acceso
+    # total a todos sus usuarios—. Y al revés: llamar "Administrador" a un
+    # perfil operativo le regalaba acceso total.
+    #
+    # La marca no es editable: no aparece en ningún formulario y sólo la
+    # mueve una migración de datos.
+    es_sistema = models.BooleanField(
+        'Perfil del sistema', default=False, editable=False,
+        db_column='es_perfil_sistema')
 
     borrado_logico = models.BooleanField('Borrado lógico', default=False)
     fecha_modificacion = sello_fecha_modificacion()
@@ -136,14 +157,58 @@ class Perfil(SinBajaFisica, models.Model):
         return self.nombre
 
     # ------------------------------------------------------------------
-    #  Catálogo completo para el Administrador
+    #  Candados del perfil de sistema
+    # ------------------------------------------------------------------
+    def motivos_que_impiden_la_baja(self):
+        """Por qué este perfil no se puede dar de baja todavía (V-G10)."""
+        motivos = []
+        if self.es_sistema:
+            motivos.append(MotivoCompleto(
+                f'El perfil "{self.nombre}" es el perfil administrador del '
+                'sistema y no puede ser eliminado ni deshabilitado: sin él '
+                'nadie podría volver a dar de alta usuarios ni asignar '
+                'permisos.'))
+        activos = self.usuarios.filter(activo=True).count()
+        if activos:
+            motivos.append(
+                f'tiene {activos} usuario(s) activo(s) asignado(s)')
+        return motivos
+
+    def clean(self):
+        """Un perfil de sistema conserva su nombre y su marca.
+
+        El nombre de un perfil común se edita libremente. El del perfil de
+        sistema no: aunque la autorización ya no dependa de él (para eso
+        está ``es_sistema``), es el nombre con el que lo nombran los
+        mensajes, la documentación y las migraciones de datos.
+        """
+        super().clean()
+        self.nombre = (self.nombre or '').strip()
+
+        if not self.pk:
+            return
+        anterior = type(self).objects.filter(pk=self.pk).first()
+        if anterior is None or not anterior.es_sistema:
+            return
+
+        # La marca viaja en el formulario como no editable, así que el POST
+        # nunca la trae; se la devolvemos por si alguien armó la instancia
+        # a mano.
+        self.es_sistema = True
+        if self.nombre != anterior.nombre:
+            raise ValidationError({'nombre': (
+                f'El perfil "{anterior.nombre}" es el perfil administrador '
+                'del sistema: su nombre no se puede cambiar.')})
+
+    # ------------------------------------------------------------------
+    #  Catálogo completo para los perfiles de sistema
     # ------------------------------------------------------------------
     @classmethod
     def asegurar_catalogo_completo(cls):
-        """Le asigna al Administrador todos los permisos del catálogo.
+        """Les asigna a los perfiles de sistema todos los permisos.
 
         Cada módulo nuevo agrega sus permisos por migración de datos. Si
-        alguno quedara sin asignar, el Administrador no se bloquea
+        alguno quedara sin asignar, el administrador no se bloquea
         —``Usuario.tiene_permiso`` lo deja pasar siempre—, pero la pantalla
         de Perfiles mostraría el tilde apagado y daría a entender que no lo
         tiene. Este método cierra esa brecha: deja la matriz de permisos
@@ -151,21 +216,20 @@ class Perfil(SinBajaFisica, models.Model):
 
         Devuelve cuántas asignaciones agregó.
         """
-        administrador = cls.objects.filter(nombre='Administrador').first()
-        if administrador is None:
-            return 0
-
-        ya_tiene = set(
-            PerfilPermiso.objects
-            .filter(perfil=administrador)
-            .values_list('permiso_id', flat=True)
-        )
-        faltantes = Permiso.objects.exclude(pk__in=ya_tiene)
-        PerfilPermiso.objects.bulk_create(
-            [PerfilPermiso(perfil=administrador, permiso=permiso)
-             for permiso in faltantes]
-        )
-        return len(faltantes)
+        agregadas = 0
+        for perfil in cls.objects.filter(es_sistema=True):
+            ya_tiene = set(
+                PerfilPermiso.objects
+                .filter(perfil=perfil)
+                .values_list('permiso_id', flat=True)
+            )
+            faltantes = list(Permiso.objects.exclude(pk__in=ya_tiene))
+            PerfilPermiso.objects.bulk_create(
+                [PerfilPermiso(perfil=perfil, permiso=permiso)
+                 for permiso in faltantes]
+            )
+            agregadas += len(faltantes)
+        return agregadas
 
 
 # ---------------------------------------------------------------------------
@@ -466,12 +530,17 @@ class Usuario(SinBajaFisica, models.Model):
     def tiene_permiso(self, codigo_permiso):
         """True si el perfil del usuario tiene ese permiso.
 
-        Regla especial: el perfil **Administrador** siempre pasa, tenga o
-        no la fila cargada en PERFILES_PERMISOS. Así, si mañana se agrega
-        un permiso nuevo y alguien se olvida de asignárselo, el admin no
+        Regla especial: un **perfil de sistema** siempre pasa, tenga o no
+        la fila cargada en PERFILES_PERMISOS. Así, si mañana se agrega un
+        permiso nuevo y alguien se olvida de asignárselo, el admin no
         queda bloqueado.
+
+        El atajo mira ``Perfil.es_sistema``, no el nombre del perfil: el
+        nombre se edita desde la pantalla, y hacer depender la
+        autorización de un texto editable es regalar el sistema a quien
+        bautice un perfil "Administrador".
         """
-        if self.id_perfil.nombre == 'Administrador':
+        if self.id_perfil.es_sistema:
             return True
         return self.id_perfil.permisos.filter(codigo=codigo_permiso).exists()
 
@@ -480,18 +549,22 @@ class Usuario(SinBajaFisica, models.Model):
     # ------------------------------------------------------------------
     @property
     def es_ultimo_administrador(self):
-        """True si este usuario es el ÚNICO Administrador vigente que queda.
+        """True si este usuario es el ÚNICO administrador vigente que queda.
 
         El sistema tiene que conservar siempre al menos un administrador
         que pueda entrar: si no, nadie podría volver a dar de alta usuarios
         ni tocar perfiles.
+
+        "Administrador" es quien tiene un perfil marcado ``es_sistema``, no
+        quien tiene un perfil llamado así: el nombre es editable y este
+        candado no puede depender de él.
         """
         if not self.activo:
             return False
-        if self.id_perfil.nombre != 'Administrador':
+        if not self.id_perfil.es_sistema:
             return False
         vigentes = Usuario.objects.filter(
-            id_perfil__nombre='Administrador', activo=True).count()
+            id_perfil__es_sistema=True, activo=True).count()
         return vigentes <= 1
 
     # ------------------------------------------------------------------

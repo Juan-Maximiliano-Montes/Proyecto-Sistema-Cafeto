@@ -3,9 +3,9 @@
 Registro de Actividad: LOG_AUDITORIA en modo lectura.
 
 No hay botón "Nuevo", ni lápiz, ni tacho. El único botón de la columna de
-Acciones es el ojo. Es a propósito: el libro es append-only y el trigger
-trg_libro_inmutable rechaza en la base cualquier UPDATE o DELETE, así que
-un botón de editar estaría prometiendo algo imposible.
+Acciones es el ojo. Es a propósito: el libro es append-only y el mixin
+LibroInmutable rechaza cualquier UPDATE o DELETE, así que un botón de
+editar estaría prometiendo algo imposible.
 {% endcomment %}
 
 {% block titulo %}Cafeto · Registro de Actividad{% endblock %}

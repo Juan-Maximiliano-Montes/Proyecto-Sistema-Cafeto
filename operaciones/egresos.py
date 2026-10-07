@@ -1,9 +1,7 @@
 """Egresos: obligaciones, pagos y conciliación bancaria.
 
-Reemplaza a ``sp_registrar_obligacion``, ``sp_pagar_obligacion``,
-``sp_registrar_egreso``, ``sp_conciliar_pago``, ``_sp_efectivo_sale`` y
-``fn_vencimientos_proximos``. Las reglas de transición de estado (T11)
-viven en ``Egreso.save()``.
+Las reglas de transición de estado (T11) viven en ``Egreso.save()``,
+porque son invariantes de la fila; acá están los procesos que la mueven.
 
 El ciclo de un egreso (DD-06)::
 
@@ -26,7 +24,7 @@ from .models import Compra, Egreso
 
 
 def _efectivo_sale_del_cajon(egreso, turno, usuario):
-    """Asienta la salida de plata (``_sp_efectivo_sale``).
+    """Asienta la salida de plata.
 
     El control de saldo suficiente y de turno abierto lo hace
     ``caja.registrar_movimiento``: es el único lugar donde se toca el libro
@@ -43,7 +41,7 @@ def _efectivo_sale_del_cajon(egreso, turno, usuario):
 @transaction.atomic
 def registrar_obligacion(tipo_egreso, concepto, monto, fecha_vencimiento,
                          destinatario=None, proveedor=None):
-    """Anota lo que hay que pagar, antes de pagarlo (``sp_registrar_obligacion``).
+    """Anota lo que hay que pagar, antes de pagarlo.
 
     Separar la obligación del pago es lo que permite avisar de un
     vencimiento antes de que ocurra (DD-32).
@@ -57,7 +55,7 @@ def registrar_obligacion(tipo_egreso, concepto, monto, fecha_vencimiento,
 @transaction.atomic
 def pagar_obligacion(egreso, medio_pago, comprobante, turno=None,
                      usuario=None):
-    """Paga una obligación ya registrada (``sp_pagar_obligacion``)."""
+    """Paga una obligación ya registrada."""
     egreso = Egreso.objects.select_for_update().get(pk=egreso.pk)
     if egreso.estado_pago != 'PENDIENTE_PAGO':
         raise ValidationError(
@@ -83,7 +81,7 @@ def pagar_obligacion(egreso, medio_pago, comprobante, turno=None,
 def registrar_egreso(tipo_egreso, medio_pago, monto, concepto, comprobante,
                      proveedor=None, destinatario=None, compra=None,
                      turno=None, usuario=None):
-    """Egreso pagado en el acto (``sp_registrar_egreso``).
+    """Egreso pagado en el acto.
 
     Es el caso de la compra que se paga contra entrega: no hay una
     obligación previa que anotar.
@@ -106,7 +104,7 @@ def registrar_egreso(tipo_egreso, medio_pago, monto, concepto, comprobante,
 
 @transaction.atomic
 def conciliar(egreso, acreditado, fecha, referencia_bancaria):
-    """Cierra el pago contra el resumen bancario (``sp_conciliar_pago``, DD-06)."""
+    """Cierra el pago contra el resumen bancario (DD-06)."""
     egreso = Egreso.objects.select_for_update().get(pk=egreso.pk)
     if egreso.estado_pago != 'PENDIENTE_ACREDITACION':
         raise ValidationError(
@@ -123,7 +121,7 @@ def conciliar(egreso, acreditado, fecha, referencia_bancaria):
 def vencimientos_proximos(hasta):
     """Lo que vence hasta esa fecha y todavía no se pagó (DD-32).
 
-    Reemplaza a ``fn_vencimientos_proximos``. Dos fuentes: las obligaciones
+    Dos fuentes: las obligaciones
     sueltas —servicios, impuestos— y las compras a crédito que siguen
     impagas.
     """

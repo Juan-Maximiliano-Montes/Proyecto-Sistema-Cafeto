@@ -26,11 +26,13 @@ from dataclasses import dataclass, field
 from functools import wraps
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from cafeto.motivos import redactar
 from cafeto.restricciones import ClaveNormalizada
 from cafeto.validaciones import clave_normalizada
 from operaciones.servicios import instantanea, registrar_auditoria
@@ -81,6 +83,19 @@ class ConfiguracionCRUD:
     # es única dentro de su provincia; un producto, dentro de su marca y su
     # presentación. Vacío = el nombre es único por sí solo.
     ambito_unico: tuple = ()
+
+    # -- renglones hijos (la receta de un beneficio en especie) ------------
+    # Formset en línea que se edita DENTRO del mismo modal que la fila
+    # padre. Vacío = la entidad no tiene hijos y nada cambia.
+    formset: type = None
+    formset_titulo: str = ''
+    formset_vacio: str = 'Todavía no hay renglones cargados.'
+    formset_agregar: str = 'Agregar renglón'
+    # Nombre del campo del formulario padre que decide si los renglones
+    # hacen falta, y el valor con el que hacen falta: el bloque se muestra
+    # y se esconde solo mientras se carga. Vacío = siempre visible.
+    formset_depende_de: str = ''
+    formset_visible_si: str = ''
 
     # -- concordancia de género --------------------------------------------
     @property
@@ -222,6 +237,95 @@ def _avisar_duplicado(request, configuracion, duplicado):
             f'"{nombre}".')
 
 
+class _Rechazo(Exception):
+    """Una regla del modelo dijo que no, con la transacción ya abierta.
+
+    No es un error técnico: es el modelo contestando "así no". Se levanta
+    para que ``transaction.atomic()`` deshaga lo escrito —el padre ya se
+    guardó cuando los renglones se validan— y se atrapa arriba para
+    mostrar el texto tal cual lo redactó el modelo.
+    """
+
+
+def _guardar_renglones(configuracion, renglones, instancia):
+    """Escribe los renglones hijos y revalida el padre YA con su receta.
+
+    Devuelve el texto del error si alguna regla no se cumple, o None si
+    salió todo bien. Corre DENTRO de la transacción del padre: la receta
+    de un beneficio en especie no existe sin su beneficio, y un beneficio
+    en especie sin receta no se puede entregar, así que las dos cosas se
+    guardan juntas o no se guarda ninguna.
+
+    ``validar_receta()`` se llama acá y no en ``clean()`` porque necesita
+    los renglones ya escritos: en el alta el padre todavía no tiene PK y
+    no se le pueden colgar hijos.
+
+    El orden de escritura NO es el de Django. ``formset.save()`` borra
+    primero y recién después da de alta, y con eso una receta que se
+    reemplaza entera (se quitan los tres productos viejos y se cargan tres
+    nuevos) se cae: al borrar el último renglón viejo, el beneficio queda
+    un instante sin receta y ``BeneficioProducto.delete()`` lo corta por
+    DD-18. Así que acá se escribe al revés —primero las altas y los
+    cambios, los borrados al final—, que llega al mismo estado final sin
+    pasar por un estado intermedio que la regla prohíbe.
+    """
+    if renglones is None:
+        return None
+
+    renglones.instance = instancia
+    renglones.save(commit=False)
+
+    try:
+        for renglon in renglones.new_objects:
+            renglon.save()
+        for renglon, _campos in renglones.changed_objects:
+            renglon.save()
+        for renglon in renglones.deleted_objects:
+            renglon.delete()
+    except ValidationError as error:
+        return ' '.join(error.messages)
+
+    validar = getattr(instancia, 'validar_receta', None)
+    if validar is None:
+        return None
+    try:
+        validar()
+    except ValidationError as error:
+        return ' '.join(error.messages)
+    return None
+
+
+def armar_formset(configuracion, datos=None, instancia=None):
+    """El formset de renglones de esa entidad, o None si no corresponde.
+
+    Un único punto de construcción para las cuatro situaciones —alta en
+    blanco, alta con errores, edición por GET y edición con errores—, así
+    no hay forma de que una de ellas se olvide de pasar la instancia y los
+    renglones aparezcan vacíos.
+
+    Devuelve None en dos casos distintos:
+
+    * la entidad no tiene renglones (``formset`` sin configurar);
+    * el POST no trae el formset. Un formset de Django viaja con su
+      *management form* (``<prefijo>-TOTAL_FORMS`` y compañía); sin eso,
+      ``is_valid()`` no da "no hay renglones", da un error de formulario
+      mal armado, y el alta entera se caería sin explicar por qué.
+
+    El segundo caso es normal, no una anomalía: un beneficio de DESCUENTO
+    no lleva receta, así que la pantalla no tiene por qué mandarla. "Sin
+    formset en el POST" significa "no toques los renglones", y quien
+    decide si eso está bien es el modelo: ``validar_receta()`` corre
+    igual y rechaza un beneficio en especie que quedó sin receta.
+    """
+    if configuracion.formset is None:
+        return None
+    if datos is not None:
+        prefijo = configuracion.formset.get_default_prefix()
+        if '%s-TOTAL_FORMS' % prefijo not in datos:
+            return None
+    return configuracion.formset(datos, instance=instancia)
+
+
 def _contexto(request, configuracion, extra=None):
     """Arma el contexto del listado: búsqueda, filtros y tabla."""
     busqueda = request.GET.get('busqueda', '').strip()
@@ -255,6 +359,7 @@ def _contexto(request, configuracion, extra=None):
         'busqueda': busqueda,
         'estado': estado,
         'formulario': configuracion.formulario(),
+        'formset': armar_formset(configuracion),
         'filtros': [
             (filtro, filtro.opciones(), filtros_aplicados[filtro.clave])
             for filtro in configuracion.filtros
@@ -363,6 +468,13 @@ def crear(request, configuracion):
     formulario = configuracion.formulario(request.POST)
     valido = formulario.is_valid()
 
+    # Los renglones hijos viajan en el MISMO POST que el padre y se validan
+    # acá, antes de escribir nada: si la receta está mal, el beneficio
+    # tampoco se crea.
+    renglones = armar_formset(configuracion, request.POST)
+    if renglones is not None:
+        valido = renglones.is_valid() and valido
+
     # El duplicado se mira ANTES de decidir qué mostrar, esté el formulario
     # válido o no: cuando lo que falla es justamente el índice único, Django
     # ya marcó el formulario como inválido con su mensaje genérico, y el que
@@ -381,10 +493,20 @@ def crear(request, configuracion):
             with transaction.atomic():
                 instancia.save()
                 formulario.save_m2m()
+                error_de_renglones = _guardar_renglones(
+                    configuracion, renglones, instancia)
+                if error_de_renglones:
+                    raise _Rechazo(error_de_renglones)
                 registrar_auditoria(
                     request, 'ALTA', configuracion.singular.upper(),
                     anterior=None, nuevo=instantanea(instancia),
                     detalle=_detalle(configuracion, instancia, formulario))
+        except _Rechazo as rechazo:
+            messages.error(request, str(rechazo))
+            contexto = _contexto(request, configuracion, {
+                'formulario': formulario, 'formset': renglones,
+                'abrir_modal_crear': True})
+            return render(request, 'maestros/lista.html', contexto)
         except IntegrityError as error:
             messages.error(request, _mensaje_de_base(error))
             return redirect(configuracion.url('lista'))
@@ -400,7 +522,8 @@ def crear(request, configuracion):
         f'No se pudo crear {configuracion.articulo} {configuracion.singular}. '
         'Revisá los datos marcados.')
     contexto = _contexto(request, configuracion, {
-        'formulario': formulario, 'abrir_modal_crear': True})
+        'formulario': formulario, 'formset': renglones,
+        'abrir_modal_crear': True})
     return render(request, 'maestros/lista.html', contexto)
 
 
@@ -418,11 +541,17 @@ def editar(request, configuracion, pk):
         return redirect(configuracion.url('lista'))
 
     # El modal pide el formulario por GET para dibujarlo con los datos
-    # ACTUALES de la fila, incluido el testigo de versión de V-G11.
+    # ACTUALES de la fila, incluido el testigo de versión de V-G11. Los
+    # renglones hijos van en el mismo fragmento: el modal de edición se
+    # arma por fetch y es el único lugar donde la receta ya cargada se
+    # puede ver y tocar.
     if request.method == 'GET':
         if request.GET.get('formulario'):
             return render(request, 'maestros/_campos.html', {
-                'form': configuracion.formulario(instance=instancia)})
+                'cfg': configuracion,
+                'form': configuracion.formulario(instance=instancia),
+                'formset': armar_formset(
+                    configuracion, instancia=instancia)})
         return redirect(configuracion.url('lista'))
 
     if request.method != 'POST':
@@ -431,6 +560,10 @@ def editar(request, configuracion, pk):
     anterior = instantanea(configuracion.modelo.objects.get(pk=pk))
     formulario = configuracion.formulario(request.POST, instance=instancia)
     valido = formulario.is_valid()
+
+    renglones = armar_formset(configuracion, request.POST, instancia)
+    if renglones is not None:
+        valido = renglones.is_valid() and valido
 
     duplicado = buscar_duplicado(configuracion, formulario.instance)
     if duplicado is not None:
@@ -446,12 +579,24 @@ def editar(request, configuracion, pk):
                 configuracion.modelo.objects.select_for_update().get(pk=pk)
                 modificada.save()
                 formulario.save_m2m()
+                error_de_renglones = _guardar_renglones(
+                    configuracion, renglones, modificada)
+                if error_de_renglones:
+                    raise _Rechazo(error_de_renglones)
                 registrar_auditoria(
                     request, 'MODIFICACION', configuracion.singular.upper(),
                     anterior=anterior,
                     nuevo=instantanea(
                         configuracion.modelo.objects.get(pk=pk)),
                     detalle=_detalle(configuracion, modificada, formulario))
+        except _Rechazo as rechazo:
+            messages.error(request, str(rechazo))
+            contexto = _contexto(request, configuracion, {
+                'formulario_editar': formulario,
+                'formset_editar': renglones,
+                'editar_pk': pk,
+                'abrir_modal_editar': True})
+            return render(request, 'maestros/lista.html', contexto)
         except IntegrityError as error:
             messages.error(request, _mensaje_de_base(error))
             return redirect(configuracion.url('lista'))
@@ -468,6 +613,7 @@ def editar(request, configuracion, pk):
         f'{configuracion.singular}. Revisá los datos marcados.')
     contexto = _contexto(request, configuracion, {
         'formulario_editar': formulario,
+        'formset_editar': renglones,
         'editar_pk': pk,
         'abrir_modal_editar': True})
     return render(request, 'maestros/lista.html', contexto)
@@ -499,9 +645,8 @@ def dar_de_baja(request, configuracion, pk):
 
     motivos = instancia.motivos_que_impiden_la_baja()
     if motivos:
-        messages.error(request, (
-            f'No se puede dar de baja "{instancia}" porque '
-            + '; '.join(motivos) + '.'))
+        messages.error(request, redactar(
+            f'No se puede dar de baja "{instancia}"', motivos))
         return redirect(configuracion.url('lista'))
 
     anterior = instantanea(instancia)
@@ -538,9 +683,8 @@ def reactivar(request, configuracion, pk):
 
     motivos = instancia.motivos_que_impiden_reactivar()
     if motivos:
-        messages.error(request, (
-            f'No se puede reactivar "{instancia}" porque '
-            + '; '.join(motivos) + '.'))
+        messages.error(request, redactar(
+            f'No se puede reactivar "{instancia}"', motivos))
         return redirect(configuracion.url('lista'))
 
     anterior = instantanea(instancia)

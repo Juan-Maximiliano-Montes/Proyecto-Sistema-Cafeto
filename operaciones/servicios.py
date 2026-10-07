@@ -11,8 +11,8 @@ escritas UNA sola vez:
   * ``registrar_auditoria``: el único lugar del sistema que escribe en
     LOG_AUDITORIA. Ninguna vista arma el registro a mano.
 
-Reparto con la base (regla 4.4 d): ningún trigger de
-``02_triggers.sql`` escribe en LOG_AUDITORIA —los triggers sellan
+Quién audita, y quién no (regla 4.4 d): los mixins de
+``cafeto/reglas.py`` NO escriben en LOG_AUDITORIA —sellan
 ``fecha_modificacion`` y ``usuario_modificacion``, y protegen los libros,
 pero no auditan—. Por eso la auditoría de los datos maestros la escribe
 la aplicación, acá, y no se duplica en ningún lado.
@@ -91,7 +91,7 @@ def sesion_del_request(request):
 
     La vista de login deja su id en la sesión de Django; acá se recupera y
     se comprueba que siga activa (puede haberla cerrado la baja del
-    usuario, vía el trigger ``trg_baja_usuario_cierra_sesiones``).
+    usuario: lo hace ``Usuario.save()``, DD-09).
     """
     from .models import Sesion
 

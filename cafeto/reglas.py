@@ -1,8 +1,10 @@
-"""Las reglas que antes vivían en triggers de PostgreSQL, ahora en Python.
+"""Las reglas que protegen cada fila, escritas en Python.
 
-Cada clase de acá reemplaza a un trigger de ``02_triggers.sql``. Se
-implementan como **mixins de modelo** y no como señales (``pre_save``,
-``pre_delete``) por dos motivos:
+Son las invariantes que valen para CUALQUIER escritura, venga de donde
+venga: el sello de modificación, la prohibición del borrado físico, los
+libros de sólo agregado y los saldos derivados. Se implementan como
+**mixins de modelo** y no como señales (``pre_save``, ``pre_delete``) por
+dos motivos:
 
 * una señal está lejos del modelo que gobierna, y al leer el modelo no se
   ve qué le pasa al guardarlo. Un mixin se lee en la línea del ``class``;
@@ -12,9 +14,10 @@ implementan como **mixins de modelo** y no como señales (``pre_save``,
 
 Lo que hay que tener presente
 -----------------------------
-Un trigger protege la TABLA: lo corre PostgreSQL contra cualquier escritor,
-venga del ORM, de ``psql`` o de Adminer. Estos mixins protegen el MODELO:
-corren cuando la escritura pasa por el ORM.
+Estos mixins protegen el MODELO: corren cuando la escritura pasa por el
+ORM. Una escritura hecha a mano desde ``psql`` o Adminer los saltea, así
+que la base conserva sus CHECK y sus UNIQUE como última red (ver
+``cafeto/restricciones.py``).
 
 Por eso cada regla se cubre en los dos caminos que el ORM ofrece: el de la
 instancia (``save()`` / ``delete()``) y el del conjunto
@@ -36,8 +39,7 @@ from cafeto import contexto
 class ConSelloDeModificacion(models.Model):
     """Anota cuándo y quién tocó la fila por última vez.
 
-    Reemplaza a ``fn_sello_modificacion``. El trigger lo hacía en cada
-    UPDATE leyendo ``cafeto.id_usuario`` de la sesión de PostgreSQL; acá se
+    Corre en cada UPDATE leyendo el usuario del contexto del pedido; acá se
     hace en ``save()`` leyendo el contexto del pedido.
 
     En el ALTA el sello queda NULO, igual que antes: una fila recién creada

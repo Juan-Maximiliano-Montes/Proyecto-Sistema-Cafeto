@@ -5,6 +5,9 @@ Un solo parcial para los nueve CRUD: cada campo se muestra con su
 etiqueta, su ayuda y —si falló— el mensaje al lado, que es lo que pide
 V-G14. Los checkbox se dibujan distinto porque en Bootstrap la etiqueta
 va a la derecha del control.
+
+Si la entidad tiene renglones hijos (``cfg.formset``) van abajo de todo,
+en el mismo formulario: se cargan y se guardan junto con el padre.
 {% endcomment %}
 
 {% if form.non_field_errors %}
@@ -44,3 +47,5 @@ va a la derecha del control.
     </div>
 {% endfor %}
 </div>
+
+{% if formset %}{% include 'maestros/_renglones.html' %}{% endif %}

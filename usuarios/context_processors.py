@@ -3,7 +3,8 @@
 ``permisos_del_usuario`` deja disponible en TODOS los templates:
 
     permisos_usuario   set con los códigos de permiso del perfil logueado
-    es_administrador    True si el perfil se llama 'Administrador'
+    es_administrador    True si el perfil está marcado como perfil del
+                        sistema (``Perfil.es_sistema``)
 
 Sirve para esconder botones/enlaces con
 ``{% if 'crear_usuario' in permisos_usuario or es_administrador %}``.
@@ -27,7 +28,9 @@ def permisos_del_usuario(request):
     )
     return {
         'permisos_usuario': codigos,
-        'es_administrador': usuario.id_perfil.nombre == 'Administrador',
+        # Por la marca, no por el nombre: el nombre del perfil se edita
+        # desde la pantalla de Perfiles (ver Perfil.es_sistema).
+        'es_administrador': usuario.id_perfil.es_sistema,
     }
 
 

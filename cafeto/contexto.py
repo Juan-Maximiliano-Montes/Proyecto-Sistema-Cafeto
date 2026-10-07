@@ -1,9 +1,7 @@
 """Quién está operando, disponible desde cualquier modelo.
 
-Antes esto lo resolvía PostgreSQL: el middleware hacía
-``SET LOCAL cafeto.id_usuario`` y el trigger ``fn_sello_modificacion`` lo
-leía con ``current_setting()``. Al pasar la lógica a Python el sello lo
-pone ``save()``, y ``save()`` no recibe el request.
+El sello de modificación (DD-17) lo pone ``save()``, y ``save()`` no
+recibe el request: no tiene de dónde sacar quién está operando.
 
 La pieza que falta es un lugar donde dejar el usuario al empezar el pedido
 y leerlo desde el modelo. Se usa ``ContextVar`` y no una variable global ni
@@ -66,8 +64,8 @@ def usar(usuario):
 # ---------------------------------------------------------------------------
 # Las reglas de inmutabilidad tienen UNA excepción legítima: el proceso que
 # archiva datos viejos copia la fila al histórico y recién entonces la borra
-# del libro vivo. En PostgreSQL eso se marcaba con la variable de sesión
-# `cafeto.pasaje_historico`, que los triggers consultaban para dejarlo pasar.
+# del libro vivo. Esta marca es la que los mixins de `cafeto/reglas.py`
+# consultan para dejarlo pasar.
 #
 # Acá cumple el mismo papel, y por la misma razón se mantiene SEPARADO del
 # usuario: no es "alguien con permiso", es "un proceso puntual del sistema".

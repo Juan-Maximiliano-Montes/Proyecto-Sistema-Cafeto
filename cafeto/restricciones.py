@@ -1,21 +1,26 @@
-"""Piezas compartidas para declarar en Django las MISMAS restricciones que
-escribe ``04 - Base de Datos/01_esquema.sql``.
+"""Piezas para declarar en los modelos las restricciones que el ORM no sabe
+escribir solo.
 
-Por qué hace falta
-------------------
-El esquema de la base es el documento de diseño: lo genera ``gen_ddl.py`` a
-partir de ``der_modelo.py`` y ``restricciones.py``, y es el que se corrige
-cuando cambia el DER. Django, en cambio, es el dueño de las TABLAS (crea y
-migra). Para que las dos miradas describan exactamente lo mismo —y el
-comando ``comparar_esquema`` cierre en cero diferencias— los CHECK y los
-UNIQUE declarados en los modelos tienen que generar el MISMO texto SQL que
-el script.
+Django es el dueño del esquema: las tablas, los CHECK, los UNIQUE y los
+índices los crean sus migraciones, y no hay ningún guion SQL aparte que
+haya que mantener en paralelo. Lo que sigue haciendo falta es una forma de
+escribir, DESDE el modelo, las condiciones que el ORM no puede expresar.
 
-El ORM de Django alcanza para los casos simples (``Q(campo__gt=0)``), pero
-no para condiciones como ``trim(nombre) <> ''`` o
-``f_clave_normalizada(nombre)``: no tiene forma de escribir ``<>`` ni de
-llamar a una función propia dentro de un CHECK. Estas dos clases cubren
-ese hueco sin renunciar a que Django siga administrando las migraciones.
+El ORM alcanza para los casos simples (``Q(campo__gt=0)``), pero no para
+condiciones como ``trim(nombre) <> ''`` o ``f_clave_normalizada(nombre)``:
+no tiene forma de escribir ``<>`` ni de llamar a una función propia dentro
+de un CHECK. Estas dos clases cubren ese hueco sin renunciar a que Django
+siga administrando las migraciones: la restricción se declara en el
+``Meta`` del modelo, viaja en una migración y se puede revertir como
+cualquier otra.
+
+Qué NO son
+----------
+No son la validación del sistema. Las reglas de negocio se validan en
+Python —``clean()`` de cada modelo, mixins de ``cafeto/reglas.py``,
+servicios de ``operaciones/``— y se muestran en castellano. Estas
+restricciones son la última red: lo que la base rechaza si algo llegara a
+escribirse sin pasar por el ORM.
 """
 from django.db import models
 from django.utils.deconstruct import deconstructible
@@ -33,10 +38,10 @@ class CheckSQL(models.Expression):
             name='ck_perfiles_textos',
         )
 
-    El texto se copia literal de ``01_esquema.sql``, así que lo que queda en
-    PostgreSQL es la misma restricción, con el mismo nombre y la misma
-    definición. Nombra las COLUMNAS de la base (``nombre_perfil``), no los
-    atributos del modelo, porque un CHECK vive dentro de la tabla.
+    El texto va tal cual a PostgreSQL, con el nombre que le pone el
+    ``Meta`` del modelo. Nombra las COLUMNAS de la base
+    (``nombre_perfil``), no los atributos del modelo, porque un CHECK vive
+    dentro de la tabla.
 
     ``conditional = True`` es lo que le avisa a Django que esta expresión
     devuelve un booleano y puede ir donde iría un ``Q``.

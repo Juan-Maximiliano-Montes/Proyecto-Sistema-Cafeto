@@ -1,6 +1,6 @@
 """Archiva lo cerrado y antiguo en las tablas ``hist_*``.
 
-Reemplaza a ``sp_pasaje_historico`` (``03_historico.sql``). Es la **única
+Reemplaza al antiguo procedimiento de pasaje. Es la **única
 baja física admitida** en todo el sistema (RN-8.1.1): en cualquier otro
 lugar, borrar una fila es un error.
 
@@ -8,7 +8,7 @@ Por qué este proceso lleva SQL embebido y el resto del refactor no
 --------------------------------------------------------------------
 Los demás lotes movieron REGLAS DE NEGOCIO al ORM, y ahí Python gana: "una
 venta no se borra", "el stock sale por FEFO" se leen mejor en una clase que
-en un trigger.
+en SQL.
 
 Esto es otra cosa: una operación masiva de mantenimiento. Archivar con el
 ORM significa traer cada fila a memoria, instanciarla y volver a guardarla
@@ -41,7 +41,7 @@ from django.db import connection, transaction
 from cafeto import contexto
 
 
-# Cortes por defecto, en meses hacia atrás (del encabezado de 03_historico).
+# Cortes por defecto, en meses hacia atrás.
 CORTE_OPERATIVO = 24      # turnos de caja y sus ventas
 CORTE_COMPRAS = 36        # compras, órdenes y egresos
 CORTE_LOG = 12            # auditoría, sesiones e intentos de acceso

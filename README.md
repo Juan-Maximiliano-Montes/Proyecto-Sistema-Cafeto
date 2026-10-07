@@ -132,9 +132,10 @@ Adminer. Permiso `ver_auditoria`, del Administrador.
 
 Es **de sólo lectura, y a propósito**: hay dos vistas y las dos son GET. No
 existe ruta de alta, edición ni baja, porque el libro es append-only y el
-trigger `trg_libro_inmutable` rechaza en la base cualquier UPDATE o DELETE
-(RN-8.1.1). Un botón de editar prometería algo imposible y rompería la única
-garantía que hace que una auditoría sirva.
+mixin `LibroInmutable` (`cafeto/reglas.py`) rechaza cualquier UPDATE o
+DELETE (RN-8.1.1), tanto por la instancia como por el QuerySet. Un botón de
+editar prometería algo imposible y rompería la única garantía que hace que
+una auditoría sirva.
 
 Filtros por usuario, módulo, rango de fechas y texto de la operación, todos
 por GET: la búsqueda queda en la URL y se puede compartir o volver con Atrás.
@@ -151,11 +152,14 @@ resaltado.
 Cada regla se controla en **tres capas**, y las tres dicen lo mismo:
 
 1. **Formulario** (`maestros/forms.py`): mensaje claro al lado del campo.
-2. **Modelo** (`clean()`): vale para cualquier otro camino de entrada — shell,
-   `/admin`, importaciones.
-3. **Base** (CHECK, UNIQUE, FK, NOT NULL, triggers): la última barrera, la que
-   nadie puede saltear. Si la base rechaza, la vista lo traduce a castellano;
-   nunca se muestra el SQL ni el nombre de una restricción.
+2. **Modelo** (`clean()`, los mixins de `cafeto/reglas.py` y los servicios de
+   `operaciones/`): vale para cualquier otro camino de entrada — shell,
+   `/admin`, importaciones. Acá vive TODA la lógica transaccional y de
+   validación del sistema: no hay triggers ni procedimientos almacenados.
+3. **Base** (CHECK, UNIQUE, FK, NOT NULL): la última barrera, declarada en el
+   `Meta` de cada modelo y creada por las migraciones. Si la base rechaza, la
+   vista lo traduce a castellano; nunca se muestra el SQL ni el nombre de una
+   restricción.
 
 Lo común a todos los campos está en `cafeto/validaciones.py`: limpieza de
 espacios, largos, caracteres admitidos, números con coma decimal, fechas
@@ -192,9 +196,6 @@ Otras comprobaciones útiles:
 # ¿Los modelos y las migraciones están sincronizados?
 docker compose exec web python manage.py makemigrations --check --dry-run
 
-# ¿El esquema migrado es el del DER?
-docker compose exec web python manage.py comparar_esquema
-
 # ¿Quedó algún dato viejo que hoy el sistema ya no aceptaría?
 docker compose exec web python manage.py auditar_consistencia
 # ...y para darlo de baja (baja LÓGICA, se reactiva desde la pantalla):
@@ -221,6 +222,9 @@ Proyecto-Cafeto/
 │   ├── settings.py
 │   ├── urls.py
 │   ├── restricciones.py    # CheckSQL / CheckEnBase / ClaveNormalizada
+│   ├── reglas.py           # Mixins de modelo: sello, baja lógica, libros
+│   ├── motivos.py          # Cómo se redacta un "no se puede dar de baja"
+│   ├── contexto.py         # Quién opera, visible desde cualquier modelo
 │   └── validaciones.py     # Reglas comunes a todos los CRUD (4.4.V)
 │
 ├── templates/base.html     # Navbar, menú de Datos maestros, mensajes
@@ -236,18 +240,16 @@ Proyecto-Cafeto/
 │   ├── forms.py
 │   ├── templates/maestros/lista.html     # Una pantalla para las diez
 │   ├── templates/maestros/_ficha.html    # El modal de sólo lectura (el ojo)
+│   ├── templates/maestros/_renglones.html # La receta de un beneficio
 │   └── management/commands/
-│       ├── comparar_esquema.py           # Django vs. 01_esquema.sql
 │       └── auditar_consistencia.py       # datos viejos que ya no pasarían
 │
 └── operaciones/            # Las 18 tablas operativas + sesiones y auditoría
-    ├── middleware.py       # SET LOCAL cafeto.id_usuario (para los triggers)
+    ├── middleware.py       # Publica el usuario del pedido en el contexto
     ├── servicios.py        # Sesiones de negocio y registrar_auditoria()
-    ├── esquema.py          # Lee 01_esquema.sql: DEFAULT, FK y lógica
-    └── migrations/
-        ├── 0002_columna_generada_y_defaults.py
-        ├── 0003_logica_de_la_base.py      # Instala 02, 03 y 04 de la BD
-        └── 0004_claves_foraneas_del_der.py
+    ├── caja.py · ventas.py · compras.py · egresos.py · puntos.py
+    │                       # Los servicios transaccionales, en Python
+    └── migrations/         # La ÚNICA fuente del esquema
 ```
 
 ---

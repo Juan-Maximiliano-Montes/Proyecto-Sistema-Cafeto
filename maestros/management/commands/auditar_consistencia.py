@@ -21,7 +21,7 @@ Qué se considera inconsistente
 
 La baja es LÓGICA y por lo tanto reversible: la fila queda en la base y se
 recupera con el botón Reactivar. Nada se borra, que es lo que exige RN-8.1.1
-y lo que hace cumplir el trigger ``trg_sin_baja_fisica``.
+y lo que hace cumplir el mixin ``SinBajaFisica``.
 
 Uso::
 

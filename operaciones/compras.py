@@ -1,10 +1,9 @@
 """Compras: órdenes al proveedor y recepción de mercadería.
 
-Reemplaza a ``sp_emitir_orden``, ``sp_enviar_orden``, ``sp_cancelar_orden``
-y ``sp_recepcionar_compra``. Las reglas de ciclo de vida de la orden (T12)
-viven en ``OrdenCompra.save()``, porque son invariantes de la fila; acá
-están los PROCESOS, que son otra cosa: una secuencia de pasos que tienen
-que pasar todos o ninguno.
+Las reglas de ciclo de vida de la orden (T12) viven en
+``OrdenCompra.save()``, porque son invariantes de la fila; acá están los
+PROCESOS, que son otra cosa: una secuencia de pasos que tienen que pasar
+todos o ninguno.
 
 El ciclo de una orden (DD-44)::
 
@@ -33,7 +32,7 @@ from .models import (Compra, DetalleCompra, DetalleOrdenCompra, Lote,
 # ===========================================================================
 @transaction.atomic
 def emitir_orden(proveedor, usuario, items):
-    """Crea el borrador con sus renglones (``sp_emitir_orden``).
+    """Crea el borrador con sus renglones.
 
     ``items``: ``[{'producto': <Producto>, 'cantidad': 10,
     'precio_unitario': Decimal('500')}]``
@@ -67,7 +66,7 @@ def recalcular_total_de_la_orden(orden):
 
 @transaction.atomic
 def enviar_orden(orden):
-    """La manda al proveedor: PENDIENTE → EMITIDA (``sp_enviar_orden``).
+    """La manda al proveedor: PENDIENTE → EMITIDA.
 
     Es el momento en que deja de ser un borrador editable (DD-44).
     """
@@ -82,7 +81,7 @@ def enviar_orden(orden):
 
 @transaction.atomic
 def cancelar_orden(orden):
-    """PENDIENTE o EMITIDA → CANCELADA (``sp_cancelar_orden``)."""
+    """PENDIENTE o EMITIDA → CANCELADA."""
     orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
     orden.estado_orden = 'CANCELADA'
     orden.save(update_fields=['estado_orden'])
@@ -97,7 +96,7 @@ def recepcionar(proveedor, usuario, numero_factura, items, orden=None,
                 fecha_vencimiento_pago=None):
     """Registra la factura, da de alta los lotes y entra el stock.
 
-    Reemplaza a ``sp_recepcionar_compra``. ``items``::
+    ``items``::
 
         [{'producto': <Producto>, 'cantidad': 10,
           'precio_costo': Decimal('450'),

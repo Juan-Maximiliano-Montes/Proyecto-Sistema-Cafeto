@@ -124,11 +124,11 @@ class BaseMaestros(TestCase):
     def dar_stock(self, producto, cantidad, lote=None):
         """Carga stock por el camino real: un movimiento de ENTRADA.
 
-        ``productos.stock_actual`` es derivado (RN-5.1.1) y el trigger
-        ``trg_protege_derivados`` rechaza cualquier UPDATE directo. El
-        único que lo escribe es ``trg_actualiza_stock``, al insertar en
-        MOVIMIENTOS_STOCK. Así que el test hace lo que haría el sistema:
-        una compra, su renglón y el movimiento de entrada.
+        ``productos.stock_actual`` es derivado (RN-5.1.1) y el mixin
+        ``ConSaldosDerivados`` rechaza cualquier UPDATE directo. El único
+        que lo escribe es el asiento en MOVIMIENTOS_STOCK. Así que el test
+        hace lo que haría el sistema: una compra, su renglón y el
+        movimiento de entrada.
         """
         from operaciones.models import DetalleCompra, MovimientoStock
 
@@ -1141,8 +1141,7 @@ class LaBaseRechazaSolaTest(BaseMaestros):
     def test_el_borrado_fisico_esta_prohibido(self):
         """RN-8.1.1: el DELETE no corre, por ninguno de los dos caminos.
 
-        Antes lo cortaba el trigger `trg_sin_baja_fisica` y la excepción
-        venía de PostgreSQL. Ahora lo corta `SinBajaFisica`, así que es un
+        Lo corta el mixin `SinBajaFisica`, así que la excepción es un
         ValidationError de Django.
 
         Se prueban los dos caminos: `QuerySet.delete()` emite un DELETE
@@ -1169,13 +1168,12 @@ class LaBaseRechazaSolaTest(BaseMaestros):
             rubro.delete()
         self.assertFalse(Rubro.objects.filter(pk=rubro.pk).exists())
 
-    def test_el_trigger_sella_quien_modifico(self):
+    def test_el_sello_registra_quien_modifico(self):
         """DD-17: el sello lo pone Python, leyendo el contexto del pedido.
 
-        Antes esto lo hacía el trigger `fn_sello_modificacion` con
-        `SET LOCAL cafeto.id_usuario`. Ahora el usuario viaja en un
-        ContextVar que fija el middleware, y el sello lo ponen `save()` y
-        `update()`.
+        El usuario viaja en un ContextVar que fija el middleware, y el
+        sello lo ponen `save()` y `update()` vía
+        `ConSelloDeModificacion`.
 
         Se prueban los DOS caminos: `QuerySet.update()` no pasa por
         `save()`, así que si sólo estuviera cubierto uno, una modificación

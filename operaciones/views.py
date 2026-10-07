@@ -1,10 +1,10 @@
 """Registro de Actividad: la auditoría, para que la lea una persona.
 
 LOG_AUDITORIA es un libro **append-only**: lo escribe ``registrar_auditoria()``
-y el trigger ``trg_libro_inmutable`` rechaza cualquier UPDATE o DELETE
-(RN-8.1.1). Una pantalla que ofreciera editar o borrar estaría prometiendo
-algo que la base va a rechazar, y encima rompería la única garantía que hace
-que la auditoría sirva de algo: que nadie pueda cambiar lo que quedó escrito.
+y el mixin ``LibroInmutable`` rechaza cualquier UPDATE o DELETE (RN-8.1.1).
+Una pantalla que ofreciera editar o borrar estaría prometiendo algo que el
+modelo va a rechazar, y encima rompería la única garantía que hace que la
+auditoría sirva de algo: que nadie pueda cambiar lo que quedó escrito.
 
 Por eso acá hay **dos vistas y las dos son GET**: el listado y la ficha. No
 existe —ni debe existir— una ruta de alta, edición o baja para este modelo.

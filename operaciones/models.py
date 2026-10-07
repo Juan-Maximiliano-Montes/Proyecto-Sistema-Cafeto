@@ -4,14 +4,13 @@ Acá viven las 18 tablas que no son ni seguridad (``usuarios``) ni
 catálogo (``maestros``, ``proveedores``): sesiones y auditoría, caja,
 ventas, compras, stock, inventario, egresos y fidelización de clientes.
 
-Por qué están en la Fase 4 si todavía no tienen pantalla
---------------------------------------------------------
+Por qué están modeladas si todavía no tienen pantalla
+-----------------------------------------------------
 Dos motivos:
 
-  * Los triggers, las vistas históricas y los procedimientos de
-    ``04 - Base de Datos`` necesitan que las 33 tablas existan para poder
-    instalarse. Como Django pasó a ser el dueño de las tablas, tiene que
-    crearlas todas.
+  * Django es el dueño del esquema: las 33 tablas las crean sus
+    migraciones, no un guion aparte, así que todas tienen que estar
+    declaradas como modelo.
   * Los CRUD de datos maestros consultan estas tablas para decidir si una
     baja se puede hacer: una caja registradora con turno abierto, un producto
     con stock, una categoría con clientes. Sin los modelos no habría forma
@@ -19,8 +18,9 @@ Dos motivos:
 
 Los libros de movimientos (``movimientos_caja``, ``movimientos_stock``,
 ``movimientos_puntos``, ``log_auditoria``, ``intentos_acceso``,
-``detalles_venta``) son APPEND-ONLY: el trigger ``trg_libro_inmutable``
-rechaza cualquier UPDATE o DELETE. Un asiento no se corrige: se
+``detalles_venta``) son APPEND-ONLY: heredan de ``LibroInmutable``
+(``cafeto/reglas.py``), que rechaza cualquier UPDATE o DELETE tanto por
+la instancia como por el QuerySet. Un asiento no se corrige: se
 contra-asienta.
 """
 from decimal import Decimal

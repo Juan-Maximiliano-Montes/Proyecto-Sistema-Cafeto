@@ -16,6 +16,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
+from cafeto.motivos import redactar
 from operaciones.servicios import abrir_sesion, cerrar_sesion
 
 from .decorators import requiere_permiso
@@ -299,8 +300,10 @@ def restablecer_clave_usuario(request, id_usuario):
 #  permiso puntual) entra. Un perfil operativo que pruebe la URL es rebotado
 #  a su ficha personal por @requiere_permiso(..., redirigir_a='mi_perfil').
 
-# Perfiles que NO se pueden borrar nunca: romperían el acceso al sistema.
-PERFILES_PROTEGIDOS = {'Administrador'}
+# Qué perfil no se puede borrar nunca ya NO es una lista de nombres: lo
+# dice la marca ``Perfil.es_sistema``. Una lista de nombres se rompía sola,
+# porque el nombre del perfil se edita desde esta misma pantalla: bastaba
+# renombrar "Administrador" para que dejara de estar protegido.
 
 # Ya no existe una lista de "permisos protegidos": el catálogo entero es de
 # sólo lectura, así que ninguna pantalla puede tocarlo. Ver el bloque
@@ -317,13 +320,24 @@ def _sincronizar_permisos(perfil, permisos_seleccionados):
     DD-14: un perfil que ya tiene permisos no puede quedarse sin ninguno.
     Un perfil asignable sin permisos es una trampa: se le puede dar a un
     usuario y después ese usuario no puede hacer nada ni entender por qué.
-    La base lo defiende con el trigger ``trg_perfil_conserva_permiso``;
-    acá se controla antes para poder decirlo en castellano.
+    La regla se controla acá, antes de escribir, para poder decirla en
+    castellano.
+
+    El perfil de sistema va más allá: conserva el catálogo ENTERO. Es el
+    perfil del que depende el acceso a la administración, y dejarlo con
+    menos permisos de los que hay deja la pantalla de Perfiles mintiendo
+    sobre lo que puede hacer (ver ``Perfil.asegurar_catalogo_completo``).
     """
     seleccion = set(permisos_seleccionados)
     tenia = PerfilPermiso.objects.filter(perfil=perfil).exists()
 
-    if tenia and not seleccion:
+    if perfil.es_sistema:
+        if set(Permiso.objects.all()) - seleccion:
+            raise ValidationError(
+                f'El perfil "{perfil.nombre}" es el perfil administrador '
+                'del sistema: conserva todos los permisos del catálogo y no '
+                'se le puede desmarcar ninguno.')
+    elif tenia and not seleccion:
         raise ValidationError(
             f'El perfil "{perfil.nombre}" quedaría sin ningún permiso. Un '
             'perfil asignable conserva al menos uno: dejá tildado el que '
@@ -431,6 +445,7 @@ def editar_perfil(request, id_perfil):
         messages.success(request, f'Perfil "{perfil.nombre}" actualizado.')
         return redirect('usuarios:perfiles')
 
+
     messages.error(request, 'No se pudo actualizar el perfil.')
     contexto = _contexto_perfiles(request)
     contexto['form_editar'] = form
@@ -443,26 +458,26 @@ def editar_perfil(request, id_perfil):
 def eliminar_perfil(request, id_perfil):
     """Baja LÓGICA de un perfil, con dos candados:
 
-      - el perfil Administrador no se toca;
-      - un perfil con usuarios asignados no se da de baja.
+      - el perfil marcado ``es_sistema`` no se toca;
+      - un perfil con usuarios activos asignados no se da de baja.
 
-    Desde la Fase 4 la baja es lógica, no física (RN-8.1.1): PERFILES
-    tiene ``borrado_logico`` y la base rechaza cualquier DELETE sobre la
-    tabla. El motivo es que los usuarios históricos siguen apuntando a su
-    perfil: borrarlo dejaría registros sin poder explicar con qué permisos
-    operaba esa persona.
+    Los dos los contesta el propio modelo en
+    ``Perfil.motivos_que_impiden_la_baja()``, que es donde vive la regla:
+    así vale igual si la baja se pide desde esta pantalla, desde un
+    comando o desde un test.
+
+    La baja es lógica, no física (RN-8.1.1): PERFILES tiene
+    ``borrado_logico`` y el modelo rechaza cualquier DELETE. El motivo es
+    que los usuarios históricos siguen apuntando a su perfil: borrarlo
+    dejaría registros sin poder explicar con qué permisos operaba esa
+    persona.
     """
     perfil = get_object_or_404(Perfil, pk=id_perfil)
     if request.method == 'POST':
-        if perfil.nombre in PERFILES_PROTEGIDOS:
-            messages.error(
-                request, f'El perfil "{perfil.nombre}" no se puede eliminar.')
-        elif perfil.usuarios.filter(activo=True).exists():
-            messages.error(
-                request,
-                f'No se puede dar de baja "{perfil.nombre}": tiene '
-                f'{perfil.usuarios.filter(activo=True).count()} usuario(s) '
-                'activo(s) asignado(s).')
+        motivos = perfil.motivos_que_impiden_la_baja()
+        if motivos:
+            messages.error(request, redactar(
+                f'No se puede dar de baja "{perfil.nombre}"', motivos))
         else:
             perfil.borrado_logico = True
             perfil.save(update_fields=['borrado_logico'])

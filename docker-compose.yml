@@ -52,13 +52,10 @@ services:
     working_dir: /opt/app
     volumes:
       # El codigo se monta para poder editarlo sin reconstruir la imagen.
-      # Adentro viaja "base_de_datos/", con los guiones que las migraciones
-      # ejecutan para instalar triggers, historico y procedimientos.
       #
-      # Antes esos guiones se montaban de afuera, desde "04 - Base de Datos":
-      # eso ataba el arranque a una carpeta que NO esta en este repositorio,
-      # asi que un clon limpio no levantaba. La copia interna la mantiene al
-      # dia "02 - Scripts/sync_bd_django.py".
+      # No hay ningun otro montaje, y es a proposito: el esquema entero lo
+      # crean las migraciones de Django a partir de los modelos, asi que un
+      # clon de este repositorio levanta solo, sin carpetas externas.
       - .:/opt/app
     ports:
       - "8000:8000"

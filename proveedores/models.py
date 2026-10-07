@@ -6,7 +6,7 @@ desde el alta de proveedores. Desde la Fase 4 también son parte de
 
 Alineación con la base: las tablas se llaman ``provincias``,
 ``localidades`` y ``proveedores``, y cada columna lleva el nombre que le
-da ``01_esquema.sql``.
+da el DER.
 
 Geografía: las provincias y las localidades NO tienen baja lógica. Son un
 catálogo geográfico: una provincia no deja de existir, y borrarla lógicamente
@@ -158,7 +158,7 @@ class Proveedor(ConSelloDeModificacion,
     fecha_modificacion = sello_fecha_modificacion()
     usuario_modificacion = sello_usuario_modificacion('proveedores_modificados')
 
-    # Sello de modificación y baja lógica, antes en triggers
+    # Sello de modificación y baja lógica, ahora en mixins del ORM
     # (DD-17 y RN-8.1.1).
     objects = ManagerSinBajaFisica()
 

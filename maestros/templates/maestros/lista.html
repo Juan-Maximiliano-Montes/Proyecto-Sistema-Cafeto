@@ -217,7 +217,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                {% include 'maestros/_campos.html' with form=formulario %}
+                {% include 'maestros/_campos.html' with form=formulario formset=formset %}
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -263,7 +263,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                 <h5 class="modal-title">Nuevo — revisá los datos</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">{% include 'maestros/_campos.html' with form=formulario %}</div>
+            <div class="modal-body">{% include 'maestros/_campos.html' with form=formulario formset=formset %}</div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
@@ -283,7 +283,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                 <h5 class="modal-title">Editar — revisá los datos</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">{% include 'maestros/_campos.html' with form=formulario_editar %}</div>
+            <div class="modal-body">{% include 'maestros/_campos.html' with form=formulario_editar formset=formset_editar %}</div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar cambios</button>
@@ -332,6 +332,11 @@ function resumenDelFormulario(form) {
     var filas = [];
     form.querySelectorAll('.modal-body [name]').forEach(function (control) {
         if (control.type === 'hidden' || control.name === 'csrfmiddlewaretoken') { return; }
+        // Los renglones quitados y su tilde de borrado no son "datos que
+        // se van a guardar": no tienen por qué aparecer en el resumen.
+        if (/-DELETE$/.test(control.name)) { return; }
+        var renglon = control.closest('.js-renglon');
+        if (renglon && renglon.classList.contains('d-none')) { return; }
 
         var etiqueta = form.querySelector('label[for="' + control.id + '"]');
         var nombre = etiqueta ? etiqueta.textContent.replace('*', '').trim()
@@ -389,6 +394,89 @@ document.querySelectorAll('.form-una-vez').forEach(function (form) {
     });
 });
 
+// ---- Renglones hijos (la receta de un beneficio en especie) -------------
+// Un formset de Django numera sus renglones con un índice y lleva la
+// cuenta en TOTAL_FORMS. Agregar un renglón es clonar el molde
+// ``__prefix__`` con el índice que sigue y subir ese contador; quitarlo
+// NO es borrar el nodo, es tildar el DELETE que el formset ya trae y
+// esconder la fila, para que el POST siga cuadrando con TOTAL_FORMS.
+function activarRenglones(raiz) {
+    raiz.querySelectorAll('.js-renglones').forEach(function (bloque) {
+        if (bloque.dataset.activo === '1') { return; }
+        bloque.dataset.activo = '1';
+
+        var prefijo = bloque.dataset.prefijo;
+        var total = bloque.querySelector('[name="' + prefijo + '-TOTAL_FORMS"]');
+        var cuerpo = bloque.querySelector('.js-renglones-cuerpo');
+        var molde = bloque.querySelector('.js-molde-renglon');
+        var vacio = bloque.querySelector('.js-renglones-vacio');
+
+        function visibles() {
+            return cuerpo.querySelectorAll('.js-renglon:not(.d-none)').length;
+        }
+
+        function repintar() {
+            vacio.classList.toggle('d-none', visibles() > 0);
+        }
+
+        function quitar(renglon) {
+            var tilde = renglon.querySelector('[name$="-DELETE"]');
+            if (tilde) { tilde.checked = true; }
+            renglon.classList.add('d-none');
+            repintar();
+        }
+
+        bloque.addEventListener('click', function (evento) {
+            var boton = evento.target.closest('.js-quitar-renglon');
+            if (!boton || !bloque.contains(boton)) { return; }
+            quitar(boton.closest('.js-renglon'));
+        });
+
+        bloque.querySelector('.js-agregar-renglon').addEventListener('click', function () {
+            var indice = parseInt(total.value, 10);
+            var html = molde.innerHTML.split('__prefix__').join(indice);
+            var envase = document.createElement('div');
+            envase.innerHTML = html;
+            cuerpo.appendChild(envase.firstElementChild);
+            total.value = indice + 1;
+            repintar();
+        });
+
+        // ---- Mostrarse sólo cuando hace falta ---------------------------
+        // En los beneficios, la receta existe si el modo de entrega es
+        // ESPECIE. Al pasar a DESCUENTO los renglones se marcan para
+        // borrar, porque un beneficio de descuento no lleva receta (lo
+        // revalida el servidor); si se vuelve a ESPECIE, se destildan.
+        var campo = bloque.dataset.dependeDe;
+        if (campo) {
+            var formulario = bloque.closest('form') || document;
+            var control = formulario.querySelector('[name="' + campo + '"]');
+            if (control) {
+                var sincronizar = function () {
+                    var hace_falta = control.value === bloque.dataset.visibleSi;
+                    bloque.classList.toggle('d-none', !hace_falta);
+                    cuerpo.querySelectorAll('[name$="-DELETE"]').forEach(
+                        function (tilde) {
+                            var renglon = tilde.closest('.js-renglon');
+                            if (!hace_falta) {
+                                tilde.checked = true;
+                            } else if (!renglon.classList.contains('d-none')) {
+                                tilde.checked = false;
+                            }
+                        });
+                    repintar();
+                };
+                control.addEventListener('change', sincronizar);
+                sincronizar();
+            }
+        }
+
+        repintar();
+    });
+}
+
+activarRenglones(document);
+
 // ---- Ficha de sólo lectura ----------------------------------------------
 document.querySelectorAll('.boton-ver').forEach(function (boton) {
     boton.addEventListener('click', function () {
@@ -423,7 +511,12 @@ document.querySelectorAll('.boton-editar').forEach(function (boton) {
         modal.show();
         fetch(destino + '?formulario=1', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
             .then(function (r) { return r.text(); })
-            .then(function (html) { cuerpo.innerHTML = html; })
+            .then(function (html) {
+                cuerpo.innerHTML = html;
+                // El fragmento llega después de que corrió el script: sus
+                // renglones hay que engancharlos a mano.
+                activarRenglones(cuerpo);
+            })
             .catch(function () {
                 cuerpo.innerHTML = '<div class="alert alert-danger mb-0">' +
                     'No se pudo cargar el formulario. Recargá la página.</div>';

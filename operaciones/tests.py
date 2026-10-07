@@ -32,10 +32,10 @@ class BaseActividad(BaseMaestros):
                 nuevo=None, cuando=None, sesion=None):
         """Escribe un asiento de prueba.
 
-        La fecha va en el INSERT y no con un UPDATE posterior: el trigger
-        `trg_libro_inmutable` rechaza cualquier UPDATE sobre este libro, y
-        hace bien. Que el helper del test tenga que respetarlo es otra
-        prueba de que la regla está puesta donde corresponde.
+        La fecha va en el INSERT y no con un UPDATE posterior: el mixin
+        `LibroInmutable` rechaza cualquier UPDATE sobre este libro, y hace
+        bien. Que el helper del test tenga que respetarlo es otra prueba
+        de que la regla está puesta donde corresponde.
         """
         datos = {
             'operacion_realizada': operacion,
@@ -344,7 +344,7 @@ class PantallaActividadTest(BaseActividad):
 #  PASAJE A HISTÓRICO
 # ===========================================================================
 class PasajeAHistoricoTest(BaseActividad):
-    """`manage.py pasar_a_historico`, que reemplaza a sp_pasaje_historico.
+    """`manage.py pasar_a_historico`, el proceso de archivado.
 
     Es la ÚNICA baja física del sistema (RN-8.1.1), así que lo que más
     importa probar no es que archive: es que **no borre de más** y que la

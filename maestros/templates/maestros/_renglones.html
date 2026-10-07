@@ -1,0 +1,101 @@
+{% comment %}
+Renglones hijos que se editan DENTRO del modal de la fila padre.
+
+Hoy lo usa la receta de un beneficio en especie (los productos que se le
+entregan al cliente), pero no sabe nada de beneficios: dibuja el formset
+que le pase ``cfg.formset`` y nada más.
+
+Cómo funciona el alta y la baja de renglones, sin depender de que se haya
+cargado ningún script:
+
+  * el formset trae ``extra`` renglón(es) en blanco y un molde escondido
+    (``__prefix__``) que el JS clona para "Agregar";
+  * "Quitar" NO borra el nodo: tilda el ``DELETE`` que el formset ya trae
+    y esconde la fila. Así el POST sigue cuadrando con TOTAL_FORMS y
+    Django borra el renglón que corresponde;
+  * si el JS no corre, los renglones en blanco se ven igual y se pueden
+    cargar a mano: el formulario sigue siendo usable.
+
+El bloque se muestra y se esconde solo según el campo que declare
+``cfg.formset_depende_de`` (en los beneficios, el modo de entrega).
+{% endcomment %}
+
+<div class="mt-4 pt-3 border-top js-renglones"
+     data-prefijo="{{ formset.prefix }}"
+     {% if cfg.formset_depende_de %}
+     data-depende-de="{{ cfg.formset_depende_de }}"
+     data-visible-si="{{ cfg.formset_visible_si }}"
+     {% endif %}>
+
+    {{ formset.management_form }}
+
+    <h6 class="fw-semibold mb-1">
+        <i class="bi bi-list-ul me-1"></i>{{ cfg.formset_titulo }}
+    </h6>
+
+    {% if formset.non_form_errors %}
+    <div class="alert alert-danger py-2">
+        {% for error in formset.non_form_errors %}<div>{{ error }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="js-renglones-cuerpo">
+        {% for renglon in formset %}
+        <div class="row g-2 align-items-end mb-2 js-renglon">
+            {% for oculto in renglon.hidden_fields %}{{ oculto }}{% endfor %}
+
+            {% for campo in renglon.visible_fields %}
+            <div class="col">
+                <label class="form-label small text-muted mb-1"
+                       for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                {{ campo }}
+                {% for error in campo.errors %}
+                <div class="invalid-feedback d-block small">{{ error }}</div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+
+            <div class="col-auto">
+                {# El DELETE del formset: lo tilda el botón, no se muestra. #}
+                <div class="d-none">{{ renglon.DELETE }}</div>
+                <button type="button"
+                        class="btn btn-outline-danger btn-sm js-quitar-renglon"
+                        title="Quitar este renglón">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <p class="text-muted small mb-2 js-renglones-vacio d-none">
+        {{ cfg.formset_vacio }}
+    </p>
+
+    <button type="button" class="btn btn-outline-primary btn-sm js-agregar-renglon">
+        <i class="bi bi-plus-lg me-1"></i>{{ cfg.formset_agregar }}
+    </button>
+
+    {# Molde para los renglones nuevos. Va en un <template> para que el
+       navegador no mande sus campos en el POST. #}
+    <template class="js-molde-renglon">
+        <div class="row g-2 align-items-end mb-2 js-renglon">
+            {% for oculto in formset.empty_form.hidden_fields %}{{ oculto }}{% endfor %}
+            {% for campo in formset.empty_form.visible_fields %}
+            <div class="col">
+                <label class="form-label small text-muted mb-1"
+                       for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                {{ campo }}
+            </div>
+            {% endfor %}
+            <div class="col-auto">
+                <div class="d-none">{{ formset.empty_form.DELETE }}</div>
+                <button type="button"
+                        class="btn btn-outline-danger btn-sm js-quitar-renglon"
+                        title="Quitar este renglón">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    </template>
+</div>

@@ -1,7 +1,7 @@
 """Caja: apertura, movimientos de dinero, arqueo y cierre.
 
-Reemplaza a ``sp_abrir_caja``, ``sp_declarar_arqueo``, ``sp_cerrar_caja`` y a
-los triggers T06 (``fn_movimiento_caja_valida``) y T07 (``fn_caja_valida``).
+Los tres procesos del turno —abrir, declarar el arqueo y cerrar— más los
+controles del asiento de caja (T06) y del turno (T07), todo en Python.
 
 Dos ideas ordenan todo el módulo:
 
@@ -15,9 +15,8 @@ contado sin ver lo esperado— y esa declaración no se puede repetir. Si se
 pudiera, dejaría de ser un control.
 
 Todo lo que escribe corre dentro de ``transaction.atomic()`` y toma los
-bloqueos con ``select_for_update()``, igual que hacía el ``FOR UPDATE`` del
-PL/pgSQL: sin eso, dos cajeros que cobran al mismo tiempo pueden leer el
-mismo saldo y sacar plata de más.
+bloqueos con ``select_for_update()``: sin eso, dos cajeros que cobran al
+mismo tiempo pueden leer el mismo saldo y sacar plata de más.
 """
 from decimal import Decimal
 
@@ -38,7 +37,7 @@ CERO = Decimal('0.00')
 #  CONSULTAS
 # ===========================================================================
 def es_efectivo(medio_pago):
-    """True si el medio de pago mueve dinero del cajón (``fn_es_efectivo``).
+    """True si el medio de pago mueve dinero del cajón.
 
     El efectivo es el único medio cuyo cobro entra físicamente a la caja;
     una tarjeta acredita en la cuenta y no afecta el arqueo.
@@ -50,7 +49,7 @@ def es_efectivo(medio_pago):
 
 
 def saldo(turno):
-    """El efectivo que hay en el cajón (``fn_saldo_caja``).
+    """El efectivo que hay en el cajón.
 
     Es la suma del libro, no una columna. Un asiento de salida se guarda
     con monto negativo, así que sumar alcanza.
@@ -72,7 +71,7 @@ def turno_abierto_de(usuario):
 @transaction.atomic
 def registrar_movimiento(turno, usuario, tipo, monto, concepto,
                          venta=None, egreso=None):
-    """Escribe un asiento, con los tres controles de ``fn_movimiento_caja_valida``.
+    """Escribe un asiento, con los tres controles del libro de caja (T06).
 
     ``monto`` va con signo: positivo si entra plata, negativo si sale.
 
@@ -109,7 +108,7 @@ def registrar_movimiento(turno, usuario, tipo, monto, concepto,
 # ===========================================================================
 @transaction.atomic
 def abrir(usuario, caja_registradora, monto_inicial):
-    """Abre el turno y asienta el fondo de cambio (``sp_abrir_caja``).
+    """Abre el turno y asienta el fondo de cambio.
 
     Tres reglas, y las tres existen por el mismo motivo: que el arqueo del
     final del día tenga con qué compararse.
@@ -164,7 +163,7 @@ def _exigir_turno_modificable(turno):
 
 @transaction.atomic
 def declarar_arqueo(turno, monto_contado):
-    """Registra el efectivo contado, UNA sola vez (``sp_declarar_arqueo``).
+    """Registra el efectivo contado, UNA sola vez.
 
     Es un arqueo **ciego**: quien cuenta no ve lo que el sistema esperaba.
     Por eso la declaración es irreversible — si se pudiera corregir después
@@ -185,7 +184,7 @@ def declarar_arqueo(turno, monto_contado):
 
 @transaction.atomic
 def cerrar(turno, usuario, observacion=None):
-    """Cierra el turno y deja escrita la diferencia (``sp_cerrar_caja``).
+    """Cierra el turno y deja escrita la diferencia.
 
     La diferencia es *contado − esperado*. Si no da cero hay que explicar
     por qué: un faltante sin justificación es exactamente lo que el arqueo
