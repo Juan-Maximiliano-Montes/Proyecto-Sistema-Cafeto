@@ -1,0 +1,53 @@
+{% comment %}
+Select2: combo con búsqueda, que trae sus opciones por AJAX.
+
+Se incluye sólo en las pantallas que tienen un combo de catálogo grande.
+Hoy es la de datos maestros, por el selector de productos de la receta de
+un beneficio en especie.
+
+Por qué Select2 y no un <select> común: el catálogo de productos puede
+tener miles de filas. Dibujarlas todas como <option> en el HTML inicial
+es lo que trababa la pantalla de Beneficios (8,4 s y 705 KB con 5.000
+productos). Select2 muestra el catálogo COMPLETO —se busca y se scrollea
+dentro del desplegable— pero lo trae de a páginas, a medida que hace
+falta.
+
+Depende de jQuery, que carga base.html.
+{% endcomment %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% comment %}
+El i18n/es.js no se incluye: los textos van en la opción `language` de
+lista.html, que además dice "Buscá" y no "Busca" (voseo).
+{% endcomment %}
+<style>
+    /* Select2 viene con tema claro; esto lo acomoda al tema oscuro de
+       Cafeto y hace que no desentone con los .form-select de Bootstrap. */
+    .select2-container--default .select2-selection--single {
+        background-color: #1a1a1a;
+        border: 1px solid #2b2b2b;
+        height: calc(1.5em + 0.75rem + 2px);
+        padding: 0.1rem 0.25rem;
+    }
+    .select2-container--default .select2-selection--single
+        .select2-selection__rendered { color: #ececec; }
+    .select2-container--default .select2-selection--single
+        .select2-selection__placeholder { color: #9a9a9a; }
+    .select2-dropdown {
+        background-color: #1a1a1a;
+        border: 1px solid #2b2b2b;
+        color: #ececec;
+    }
+    .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        background-color: #F6C138;
+        color: #111111;
+    }
+    .select2-search--dropdown .select2-search__field {
+        background-color: #111111;
+        border: 1px solid #2b2b2b;
+        color: #ececec;
+    }
+    /* Dentro de un modal de Bootstrap el desplegable queda por debajo si
+       no se lo sube: el modal crea su propio contexto de apilado. */
+    .select2-container { z-index: 1100; }
+</style>

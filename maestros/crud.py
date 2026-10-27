@@ -12,8 +12,9 @@ castellano, qué columnas muestra y por qué campos se busca y se filtra.
 Lo que esta máquina garantiza para todas, sin excepción:
 
   V-G7   los combos y los ids recibidos se controlan contra lo vigente
-  V-G8   el duplicado se busca por clave normalizada; si estaba dado de
-         baja, se ofrece reactivarlo en vez de crear una fila nueva
+  V-G8   el duplicado lo rechaza el ``clean()`` de cada modelo, con
+         ``exigir_nombre_unico()``, y el aviso sale EN EL CAMPO; si el
+         que estaba se había dado de baja, el mensaje manda a reactivarlo
   V-G10  no se da de baja algo con dependientes vigentes, ni se reactiva
          algo cuyos padres están de baja; el mensaje dice cuántos y cuáles
   V-G11  bloqueo optimista por ``fecha_modificacion``
@@ -33,8 +34,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from cafeto.motivos import redactar
-from cafeto.restricciones import ClaveNormalizada
-from cafeto.validaciones import clave_normalizada
 from operaciones.servicios import instantanea, registrar_auditoria
 
 
@@ -184,57 +183,6 @@ def _queryset(configuracion):
     if configuracion.orden:
         consulta = consulta.order_by(*configuracion.orden)
     return consulta
-
-
-def buscar_duplicado(configuracion, instancia):
-    """Devuelve la fila que ya ocupa esa identidad, o None (V-G8).
-
-    Compara por clave normalizada con la MISMA función que la base
-    (``f_clave_normalizada``), así que lo que encuentra acá es exactamente
-    lo que rechazaría el índice único. La diferencia es el mensaje: acá se
-    puede decir "ya existe" y, si está dado de baja, ofrecer reactivarlo en
-    vez de crear otra fila (D-10).
-
-    Trabaja sobre la INSTANCIA ya validada, no sobre el POST crudo: así los
-    valores vienen con su tipo (un contenido es un Decimal, no el texto
-    "1,5") y la comparación es la misma que hará PostgreSQL.
-    """
-    valor = getattr(instancia, configuracion.campo_nombre, None)
-    if not valor:
-        return None
-
-    consulta = configuracion.modelo.objects.annotate(
-        _clave=ClaveNormalizada(configuracion.campo_nombre)
-    ).filter(_clave=clave_normalizada(valor))
-
-    if instancia.pk:
-        consulta = consulta.exclude(pk=instancia.pk)
-
-    # El resto de la identidad: la provincia de la localidad, la marca y la
-    # presentación del producto.
-    for campo in configuracion.ambito_unico:
-        valor_campo = getattr(instancia, campo, None)
-        if valor_campo is None:
-            return None
-        consulta = consulta.filter(**{campo: valor_campo})
-
-    return consulta.first()
-
-
-def _avisar_duplicado(request, configuracion, duplicado):
-    """Arma el aviso de duplicado, con botón a reactivar si corresponde."""
-    nombre = getattr(duplicado, configuracion.campo_nombre)
-    if configuracion.tiene_baja and getattr(duplicado, 'borrado_logico', False):
-        messages.warning(request, (
-            f'Ya existe {configuracion.articulo} {configuracion.singular} '
-            f'"{nombre}", pero está {configuracion.participio("dad")} de baja. '
-            f'No se crea {configuracion.articulo} nuev{configuracion.terminacion}: '
-            'buscalo con el filtro "Dados de baja" y reactivalo.'))
-    else:
-        messages.error(
-            request,
-            f'Ya existe {configuracion.articulo} {configuracion.singular} '
-            f'"{nombre}".')
 
 
 class _Rechazo(Exception):
@@ -475,17 +423,14 @@ def crear(request, configuracion):
     if renglones is not None:
         valido = renglones.is_valid() and valido
 
-    # El duplicado se mira ANTES de decidir qué mostrar, esté el formulario
-    # válido o no: cuando lo que falla es justamente el índice único, Django
-    # ya marcó el formulario como inválido con su mensaje genérico, y el que
-    # sirve es el nuestro. ``formulario.instance`` tiene los valores
-    # cargados —Django la arma antes de validar—, así que se puede consultar
-    # igual (ver buscar_duplicado).
-    duplicado = buscar_duplicado(configuracion, formulario.instance)
-    if duplicado is not None:
-        _avisar_duplicado(request, configuracion, duplicado)
-        return redirect(configuracion.url('lista'))
-
+    # El duplicado NO se intercepta acá. Lo detecta el ``clean()`` del
+    # modelo con ``exigir_nombre_unico()``, que levanta el error atado al
+    # CAMPO: Django lo pasa al formulario y el aviso sale al lado del
+    # control, con lo que el usuario escribió todavía cargado.
+    #
+    # Antes se miraba acá y se respondía con un redirect más un aviso
+    # suelto: el mensaje aparecía arriba, desenganchado del campo, y el
+    # formulario volvía en blanco. Había que tipear todo de nuevo.
     if valido:
         instancia = formulario.save(commit=False)
 
@@ -565,11 +510,8 @@ def editar(request, configuracion, pk):
     if renglones is not None:
         valido = renglones.is_valid() and valido
 
-    duplicado = buscar_duplicado(configuracion, formulario.instance)
-    if duplicado is not None:
-        _avisar_duplicado(request, configuracion, duplicado)
-        return redirect(configuracion.url('lista'))
-
+    # El duplicado lo marca el ``clean()`` del modelo, en el campo
+    # (ver el comentario en ``crear``).
     if valido:
         modificada = formulario.save(commit=False)
 

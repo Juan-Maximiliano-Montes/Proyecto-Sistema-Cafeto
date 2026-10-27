@@ -31,7 +31,7 @@ from maestros.forms import RecetaFormSet
 from maestros.models import (Beneficio, BeneficioProducto,
                              CategoriaFidelizacion, Marca, ModoEntrega,
                              Producto, Rubro, TipoBeneficio)
-from maestros.views import BENEFICIOS, TOPE_DE_BUSQUEDA, buscar_productos
+from maestros.views import BENEFICIOS, POR_PAGINA, buscar_productos
 from proveedores.models import Proveedor
 from usuarios.models import Perfil, Permiso, PerfilPermiso, Usuario
 
@@ -87,12 +87,13 @@ class PesoDeLaPantallaTest(BaseReceta):
             'la pantalla crece con el catálogo: alguien volvió a dibujar '
             'los productos dentro del combo')
 
-    def test_el_combo_nace_sin_opciones(self):
+    def test_el_combo_nace_con_el_placeholder_y_su_enganche(self):
         self.cargar_productos(50)
         html = armar_formset(BENEFICIOS).as_p()
         # Sólo la opción vacía del placeholder, ninguna de producto.
         self.assertEqual(html.count('<option'), 1)
-        self.assertIn('data-busca-en', html)
+        self.assertIn('data-catalogo', html)
+        self.assertIn('js-catalogo', html)
 
     def test_en_la_edicion_el_combo_trae_lo_ya_elegido(self):
         """Si no, editar una receta perdería el producto cargado."""
@@ -115,27 +116,62 @@ class PesoDeLaPantallaTest(BaseReceta):
 
 class BuscadorDeProductosTest(BaseReceta):
 
-    def _buscar(self, q='', usuario=True):
-        pedido = RequestFactory().get('/maestros/api/productos/', {'q': q})
+    def _buscar(self, q='', pagina=1, usuario=True):
+        pedido = RequestFactory().get('/maestros/api/productos/',
+                                      {'q': q, 'page': pagina})
         if usuario:
             pedido.usuario_actual = self.usuario
         respuesta = buscar_productos(pedido)
         cuerpo = json.loads(respuesta.content) if respuesta.status_code == 200 else {}
         return respuesta.status_code, cuerpo
 
-    def test_devuelve_como_mucho_el_tope(self):
-        self.cargar_productos(TOPE_DE_BUSQUEDA * 3)
+    def test_habla_el_protocolo_de_select2(self):
+        """Select2 espera {results:[{id,text}], pagination:{more}}."""
+        self.cargar_productos(3)
         codigo, datos = self._buscar()
         self.assertEqual(codigo, 200)
-        self.assertEqual(len(datos['resultados']), TOPE_DE_BUSQUEDA)
+        self.assertEqual(set(datos), {'results', 'pagination'})
+        self.assertEqual(set(datos['results'][0]), {'id', 'text'})
+        self.assertIn('more', datos['pagination'])
+
+    def test_cada_pagina_trae_como_mucho_una_tanda(self):
+        self.cargar_productos(POR_PAGINA * 2)
+        codigo, datos = self._buscar()
+        self.assertEqual(codigo, 200)
+        self.assertEqual(len(datos['results']), POR_PAGINA)
+        self.assertTrue(datos['pagination']['more'])
+
+    def test_el_catalogo_COMPLETO_se_puede_recorrer(self):
+        """Lo que QA pidió: no se recorta el catálogo, se pagina.
+
+        Se piden páginas hasta que ``more`` dice que no hay más, y se
+        comprueba que se vieron TODOS los productos, sin repetir ninguno.
+        """
+        self.cargar_productos(POR_PAGINA * 3 + 7)
+        total = Producto.objects.filter(borrado_logico=False).count()
+
+        vistos, pagina = [], 1
+        while True:
+            _codigo, datos = self._buscar(pagina=pagina)
+            vistos += [r['id'] for r in datos['results']]
+            if not datos['pagination']['more']:
+                break
+            pagina += 1
+            self.assertLess(pagina, 50, 'la paginación no termina')
+
+        self.assertEqual(len(vistos), total)
+        self.assertEqual(len(set(vistos)), total, 'hay productos repetidos')
 
     def test_filtra_por_nombre(self):
         self.cargar_productos(50)
-        codigo, datos = self._buscar('00042')
-        self.assertEqual(
-            [r['texto'] for r in datos['resultados']].count('') , 0)
-        self.assertTrue(
-            all('00042' in r['texto'] for r in datos['resultados']))
+        _codigo, datos = self._buscar('00042')
+        self.assertTrue(datos['results'])
+        self.assertTrue(all('00042' in r['text'] for r in datos['results']))
+
+    def test_filtra_por_marca(self):
+        self.cargar_productos(3)
+        _codigo, datos = self._buscar('La Morenita RL')
+        self.assertEqual(len(datos['results']), 3)
 
     def test_no_ofrece_productos_dados_de_baja(self):
         """V-G7: una receta no se arma con algo que ya no está vigente."""
@@ -145,7 +181,7 @@ class BuscadorDeProductosTest(BaseReceta):
         muerto.save(update_fields=['borrado_logico'])
 
         _codigo, datos = self._buscar()
-        self.assertNotIn(muerto.pk, [r['id'] for r in datos['resultados']])
+        self.assertNotIn(muerto.pk, [r['id'] for r in datos['results']])
 
     def test_sin_sesion_no_contesta(self):
         self.assertEqual(self._buscar(usuario=False)[0], 401)

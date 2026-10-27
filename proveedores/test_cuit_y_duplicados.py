@@ -123,14 +123,17 @@ class RazonSocialUnicaTest(TestCase):
 
     def test_las_variantes_del_mismo_nombre_se_rechazan(self):
         for nombre in ('arcor sa', 'ARCOR SA', 'Arcor  SA', '  Arcor SA  ',
-                       'Arcór SA'):
+                       'Arcór SA', 'Arcor-SA', 'Arcor/SA'):
             with self.subTest(nombre=nombre):
                 form = ProveedorForm(datos(nombre_proveedor=nombre,
                                            cuit_proveedor=CUIT_B))
                 self.assertFalse(form.is_valid())
                 self.assertIn('nombre_proveedor', form.errors)
-                self.assertIn('Ya existe un registro con este nombre',
-                              form.errors['nombre_proveedor'][0])
+                # Lo corta el __iexact del formulario o la clave
+                # normalizada del modelo, según la variante.
+                self.assertRegex(
+                    form.errors['nombre_proveedor'][0],
+                    'ya se encuentra registrado|Ya existe un proveedor')
 
     def test_un_nombre_distinto_entra(self):
         """El candado no puede trabar un alta legítima."""
@@ -157,7 +160,11 @@ class RazonSocialUnicaTest(TestCase):
         form = ProveedorForm(datos(nombre_proveedor='arcor sa',
                                    cuit_proveedor=CUIT_B))
         self.assertFalse(form.is_valid())
+        # El __iexact del formulario deja pasar los dados de baja justo
+        # para que llegue este mensaje, que es el único que dice qué hacer.
         self.assertIn('reactivalo', form.errors['nombre_proveedor'][0])
+        self.assertIn('Ya existe un registro con este nombre',
+                      form.errors['nombre_proveedor'][0])
 
     def test_la_base_tambien_lo_impide(self):
         """El índice existe en PostgreSQL, no sólo la regla en Python.

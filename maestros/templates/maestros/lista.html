@@ -297,6 +297,14 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
 
 
 {% block scripts %}
+{% comment %}
+Select2 sólo donde hay un combo de catálogo grande: hoy la receta de los
+beneficios. Las otras siete pantallas de datos maestros no lo necesitan y
+no tienen por qué bajarlo.
+{% endcomment %}
+{% if cfg.formset %}{% include 'parciales/_select2.html' %}{% endif %}
+{% include 'parciales/_avisos.html' %}
+
 <script>
 // ---- Confirmación antes de una acción que cambia el estado ---------------
 document.querySelectorAll('.form-confirmar').forEach(function (form) {
@@ -439,8 +447,8 @@ function activarRenglones(raiz) {
             envase.innerHTML = html;
             cuerpo.appendChild(envase.firstElementChild);
             total.value = indice + 1;
-            // El renglón recién clonado trae su buscador sin enganchar.
-            enchufarBuscadorDeProductos(cuerpo);
+            // El renglón recién clonado trae su combo sin enganchar.
+            enchufarCatalogo(cuerpo);
             repintar();
         });
 
@@ -457,6 +465,11 @@ function activarRenglones(raiz) {
                 var sincronizar = function () {
                     var hace_falta = control.value === bloque.dataset.visibleSi;
                     bloque.classList.toggle('d-none', !hace_falta);
+                    if (hace_falta) {
+                        // Recién ahora los combos son visibles y se
+                        // pueden medir.
+                        enchufarCatalogo(bloque);
+                    }
                     cuerpo.querySelectorAll('[name$="-DELETE"]').forEach(
                         function (tilde) {
                             var renglon = tilde.closest('.js-renglon');
@@ -479,102 +492,91 @@ function activarRenglones(raiz) {
 
 activarRenglones(document);
 
-// ---- Buscador del combo de productos ------------------------------------
-// El combo de la receta llega vacío: con el catálogo entero adentro la
-// pantalla pesaba 705 KB y tardaba 8,4 s en armarse (5.000 productos, dos
-// veces por renglón contando el molde del formset). Acá se piden de a 20
-// contra `maestros:buscar_productos`, filtrando por lo que se tipea.
+// ---- Combo de productos con búsqueda (Select2 + AJAX) -------------------
+// El desplegable muestra el catálogo COMPLETO: se escribe para filtrar y
+// se scrollea para seguir viendo —al llegar al final pide la página
+// siguiente—. Lo que no pasa es que las 5.000 filas lleguen dentro del
+// HTML: eso pesaba 705 KB y tardaba 8,4 s en armarse, y era el
+// congelamiento de la pantalla.
 //
-// El `<select>` sigue siendo un `<select>` y el campo sigue siendo un
-// ModelChoiceField: el id que se mande se valida igual contra el queryset
-// completo en el servidor. Esto cambia qué se DIBUJA, no qué se acepta.
-var ESPERA_ANTES_DE_BUSCAR = 250;   // ms desde la última tecla
+// El <select> sigue siendo un <select> y el campo sigue siendo un
+// ModelChoiceField: el id que se mande se valida contra el queryset
+// completo en el servidor. Esto cambia cómo se CARGAN las opciones, no
+// qué se acepta.
+function enchufarCatalogo(raiz) {
+    if (typeof jQuery === 'undefined' || !jQuery.fn.select2) { return; }
 
-function enchufarBuscadorDeProductos(raiz) {
-    raiz.querySelectorAll('.js-buscar-producto').forEach(function (buscador) {
-        if (buscador.dataset.activo === '1') { return; }
-        buscador.dataset.activo = '1';
+    jQuery(raiz).find('select.js-catalogo').each(function () {
+        var combo = jQuery(this);
+        // Tres casos en los que NO hay que inicializar:
+        //   * ya está inicializado;
+        //   * el nodo es el molde del formset, que viaja dentro de un
+        //     <template> y no está en el documento;
+        //   * el nodo está oculto (el bloque de la receta arranca
+        //     escondido hasta que el modo de entrega es ESPECIE, y el
+        //     modal arranca cerrado). Select2 calcula el ancho al
+        //     inicializarse: sobre algo invisible le da 0 y el combo
+        //     queda aplastado cuando después se muestra. Por eso se
+        //     reintenta cada vez que algo se vuelve visible.
+        if (combo.data('select2') || !this.isConnected) { return; }
+        if (this.offsetParent === null) { return; }
 
-        var combo = buscador.parentElement.querySelector('select[data-busca-en]');
-        if (!combo) { return; }
-
-        var reloj = null;
-
-        function pintar(resultados, tope) {
-            // Se conserva la opción elegida: si el usuario ya había
-            // seleccionado algo, una búsqueda nueva no se lo borra.
-            var elegido = combo.value;
-            var textoElegido = combo.selectedIndex >= 0
-                ? combo.options[combo.selectedIndex].text : '';
-
-            combo.innerHTML = '';
-            var vacia = document.createElement('option');
-            vacia.value = '';
-            vacia.textContent = resultados.length
-                ? '— Elegí uno de los ' + resultados.length + ' —'
-                : '— Sin resultados —';
-            combo.appendChild(vacia);
-
-            var yaEsta = false;
-            resultados.forEach(function (fila) {
-                var opcion = document.createElement('option');
-                opcion.value = fila.id;
-                opcion.textContent = fila.texto;
-                if (String(fila.id) === elegido) { yaEsta = true; }
-                combo.appendChild(opcion);
-            });
-
-            if (elegido && !yaEsta) {
-                var conservada = document.createElement('option');
-                conservada.value = elegido;
-                conservada.textContent = textoElegido;
-                combo.appendChild(conservada);
-            }
-            combo.value = elegido;
-
-            if (resultados.length >= tope) {
-                combo.lastElementChild.insertAdjacentElement(
-                    'afterend', document.createElement('option'));
-                var aviso = combo.lastElementChild;
-                aviso.disabled = true;
-                aviso.textContent = 'Hay más: afiná la búsqueda';
-            }
-        }
-
-        function buscar() {
-            var destino = combo.dataset.buscaEn +
-                          '?q=' + encodeURIComponent(buscador.value.trim());
-            fetch(destino, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-                .then(function (r) {
-                    if (!r.ok) { throw new Error('HTTP ' + r.status); }
-                    return r.json();
-                })
-                .then(function (datos) { pintar(datos.resultados, datos.tope); })
-                .catch(function () {
-                    combo.innerHTML =
-                        '<option value="">— No se pudo buscar; reintentá —</option>';
-                });
-        }
-
-        buscador.addEventListener('input', function () {
-            // Se espera a que deje de tipear: una consulta por tecla
-            // sobre 5.000 productos es justo lo que estábamos evitando.
-            clearTimeout(reloj);
-            reloj = setTimeout(buscar, ESPERA_ANTES_DE_BUSCAR);
-        });
-
-        // Enter en el buscador NO envía el formulario: busca.
-        buscador.addEventListener('keydown', function (evento) {
-            if (evento.key === 'Enter') {
-                evento.preventDefault();
-                clearTimeout(reloj);
-                buscar();
+        combo.select2({
+            theme: 'default',
+            width: '100%',
+            placeholder: combo.find('option[value=""]').text() || 'Buscá un producto',
+            allowClear: true,
+            // El desplegable se cuelga del modal y no del <body>: si no,
+            // queda detrás del backdrop de Bootstrap.
+            dropdownParent: combo.closest('.modal-body, .modal-content, body').first(),
+            minimumInputLength: 0,
+            ajax: {
+                url: combo.data('catalogo'),
+                dataType: 'json',
+                delay: 250,          // no una consulta por tecla
+                cache: true,
+                data: function (parametros) {
+                    return {q: parametros.term || '',
+                            page: parametros.page || 1};
+                },
+                // La respuesta ya viene con la forma que espera Select2
+                // ({results, pagination.more}), así que no hay que
+                // traducirla.
+                transport: function (opciones, exito, fallo) {
+                    return jQuery.ajax(opciones)
+                        .done(exito)
+                        .fail(function (xhr) {
+                            if (xhr.status === 403 || xhr.status === 401) {
+                                combo.select2('close');
+                            }
+                            fallo(xhr);
+                        });
+                }
+            },
+            // Mensajes en castellano para los dos casos que importan.
+            language: {
+                inputTooShort: function () { return 'Escribí para buscar…'; },
+                noResults: function () { return 'Sin resultados'; },
+                searching: function () { return 'Buscando…'; },
+                errorLoading: function () {
+                    return 'No se pudo cargar el catálogo';
+                },
+                loadingMore: function () { return 'Cargando más…'; },
+                removeAllItems: function () { return 'Quitar la selección'; }
             }
         });
     });
 }
 
-enchufarBuscadorDeProductos(document);
+enchufarCatalogo(document);
+
+// Al abrir un modal, Select2 necesita medir de nuevo: dentro de un modal
+// oculto el ancho calculado es 0 y el control sale aplastado.
+document.querySelectorAll('.modal').forEach(function (modal) {
+    modal.addEventListener('shown.bs.modal', function () {
+        enchufarCatalogo(modal);
+    });
+});
 
 // ---- Ficha de sólo lectura ----------------------------------------------
 document.querySelectorAll('.boton-ver').forEach(function (boton) {
@@ -615,7 +617,7 @@ document.querySelectorAll('.boton-editar').forEach(function (boton) {
                 // El fragmento llega después de que corrió el script: sus
                 // renglones y buscadores hay que engancharlos a mano.
                 activarRenglones(cuerpo);
-                enchufarBuscadorDeProductos(cuerpo);
+                enchufarCatalogo(cuerpo);
             })
             .catch(function () {
                 cuerpo.innerHTML = '<div class="alert alert-danger mb-0">' +

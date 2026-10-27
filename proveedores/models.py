@@ -23,6 +23,7 @@ from cafeto.reglas import (ConSelloDeModificacion,
                            ManagerSinBajaFisica,
                            SinBajaFisica)
 from cafeto.validaciones import (
+    exigir_nombre_unico,
     exigir_que_no_este_dado_de_baja,
     NO_NEGATIVO,
     VALIDADOR_CUIT,
@@ -73,6 +74,8 @@ class Provincia(models.Model):
         super().clean()
         self.nombre_provincia = texto_de_catalogo(
             self.nombre_provincia, 3, 60, 'El nombre de la provincia')
+        exigir_nombre_unico(self, 'nombre_provincia',
+                            etiqueta='una provincia')
 
 
 class Localidad(models.Model):
@@ -110,6 +113,11 @@ class Localidad(models.Model):
         self.nombre_localidad = texto_de_catalogo(
             self.nombre_localidad, 2, 80, 'El nombre de la localidad')
         self.codigo_postal = validar_codigo_postal(self.codigo_postal)
+        # Una localidad es única DENTRO de su provincia: "Rosario" existe
+        # en Santa Fe y podría existir en otra.
+        exigir_nombre_unico(self, 'nombre_localidad',
+                            ambito=('id_provincia',),
+                            etiqueta='una localidad en esa provincia')
 
 
 # ===========================================================================
@@ -207,41 +215,6 @@ class Proveedor(ConSelloDeModificacion,
     def __str__(self):
         return self.nombre_proveedor
 
-    def _exigir_nombre_sin_duplicado(self):
-        """Razón social repetida: se corta acá y se explica (V-G8).
-
-        El índice único ya lo impide, pero un IntegrityError de PostgreSQL
-        le llega al usuario como un error 500 que no dice nada. Acá se
-        busca con la MISMA función que usa el índice
-        (``f_clave_normalizada``), así lo que se rechaza en Python es
-        exactamente lo que rechazaría la base, y se puede decir en
-        castellano qué fila está ocupando el nombre.
-
-        Se compara sobre ``self.nombre_proveedor``, que en este punto ya
-        pasó por ``texto_de_catalogo()``: viene sin espacios de sobra en
-        las puntas ni espacios internos repetidos.
-        """
-        if not self.nombre_proveedor:
-            return
-        candidatos = type(self).objects.annotate(
-            _clave=ClaveNormalizada('nombre_proveedor')
-        ).filter(_clave=clave_normalizada(self.nombre_proveedor))
-        if self.pk is not None:
-            candidatos = candidatos.exclude(pk=self.pk)
-        duplicado = candidatos.first()
-        if duplicado is None:
-            return
-        if duplicado.borrado_logico:
-            raise ValidationError({'nombre_proveedor': (
-                f'Ya existe un registro con este nombre («{duplicado}», CUIT '
-                f'{duplicado.cuit_proveedor}), pero está dado de baja. '
-                'Buscalo con el filtro "Dados de baja" y reactivalo en vez '
-                'de crear uno nuevo.')})
-        raise ValidationError({'nombre_proveedor': (
-            'Ya existe un registro con este nombre (CUIT '
-            f'{duplicado.cuit_proveedor}). No se distinguen mayúsculas, '
-            'acentos ni espacios de más.')})
-
     # ------------------------------------------------------------------
     #  Limpieza y validación (capa 2 de 4.4.V)
     # ------------------------------------------------------------------
@@ -259,7 +232,11 @@ class Proveedor(ConSelloDeModificacion,
             type(self), self, {'cuit_proveedor': self.cuit_proveedor},
             etiqueta='El proveedor con CUIT %s' % self.cuit_proveedor)
 
-        self._exigir_nombre_sin_duplicado()
+        # La razón social, única sin distinguir mayúsculas, acentos ni
+        # puntuación. Va atada al campo para que el aviso salga al lado
+        # del control y el formulario vuelva con los datos cargados.
+        exigir_nombre_unico(self, 'nombre_proveedor',
+                            etiqueta='un proveedor')
 
         if self.email_proveedor:
             correo = self.email_proveedor.strip().lower()

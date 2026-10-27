@@ -86,6 +86,26 @@ class ProveedorForm(forms.ModelForm):
         self.fields['cuit_proveedor'].validators = []
         self.fields['cuit_proveedor'].max_length = None
 
+    def clean_nombre_proveedor(self):
+        """Razón social repetida sin distinguir mayúsculas, en el campo.
+
+        Los dados de baja se excluyen: para ésos el aviso útil es
+        "reactivalo" (D-10), y lo da el ``clean()`` del modelo.
+        """
+        nombre_limpio = (
+            self.cleaned_data.get('nombre_proveedor') or '').strip()
+        if not nombre_limpio:
+            return nombre_limpio
+
+        existe = Proveedor.objects.filter(
+            nombre_proveedor__iexact=nombre_limpio, borrado_logico=False
+        ).exclude(pk=self.instance.pk).exists()
+        if existe:
+            raise ValidationError(
+                'Este nombre ya se encuentra registrado '
+                '(ignorando mayúsculas/minúsculas).')
+        return nombre_limpio
+
     def clean_cuit_proveedor(self):
         """Acepta el CUIT como lo tipeen y lo deja en ``NN-NNNNNNNN-N``.
 

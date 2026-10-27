@@ -55,7 +55,11 @@ class IdentidadDelProductoTest(BaseMaestros):
 
         respuesta = self.crear('productos', self.datos())
         self.assertEqual(Producto.objects.count(), 1)
-        self.assertIn('Ya existe', ' '.join(self.mensajes(respuesta)))
+        # El aviso va EN EL CAMPO, no como cartel suelto: el modelo lo
+        # levanta atado a 'nombre_producto' y el formulario vuelve con los
+        # datos cargados.
+        errores = ' '.join(self.errores_de_campo(respuesta, 'nombre_producto'))
+        self.assertRegex(errores, 'ya se encuentra registrado|Ya existe')
 
     def test_tambien_se_rechaza_con_otra_mayuscula_o_espacios(self):
         self.crear('productos', self.datos())
@@ -105,7 +109,8 @@ class IdentidadDelProductoTest(BaseMaestros):
         respuesta = self.crear('marcas', {'nombre_marca': 'CABRALES'})
         self.assertEqual(Marca.objects.filter(
             nombre_marca__iexact='cabrales').count(), 1)
-        self.assertIn('Ya existe', ' '.join(self.mensajes(respuesta)))
+        errores = ' '.join(self.errores_de_campo(respuesta, 'nombre_marca'))
+        self.assertRegex(errores, 'ya se encuentra registrado|Ya existe')
 
     def test_no_se_da_de_baja_una_marca_con_productos_vigentes(self):
         self.crear('productos', self.datos())

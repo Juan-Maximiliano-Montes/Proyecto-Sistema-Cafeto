@@ -121,6 +121,18 @@ class BaseMaestros(TestCase):
     def mensajes(self, respuesta):
         return [str(m) for m in respuesta.context['messages']]
 
+    def errores_de_campo(self, respuesta, campo):
+        """Los errores que el formulario puso EN un campo.
+
+        El duplicado ya no llega como aviso suelto: lo levanta el
+        ``clean()`` del modelo atado al campo, así que Django lo dibuja al
+        lado del control y el formulario vuelve con lo que se tipeó. Eso
+        es lo que hay que comprobar, y no el texto del cartel de arriba.
+        """
+        formulario = (respuesta.context.get('formulario')
+                      or respuesta.context.get('formulario_editar'))
+        return formulario.errors.get(campo, [])
+
     def dar_stock(self, producto, cantidad, lote=None):
         """Carga stock por el camino real: un movimiento de ENTRADA.
 
@@ -406,8 +418,21 @@ class DuplicadosTest(BaseMaestros):
                                           'activo': 'on'})
         self.assertEqual(Rubro.objects.filter(
             nombre_rubro__in=['Cafetería', 'CAFETERÍA']).count(), 1)
-        self.assertIn('Ya existe el rubro "Cafetería".',
-                      self.mensajes(respuesta))
+
+        errores = self.errores_de_campo(respuesta, 'nombre_rubro')
+        self.assertEqual(len(errores), 1, 'el aviso sale repetido')
+        self.assertIn('Ya existe un rubro con este nombre', errores[0])
+        self.assertIn('Cafetería', errores[0])
+
+    def test_el_duplicado_no_le_borra_lo_que_escribio(self):
+        """Antes el redirect vaciaba el formulario y había que tipear todo
+        de nuevo. Ahora vuelve con los datos y el error al lado."""
+        respuesta = self.crear('rubros', {'nombre_rubro': 'CAFETERÍA',
+                                          'descripcion_rubro': 'Lo mío',
+                                          'activo': 'on'})
+        cuerpo = respuesta.content.decode()
+        self.assertIn('value="CAFETERÍA"', cuerpo)
+        self.assertIn('value="Lo mío"', cuerpo)
 
     def test_falla_el_mismo_nombre_sin_acento(self):
         self.crear('rubros', {'nombre_rubro': 'Cafeteria', 'activo': 'on'})
@@ -433,7 +458,8 @@ class DuplicadosTest(BaseMaestros):
                                           'activo': 'on'})
         self.assertEqual(Rubro.objects.filter(
             nombre_rubro__icontains='panader').count(), 1)
-        self.assertIn('reactivalo', ' '.join(self.mensajes(respuesta)))
+        self.assertIn('reactivalo',
+                      ' '.join(self.errores_de_campo(respuesta, 'nombre_rubro')))
         self.assertTrue(Rubro.objects.get(pk=rubro.pk).borrado_logico)
 
     def test_pasa_una_localidad_homonima_en_otra_provincia(self):

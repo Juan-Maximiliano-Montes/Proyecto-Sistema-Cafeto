@@ -19,7 +19,7 @@ traduce el error al campo correcto, para que el mensaje salga al lado de
 lo que el usuario escribió.
 """
 from django import forms
-from django.core.exceptions import ValidationError
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.urls import reverse_lazy
 
 from proveedores.models import Proveedor
@@ -143,12 +143,34 @@ class FormularioMaestro(forms.ModelForm):
         los campos que no están en el formulario. Acá no se excluye nada:
         las reglas del modelo valen para todos los caminos de entrada, y
         si una falla tiene que verse en pantalla.
+
+        Por eso ``clean()`` se corre de nuevo —y por eso hay que filtrar lo
+        repetido—. Los errores sobre campos que SÍ están en el formulario
+        ya los reportó Django en la pasada anterior; si se agregaran otra
+        vez, el usuario vería el mismo cartel dos veces debajo del mismo
+        control. Se agregan únicamente los mensajes nuevos.
         """
         super()._post_clean()
         try:
             self.instance.clean()
         except ValidationError as error:
-            self.add_error(None, error)
+            self._agregar_lo_que_falte(error)
+
+    def _agregar_lo_que_falte(self, error):
+        """Suma al formulario sólo los mensajes que no estén ya puestos."""
+        if hasattr(error, 'error_dict'):
+            por_campo = error.message_dict
+        else:
+            por_campo = {NON_FIELD_ERRORS: error.messages}
+
+        for campo, mensajes in por_campo.items():
+            # Un error sobre algo que no es un control del formulario va
+            # al bloque general: no hay dónde dibujarlo si no.
+            destino = campo if campo in self.fields else None
+            ya_estan = set(self._errors.get(destino or NON_FIELD_ERRORS, []))
+            nuevos = [m for m in mensajes if m not in ya_estan]
+            if nuevos:
+                self.add_error(destino, nuevos)
 
 
 # ===========================================================================
@@ -187,6 +209,31 @@ class MarcaForm(FormularioMaestro):
             'nombre_marca': 'Sólo la marca, sin el producto: "La Morenita", '
                             'no "Café La Morenita".',
         }
+
+    def clean_nombre_marca(self):
+        """Nombre repetido sin distinguir mayúsculas, acá y en pantalla.
+
+        Corre en el FORMULARIO, antes de tocar la base, y el error queda
+        atado al campo: Django lo dibuja al lado del control y el
+        formulario vuelve con lo que el usuario escribió.
+
+        Los dados de baja se excluyen a propósito: para ésos el aviso
+        útil no es "ya está registrado" sino "reactivalo" (D-10), y lo da
+        el ``clean()`` del modelo, que sí mira ``borrado_logico``. Si acá
+        se los tomara, el usuario quedaría trabado sin saber que la fila
+        existe y se puede recuperar.
+        """
+        nombre_limpio = (self.cleaned_data.get('nombre_marca') or '').strip()
+        if not nombre_limpio:
+            return nombre_limpio
+
+        existe = Marca.objects.filter(
+            nombre_marca__iexact=nombre_limpio, borrado_logico=False
+        ).exclude(pk=self.instance.pk).exists()
+        if existe:
+            raise forms.ValidationError(
+                'Este nombre ya se encuentra registrado (ignorando mayúsculas/minúsculas).')
+        return nombre_limpio
 
 
 # ===========================================================================
@@ -259,8 +306,34 @@ class ProductoForm(FormularioMaestro):
             self.fields['precio_costo'].help_text = (
                 'Costo inicial. Si no lo sabés todavía, dejalo en 0.')
 
+    def _exigir_nombre_no_registrado(self, datos):
+        """Nombre repetido sin distinguir mayúsculas, con el aviso en el campo.
+
+        Se compara DENTRO de la misma marca y presentación, que es como el
+        sistema identifica un producto (DD-55): "Café" de La Morenita y
+        "Café" de otra marca son dos artículos distintos, y 500 g y 1 kg
+        también. Comparar sólo por el nombre rechazaría altas legítimas.
+        """
+        nombre_limpio = (datos.get('nombre_producto') or '').strip()
+        marca = datos.get('id_marca')
+        contenido = datos.get('contenido')
+        unidad = datos.get('unidad_medida')
+        if not (nombre_limpio and marca and contenido and unidad):
+            return
+
+        existe = Producto.objects.filter(
+            nombre_producto__iexact=nombre_limpio, borrado_logico=False,
+            id_marca=marca, contenido=contenido, unidad_medida=unidad,
+        ).exclude(pk=self.instance.pk).exists()
+        if existe:
+            self.add_error('nombre_producto', forms.ValidationError(
+                'Este nombre ya se encuentra registrado '
+                '(ignorando mayúsculas/minúsculas) para esa marca y '
+                'presentación.'))
+
     def clean(self):
         datos = super().clean()
+        self._exigir_nombre_no_registrado(datos)
         venta = datos.get('precio_venta')
         costo = datos.get('precio_costo')
         if costo is None and self.instance and self.instance.pk:
@@ -421,8 +494,8 @@ class BeneficioForm(FormularioMaestro):
                 'demás, dalo de baja y creá uno nuevo.')
 
 
-class SelectorBuscado(forms.Select):
-    """``<select>`` que dibuja SÓLO la opción elegida; el resto se busca.
+class SelectorConBusqueda(forms.Select):
+    """Combo con búsqueda que trae su catálogo por AJAX (Select2).
 
     Por qué existe
     --------------
@@ -433,15 +506,28 @@ class SelectorBuscado(forms.Select):
     8,4 segundos de armado, con el navegador clavado mientras parsea el
     HTML. Medido, no estimado.
 
-    Acá el control nace vacío (o con la única opción que ya está elegida,
-    para que la edición muestre lo que tiene cargado) y las opciones las
-    trae el JS de ``lista.html`` desde ``maestros:buscar_productos``, de a
-    20 y filtrando por lo que se tipea.
+    Qué ve el usuario
+    -----------------
+    Un desplegable con buscador, que muestra el catálogo COMPLETO: se
+    escribe para filtrar y se scrollea para seguir viendo: al llegar al
+    final, Select2 pide la página siguiente a
+    ``maestros:buscar_productos``. No hay producto al que no se pueda
+    llegar; lo único que cambia es que las filas viajan a medida que se
+    piden, en vez de todas dentro del HTML inicial.
+
+    En el HTML sólo se dibuja la opción YA ELEGIDA —para que la edición
+    muestre lo que tiene cargado— más la vacía del placeholder. Las demás
+    las agrega Select2 al abrirse.
 
     Lo importante: esto cambia sólo lo que se DIBUJA. La validación sigue
     siendo la del ``ModelChoiceField``, que comprueba el id recibido
     contra su ``queryset`` completo (V-G7). Mandar un id que no está en la
     lista visible no sirve de nada: el campo lo rechaza igual.
+
+    Si el JS no corre, el control queda como un ``<select>`` con la opción
+    elegida: se puede ver y guardar lo que ya estaba cargado, aunque no
+    elegir uno nuevo. Es el modo degradado aceptado para una pantalla de
+    administración.
     """
 
     def __init__(self, *args, url_busqueda='', **kwargs):
@@ -485,7 +571,9 @@ class SelectorBuscado(forms.Select):
 
     def build_attrs(self, base_attrs, extra_attrs=None):
         attrs = super().build_attrs(base_attrs, extra_attrs)
-        attrs['data-busca-en'] = self.url_busqueda
+        # El JS de lista.html engancha Select2 por esta marca y usa la URL
+        # como origen de datos.
+        attrs['data-catalogo'] = self.url_busqueda
         return attrs
 
 
@@ -500,13 +588,13 @@ class BeneficioProductoForm(FormularioMaestro):
         super().__init__(*args, **kwargs)
         # El queryset completo SÍ se declara: es contra esto que se valida
         # el id que llegue. Lo que no se dibuja son sus 5.000 opciones
-        # (ver SelectorBuscado).
+        # (ver SelectorConBusqueda).
         campo = self.fields['id_producto']
         campo.queryset = Producto.objects.filter(
             borrado_logico=False).select_related('id_marca')
-        campo.widget = SelectorBuscado(
+        campo.widget = SelectorConBusqueda(
             url_busqueda=reverse_lazy('maestros:buscar_productos'),
-            attrs={'class': 'form-select js-producto-buscado'})
+            attrs={'class': 'form-select js-catalogo'})
         campo.widget.choices = campo.choices
         campo.empty_label = '— Buscá un producto —'
         self.fields['cantidad'].widget.attrs.update({'min': 1, 'max': 99})

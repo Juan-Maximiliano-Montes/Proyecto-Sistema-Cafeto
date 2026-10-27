@@ -42,6 +42,7 @@ from django.utils import timezone
 
 from cafeto import contexto
 from cafeto.motivos import MotivoCompleto
+from cafeto.validaciones import exigir_nombre_unico
 from cafeto.reglas import ManagerSinBajaFisica, SinBajaFisica
 from cafeto.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 
@@ -184,6 +185,7 @@ class Perfil(SinBajaFisica, models.Model):
         """
         super().clean()
         self.nombre = (self.nombre or '').strip()
+        exigir_nombre_unico(self, 'nombre', etiqueta='un perfil')
 
         if not self.pk:
             return

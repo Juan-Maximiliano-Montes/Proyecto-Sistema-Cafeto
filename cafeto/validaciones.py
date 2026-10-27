@@ -200,18 +200,103 @@ def validar_orden_de_fechas(desde, hasta, etiqueta_desde='La fecha de inicio',
 def clave_normalizada(texto):
     """Misma normalización que ``f_clave_normalizada`` en PostgreSQL.
 
-    Minúsculas, sin acentos y con los espacios internos colapsados. Sirve
-    para encontrar el duplicado ANTES de que lo frene el índice único y
-    poder dar un mensaje entendible (o el botón "Reactivar" de D-10).
+    Deja el nombre reducido a lo que lo identifica: minúsculas, sin
+    acentos, **sin puntuación** y con un solo espacio entre palabras. Dos
+    nombres con la misma clave son el mismo dato para el sistema.
+
+        Coca Cola · coca cola · COCA  COLA · Coca-Cola · Coca.Cola
+        · Cocá Cola          ->  "coca cola"
+
+    La puntuación se saca —no sólo se colapsa— porque es la variante que
+    más se cuela al cargar a mano: "Coca-cola" y "Coca Cola" son la misma
+    marca, y antes entraban las dos. Un guion, un punto o un paréntesis no
+    distinguen un producto de otro.
+
+    Lo que NO hace es acortar: "coca" sigue siendo distinto de
+    "coca cola", porque son nombres distintos. Un nombre que contiene a
+    otro no es un duplicado.
+
+    Sirve para encontrar el duplicado ANTES de que lo frene el índice
+    único y poder dar un mensaje entendible (o el botón "Reactivar" de
+    D-10). Tiene que dar EXACTAMENTE lo mismo que la función de
+    PostgreSQL: si las dos se separan, el índice rechaza cosas que Python
+    dejó pasar y el usuario ve un error 500.
     """
     if texto is None:
         return None
-    un_espacio = re.sub(r'\s+', ' ', str(texto).strip())
     sin_tildes = ''.join(
-        c for c in unicodedata.normalize('NFKD', un_espacio)
+        c for c in unicodedata.normalize('NFKD', str(texto))
         if not unicodedata.combining(c)
     )
-    return sin_tildes.lower()
+    # Todo lo que no sea letra ni número pasa a ser un separador, y los
+    # separadores se colapsan en un espacio. Equivale al
+    # regexp_replace('[^[:alnum:]]+', ' ') de la función SQL.
+    solo_alfanumerico = re.sub(r'[^0-9A-Za-zñÑ]+', ' ', sin_tildes)
+    return solo_alfanumerico.strip().lower()
+
+
+def exigir_nombre_unico(instancia, campo, ambito=(), etiqueta='un registro'):
+    """Nombre repetido: lo corta el MODELO y lo dice en el campo (V-G8).
+
+    El índice único de PostgreSQL ya lo impide, pero un ``IntegrityError``
+    le llega al usuario como un error 500 que no explica nada y le hace
+    perder lo que había escrito. Esta función busca el duplicado ANTES de
+    escribir, con la MISMA clave que usa el índice
+    (``f_clave_normalizada``), así lo que se rechaza en Python es
+    exactamente lo que rechazaría la base.
+
+    El ``ValidationError`` va **atado al campo**, no al formulario: así
+    Django lo dibuja al lado del control que el usuario tipeó y el
+    formulario vuelve con los datos cargados, en vez de un aviso suelto
+    después de un redirect.
+
+    ``ambito`` son los campos que ACOMPAÑAN al nombre en la identidad. Una
+    localidad es única dentro de su provincia; un producto, dentro de su
+    marca y su presentación (DD-55). Sin el ámbito se rechazarían altas
+    legítimas: dos productos pueden llamarse "Café" si son de marcas
+    distintas.
+
+    Si el duplicado está dado de baja, el mensaje manda a reactivarlo
+    (D-10): crear otra fila dejaría dos, y la vieja con su historial.
+    """
+    from cafeto.restricciones import ClaveNormalizada
+
+    valor = getattr(instancia, campo, None)
+    if not valor:
+        return None
+
+    modelo = type(instancia)
+    candidatos = modelo._base_manager.annotate(
+        _clave_unica=ClaveNormalizada(campo)
+    ).filter(_clave_unica=clave_normalizada(valor))
+
+    for campo_ambito in ambito:
+        # Para una FK se compara el id, que es lo que tiene la instancia
+        # antes de guardar; para un campo común, el valor.
+        valor_ambito = getattr(instancia, '%s_id' % campo_ambito,
+                               getattr(instancia, campo_ambito, None))
+        if valor_ambito is None:
+            # Falta parte de la identidad: todavía no hay con qué comparar.
+            # Lo reclama el propio campo, no esta función.
+            return None
+        candidatos = candidatos.filter(**{campo_ambito: valor_ambito})
+
+    if instancia.pk is not None:
+        candidatos = candidatos.exclude(pk=instancia.pk)
+
+    duplicado = candidatos.first()
+    if duplicado is None:
+        return None
+
+    if getattr(duplicado, 'borrado_logico', False):
+        raise ValidationError({campo: (
+            f'Ya existe un registro con este nombre («{duplicado}»), pero '
+            'está dado de baja. Buscalo con el filtro "Dados de baja" y '
+            'reactivalo, en vez de crear uno nuevo.')})
+
+    raise ValidationError({campo: (
+        f'Ya existe {etiqueta} con este nombre («{duplicado}»). No se '
+        'distinguen mayúsculas, acentos, puntuación ni espacios de más.')})
 
 
 # ---------------------------------------------------------------------------

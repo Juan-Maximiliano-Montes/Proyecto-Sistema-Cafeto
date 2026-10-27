@@ -31,34 +31,51 @@ from .models import (
 # ---------------------------------------------------------------------------
 #  BÚSQUEDA DE PRODUCTOS (para la receta de los beneficios)
 # ---------------------------------------------------------------------------
-#  Cuántos resultados devuelve como máximo. El número tiene que ser chico:
-#  el punto de este endpoint es que el navegador NUNCA reciba el catálogo
-#  entero. Con 20 alcanza para elegir y la respuesta pesa menos de 2 KB.
-TOPE_DE_BUSQUEDA = 20
+#  Cuántos productos entran en cada página del desplegable. El catálogo
+#  completo SE PUEDE recorrer: Select2 pide la página siguiente cuando el
+#  usuario llega al final de la lista. Lo que no pasa es que lleguen los
+#  5.000 de una, que es lo que trababa el navegador.
+POR_PAGINA = 25
 
 
 def buscar_productos(request):
-    """Productos que coinciden con ``?q=``, en JSON y de a pocos.
+    """Página del catálogo de productos, en JSON, para el combo de la receta.
 
-    Es el back del selector de la receta de un beneficio en especie. Antes
-    el ``<select>`` traía un ``<option>`` por producto —5.000 filas por
-    renglón, más el molde del formset— y la pantalla de Beneficios tardaba
-    8,4 segundos en armarse y pesaba 705 KB. Acá se devuelven como máximo
-    ``TOPE_DE_BUSQUEDA`` coincidencias.
+    Es el back del selector de productos de un beneficio en especie. Habla
+    el protocolo que espera Select2::
 
-    Permiso: ``ver_productos``. Es el mismo que hace falta para ver el
-    listado de productos, así que no expone nada que el usuario no pudiera
-    mirar entrando por la pantalla. Se comprueba en el SERVIDOR, igual que
-    en el resto del módulo: esconder el control no alcanza.
+        GET  ?q=cafe&page=2
+        200  {"results": [{"id": 7, "text": "La Morenita · Café · 500 G"}],
+              "pagination": {"more": true}}
 
-    Sólo devuelve productos VIGENTES (V-G7): no se puede armar una receta
-    con algo que está dado de baja.
+    Por qué existe
+    --------------
+    El ``<select>`` dibujaba un ``<option>`` por producto, y el formset lo
+    repetía por renglón más el molde de los nuevos. Con 5.000 productos la
+    pantalla de Beneficios pesaba 705 KB y tardaba 8,4 segundos: el
+    navegador quedaba clavado parseando HTML. Medido, no estimado.
+
+    Lo que NO hace es recortar el catálogo: con ``more`` el desplegable
+    sigue trayendo páginas mientras se scrollea, así que el usuario llega a
+    cualquier producto. Lo único que cambia es CUÁNDO viaja cada fila.
+
+    Permiso: ``ver_productos``, el mismo que para ver el listado, así que
+    no expone nada que el usuario no pudiera mirar entrando por la
+    pantalla. Se comprueba en el SERVIDOR: esconder el control no alcanza.
+
+    Sólo devuelve productos VIGENTES (V-G7): una receta no se arma con
+    algo que está dado de baja.
     """
     usuario = getattr(request, 'usuario_actual', None)
     if usuario is None:
-        return JsonResponse({'detalle': 'Sesión no iniciada.'}, status=401)
+        return JsonResponse({'detail': 'Sesión no iniciada.'}, status=401)
     if not usuario.tiene_permiso('ver_productos'):
-        return JsonResponse({'detalle': 'Sin permiso.'}, status=403)
+        return JsonResponse({'detail': 'Sin permiso.'}, status=403)
+
+    try:
+        pagina = max(1, int(request.GET.get('page', 1)))
+    except (TypeError, ValueError):
+        pagina = 1
 
     busqueda = request.GET.get('q', '').strip()
     productos = Producto.objects.filter(
@@ -68,11 +85,18 @@ def buscar_productos(request):
             Q(nombre_producto__icontains=busqueda)
             | Q(codigo_barras__icontains=busqueda)
             | Q(id_marca__nombre_marca__icontains=busqueda))
+    productos = productos.order_by('nombre_producto', 'pk')
 
-    productos = productos.order_by('nombre_producto')[:TOPE_DE_BUSQUEDA]
+    desde = (pagina - 1) * POR_PAGINA
+    # Se pide UNA fila de más: si viene, hay página siguiente. Así se evita
+    # el COUNT(*) sobre el catálogo entero en cada tecla.
+    tramo = list(productos[desde:desde + POR_PAGINA + 1])
+    hay_mas = len(tramo) > POR_PAGINA
+
     return JsonResponse({
-        'resultados': [{'id': p.pk, 'texto': str(p)} for p in productos],
-        'tope': TOPE_DE_BUSQUEDA,
+        'results': [{'id': p.pk, 'text': str(p)}
+                    for p in tramo[:POR_PAGINA]],
+        'pagination': {'more': hay_mas},
     })
 
 

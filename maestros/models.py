@@ -40,6 +40,7 @@ from cafeto.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 from cafeto.validaciones import (
     NO_NEGATIVO,
     clave_normalizada,
+    exigir_nombre_unico,
     texto_de_catalogo,
     validar_codigo_barras,
     validar_decimal,
@@ -125,6 +126,8 @@ class Rubro(Maestra):
         self.descripcion_rubro = texto_de_catalogo(
             self.descripcion_rubro, 1, 120, 'La descripción', obligatorio=False)
 
+        exigir_nombre_unico(self, 'nombre_rubro', etiqueta='un rubro')
+
     def motivos_que_impiden_la_baja(self):
         vigentes = Producto.objects.filter(
             id_rubro=self, borrado_logico=False).count()
@@ -186,6 +189,11 @@ class Marca(Maestra):
             self.nombre_marca, 2, 50, 'El nombre de la marca')
         self.descripcion_marca = texto_de_catalogo(
             self.descripcion_marca, 1, 120, 'La descripción', obligatorio=False)
+
+        # "Coca Cola", "coca cola" y "Coca-cola" son la misma marca. Se
+        # corta acá para que el aviso salga en el campo y no como un
+        # error 500 del índice único.
+        exigir_nombre_unico(self, 'nombre_marca', etiqueta='una marca')
 
     def motivos_que_impiden_la_baja(self):
         vigentes = Producto.objects.filter(
@@ -353,6 +361,16 @@ class Producto(ConSaldosDerivados, Maestra):
             self.contenido, minimo=Decimal('0'), maximo=Decimal('9999999'),
             decimales=3, etiqueta='El contenido', incluye_minimo=False)
 
+        # La identidad de un producto es la TERNA marca + presentación
+        # (DD-55), no el nombre solo: "Café" de La Morenita y "Café" de
+        # otra marca son dos artículos distintos, y 500 g y 1 kg también.
+        # Lo que NO puede repetirse es la terna completa, y sin que las
+        # mayúsculas, los acentos ni la puntuación la disfracen.
+        exigir_nombre_unico(
+            self, 'nombre_producto',
+            ambito=('id_marca', 'contenido', 'unidad_medida'),
+            etiqueta='un producto de esa marca y presentación')
+
         self._validar_cambio_de_control_de_vencimiento()
 
     def _validar_cambio_de_control_de_vencimiento(self):
@@ -457,6 +475,8 @@ class TipoEgreso(Maestra):
         super().clean()
         self.nombre_tipo_egreso = texto_de_catalogo(
             self.nombre_tipo_egreso, 3, 30, 'El nombre del tipo de egreso')
+        exigir_nombre_unico(self, 'nombre_tipo_egreso',
+                            etiqueta='un tipo de egreso')
         self.descripcion_tipo_egreso = texto_de_catalogo(
             self.descripcion_tipo_egreso, 1, 120, 'La descripción',
             obligatorio=False)
@@ -525,6 +545,8 @@ class MedioPago(Maestra):
         super().clean()
         self.nombre_medio_pago = texto_de_catalogo(
             self.nombre_medio_pago, 3, 25, 'El nombre del medio de pago')
+        exigir_nombre_unico(self, 'nombre_medio_pago',
+                            etiqueta='un medio de pago')
         self.recargo_porcentaje = validar_decimal(
             self.recargo_porcentaje, minimo=Decimal('0'),
             maximo=Decimal('100'), decimales=2, etiqueta='El recargo')
@@ -589,6 +611,8 @@ class CajaRegistradora(Maestra):
         super().clean()
         self.nombre_caja_registradora = texto_de_catalogo(
             self.nombre_caja_registradora, 3, 20, 'El nombre de la caja registradora')
+        exigir_nombre_unico(self, 'nombre_caja_registradora',
+                            etiqueta='una caja registradora')
 
     def motivos_que_impiden_la_baja(self):
         from operaciones.models import TurnoCaja
@@ -659,6 +683,8 @@ class CategoriaFidelizacion(Maestra):
         super().clean()
         self.nombre_categoria = texto_de_catalogo(
             self.nombre_categoria, 3, 15, 'El nombre de la categoría')
+        exigir_nombre_unico(self, 'nombre_categoria',
+                            etiqueta='una categoría')
         self.puntos_minimos = validar_entero(
             self.puntos_minimos, minimo=0, maximo=10_000_000,
             etiqueta='Los puntos mínimos')

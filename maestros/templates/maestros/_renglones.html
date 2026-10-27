@@ -16,11 +16,12 @@ cargado ningún script:
   * si el JS no corre, los renglones en blanco se ven igual y se pueden
     cargar a mano: el formulario sigue siendo usable.
 
-El combo de producto llega VACÍO a propósito: con el catálogo entero
-dibujado adentro, la pantalla pesaba cientos de kilobytes y el navegador
-se trababa. Lo llena el buscador de al lado, contra
-``maestros:buscar_productos``, de a 20 resultados (ver ``SelectorBuscado``
-en ``maestros/forms.py``).
+El combo de producto es un Select2 con búsqueda: muestra el catálogo
+completo —se escribe para filtrar, se scrollea para ver más— pero lo trae
+por AJAX desde ``maestros:buscar_productos``, de a 25 por página. Con el
+catálogo dibujado adentro la pantalla pesaba cientos de kilobytes y el
+navegador se trababa (ver ``SelectorConBusqueda`` en
+``maestros/forms.py``).
 
 El bloque se muestra y se esconde solo según el campo que declare
 ``cfg.formset_depende_de`` (en los beneficios, el modo de entrega).
@@ -54,13 +55,6 @@ El bloque se muestra y se esconde solo según el campo que declare
             <div class="col">
                 <label class="form-label small text-muted mb-1"
                        for="{{ campo.id_for_label }}">{{ campo.label }}</label>
-                {% if campo.field.widget.url_busqueda %}
-                {# El combo no trae el catálogo: se busca contra el
-                   servidor y se llena con lo que coincida. #}
-                <input type="search" class="form-control form-control-sm mb-1 js-buscar-producto"
-                       placeholder="Escribí para buscar…" autocomplete="off"
-                       aria-label="Buscar producto">
-                {% endif %}
                 {{ campo }}
                 {% for error in campo.errors %}
                 <div class="invalid-feedback d-block small">{{ error }}</div>
@@ -89,8 +83,10 @@ El bloque se muestra y se esconde solo según el campo que declare
         <i class="bi bi-plus-lg me-1"></i>{{ cfg.formset_agregar }}
     </button>
 
-    {# Molde para los renglones nuevos. Va en un <template> para que el
-       navegador no mande sus campos en el POST. #}
+    {% comment %}
+    Molde para los renglones nuevos. Va en un <template> para que el
+    navegador no mande sus campos en el POST.
+    {% endcomment %}
     <template class="js-molde-renglon">
         <div class="row g-2 align-items-end mb-2 js-renglon">
             {% for oculto in formset.empty_form.hidden_fields %}{{ oculto }}{% endfor %}
@@ -98,11 +94,6 @@ El bloque se muestra y se esconde solo según el campo que declare
             <div class="col">
                 <label class="form-label small text-muted mb-1"
                        for="{{ campo.id_for_label }}">{{ campo.label }}</label>
-                {% if campo.field.widget.url_busqueda %}
-                <input type="search" class="form-control form-control-sm mb-1 js-buscar-producto"
-                       placeholder="Escribí para buscar…" autocomplete="off"
-                       aria-label="Buscar producto">
-                {% endif %}
                 {{ campo }}
             </div>
             {% endfor %}
