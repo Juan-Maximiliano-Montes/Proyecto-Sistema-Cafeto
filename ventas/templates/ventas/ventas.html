@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Ventas{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-receipt me-1"></i>Mostrador</span>
+        <h1 class="titulo-pantalla mb-0">Ventas</h1>
+    </div>
+    <div class="acciones">
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'ventas:exportar_ventas' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'ventas:exportar_ventas' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<form method="get" id="herramientas" class="herramientas">
+    <input type="hidden" name="pagina" value="1">
+    <div class="buscador" style="max-width: 180px"><i class="bi bi-hash"></i><input type="search" name="numero" value="{{ filtro.numero }}" class="form-control" inputmode="numeric" placeholder="N° de venta" aria-label="Número de venta"></div>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde }}" class="form-control"></label>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta }}" class="form-control"></label>
+    <select name="caja" class="form-select" aria-label="Caja" data-auto-enviar>
+        <option value="">Caja: todas</option>
+        {% for c in cajas %}<option value="{{ c.pk }}"{% if filtro.caja == c.pk|stringformat:'s' %} selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <select name="vendedor" class="form-select" aria-label="Vendió" data-auto-enviar>
+        <option value="">Vendió: todos</option>
+        {% for u in vendedores %}<option value="{{ u.pk }}"{% if filtro.vendedor == u.pk|stringformat:'s' %} selected{% endif %}>{{ u.apellido }}, {{ u.nombre }}</option>{% endfor %}
+    </select>
+    <select name="medio" class="form-select" aria-label="Medio de pago" data-auto-enviar>
+        <option value="">Medio: todos</option>
+        {% for m in medios %}<option value="{{ m.pk }}"{% if filtro.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="">Estado: todos</option>
+        {% for valor, etiqueta in estados %}<option value="{{ valor }}"{% if filtro.estado == valor %} selected{% endif %}>{{ etiqueta }}s</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+    {% if request.GET %}<a href="{% url 'ventas:ventas' %}" class="btn btn-link text-secondary">Hoy</a>{% endif %}
+</form>
+
+<div class="grilla grilla-compacta mb-3">
+    <div class="tarjeta kpi"><span class="eyebrow">Tickets</span><span class="valor">{{ cantidad }}</span></div>
+    <div class="tarjeta kpi tarjeta-destacada"><span class="eyebrow">Vendido</span><span class="valor">{{ facturado|pesos }}</span></div>
+    {% if cantidad %}<div class="tarjeta kpi"><span class="eyebrow">Ticket promedio</span><span class="valor">{{ promedio|pesos }}</span></div>{% endif %}
+    {% if anuladas %}<div class="tarjeta kpi"><span class="eyebrow">Anuladas</span><span class="valor text-peligro">{{ anuladas }}</span><span class="small text-secondary">no suman</span></div>{% endif %}
+</div>
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>N°</th><th>Fecha</th><th>Caja</th><th>Vendió</th><th class="table-numero">Renglones</th><th class="table-numero">Total</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+        {% for v in filas %}
+            <tr{% if v.anulada %} class="text-secondary"{% endif %}>
+                <td class="fw-semibold">{{ v.pk }}</td>
+                <td class="text-nowrap">{{ v.fecha_venta|date:"d/m/Y" }} {{ v.hora_venta|time:"H:i" }}</td>
+                <td>{{ v.id_turno_caja.id_caja_registradora }}</td>
+                <td>{{ v.id_usuario.nombre }} {{ v.id_usuario.apellido }}</td>
+                <td class="table-numero">{{ v.renglones }}</td>
+                <td class="table-numero monto">{% if v.anulada %}<s>{{ v.total_venta|pesos }}</s>{% else %}{{ v.total_venta|pesos }}{% endif %}</td>
+                <td>{% if v.anulada %}<span class="insignia insignia-peligro" title="{{ v.get_motivo_anulacion_display }}">Anulada</span>{% else %}<span class="insignia insignia-exito">Completada</span>{% endif %}</td>
+                <td class="text-end text-nowrap">
+                    <button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'ventas:ficha_venta' v.pk %}" data-modal="#modalVenta" data-titulo="Venta N° {{ v.pk }}" title="Ver detalle"><i class="bi bi-eye"></i></button>
+                    <a class="btn btn-sm btn-secundario" href="{% url 'ventas:ticket' v.pk %}" target="_blank" rel="noopener" title="Reimprimir ticket"><i class="bi bi-printer"></i></a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="8" class="vacio"><i class="bi bi-receipt"></i>No hay ventas con estos filtros.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% include 'parciales/_paginador.html' %}
+
+<div class="modal fade" id="modalVenta" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-receipt me-2"></i><span class="js-titulo-remoto">Venta</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body js-remoto"></div>
+            <div class="modal-footer"><button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

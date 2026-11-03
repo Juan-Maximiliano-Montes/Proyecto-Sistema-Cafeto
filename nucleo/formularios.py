@@ -1,0 +1,334 @@
+"""Formularios base compartidos (capa 1 de la sección 4.4.V).
+
+Qué resuelve esta capa, además de dibujar los campos:
+
+  * **Lista explícita de campos.** Nunca ``fields = '__all__'`` (V-G6).
+  * **Combos sólo con vigentes** (V-G7).
+  * **Formato argentino** (V-G4/V-G5): coma decimal, fecha dd/mm/aaaa.
+  * **Bloqueo optimista** (V-G11) por ``fecha_modificacion``.
+
+Las reglas de negocio viven en ``clean()`` del modelo (capa 2) y en las
+restricciones de la base (capa 3).
+"""
+from django import forms
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
+
+# Clases de Bootstrap según el tipo de control.
+CLASES = {
+    forms.Select: 'form-select',
+    forms.SelectMultiple: 'form-select',
+    forms.CheckboxInput: 'form-check-input',
+}
+CLASE_POR_DEFECTO = 'form-control'
+
+
+class FormularioMaestro(forms.ModelForm):
+    """Base de todos los formularios de datos maestros.
+
+    Aporta tres cosas iguales para todos: las clases de Bootstrap, el
+    ``maxlength`` de cada texto (V-G2, para que el navegador no deje
+    tipear de más) y el bloqueo optimista de V-G11.
+    """
+
+    # Testigo del bloqueo optimista. Viaja oculto y sólo se usa para
+    # comparar: nunca se guarda.
+    version_leida = forms.CharField(
+        required=False, widget=forms.HiddenInput())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._localizar_importes()
+        self._decorar_campos()
+        if self.instance and self.instance.pk and \
+                hasattr(self.instance, 'fecha_modificacion'):
+            self.fields['version_leida'].initial = \
+                self.instance.fecha_modificacion.isoformat()
+
+    def _localizar_importes(self):
+        """Los importes se tipean en formato argentino: 1500,50 (V-G4).
+
+        Dos cosas hacen falta, y van juntas:
+
+        * ``localize = True``, para que el servidor acepte la coma decimal
+          y el punto de miles al interpretar lo que llegó.
+        * cambiar el control de ``<input type="number">`` a texto. El
+          control numérico del navegador se rige por el locale del sistema:
+          si no coincide, rechaza "1500,50" y deja el campo VACÍO sin
+          avisar. El servidor recibe un campo obligatorio sin cargar y el
+          usuario no entiende por qué. Django hace este cambio solo, pero
+          únicamente cuando ``localize`` se pasa al CONSTRUIR el campo, y
+          un ModelForm no da esa oportunidad: hay que hacerlo acá.
+
+        ``inputmode="decimal"`` conserva el teclado numérico en el celular.
+        """
+        for campo in self.fields.values():
+            if not isinstance(campo, forms.DecimalField):
+                continue
+            campo.localize = True
+            campo.widget.is_localized = True
+            if isinstance(campo.widget, forms.NumberInput):
+                campo.widget = forms.TextInput(attrs=dict(
+                    campo.widget.attrs, inputmode='decimal'))
+
+    def _decorar_campos(self):
+        for nombre, campo in self.fields.items():
+            if nombre == 'version_leida':
+                continue
+            widget = campo.widget
+            clase = CLASES.get(type(widget), CLASE_POR_DEFECTO)
+            widget.attrs.setdefault('class', clase)
+            # maxlength del VARCHAR, para avisar antes de enviar (V-G2).
+            largo = getattr(campo, 'max_length', None)
+            if largo and isinstance(widget, (forms.TextInput, forms.Textarea)):
+                widget.attrs.setdefault('maxlength', largo)
+
+    # ------------------------------------------------------------------
+    #  V-G11 · edición concurrente
+    # ------------------------------------------------------------------
+    def clean(self):
+        datos = super().clean()
+        self._comprobar_version()
+        return datos
+
+    def _comprobar_version(self):
+        if not (self.instance and self.instance.pk):
+            return
+        if not hasattr(self.instance, 'fecha_modificacion'):
+            return
+        leida = (self.cleaned_data.get('version_leida') or '').strip()
+        if not leida:
+            return
+        actual = type(self.instance).objects.filter(
+            pk=self.instance.pk).values_list(
+                'fecha_modificacion', flat=True).first()
+        if actual is not None and actual.isoformat() != leida:
+            raise ValidationError(
+                'Otro usuario modificó este registro mientras lo editabas; '
+                'recargá la página para ver los datos actuales y volvé a '
+                'aplicar tu cambio.')
+
+    # ------------------------------------------------------------------
+    #  Capa 2 · se delega en el clean() del modelo
+    # ------------------------------------------------------------------
+    def _post_clean(self):
+        """Corre el ``clean()`` del modelo y ubica cada error en su campo.
+
+        Django ya llama a ``full_clean()`` de la instancia, pero excluye
+        los campos que no están en el formulario. Acá no se excluye nada:
+        las reglas del modelo valen para todos los caminos de entrada, y
+        si una falla tiene que verse en pantalla.
+
+        Por eso ``clean()`` se corre de nuevo —y por eso hay que filtrar lo
+        repetido—. Los errores sobre campos que SÍ están en el formulario
+        ya los reportó Django en la pasada anterior; si se agregaran otra
+        vez, el usuario vería el mismo cartel dos veces debajo del mismo
+        control. Se agregan únicamente los mensajes nuevos.
+        """
+        super()._post_clean()
+        try:
+            self.instance.clean()
+        except ValidationError as error:
+            self._agregar_lo_que_falte(error)
+
+    def _agregar_lo_que_falte(self, error):
+        """Suma al formulario sólo los mensajes que no estén ya puestos."""
+        if hasattr(error, 'error_dict'):
+            por_campo = error.message_dict
+        else:
+            por_campo = {NON_FIELD_ERRORS: error.messages}
+
+        for campo, mensajes in por_campo.items():
+            # Un error sobre algo que no es un control del formulario va
+            # al bloque general: no hay dónde dibujarlo si no.
+            destino = campo if campo in self.fields else None
+            ya_estan = set(self._errors.get(destino or NON_FIELD_ERRORS, []))
+            nuevos = [m for m in mensajes if m not in ya_estan]
+            if nuevos:
+                self.add_error(destino, nuevos)
+
+
+
+
+class SelectorConBusqueda(forms.Select):
+    """Combo con búsqueda que trae su catálogo por AJAX (Select2).
+
+    Por qué existe
+    --------------
+    Un ``ModelChoiceField`` normal escribe un ``<option>`` por cada fila
+    del queryset. Para elegir un producto entre 5.000 eso son 5.000
+    opciones **por renglón**, y el formset dibuja además un molde oculto
+    para los renglones nuevos: la pantalla de Beneficios llegó a 705 KB y
+    8,4 segundos de armado, con el navegador clavado mientras parsea el
+    HTML. Medido, no estimado.
+
+    Qué ve el usuario
+    -----------------
+    Un desplegable con buscador, que muestra el catálogo COMPLETO: se
+    escribe para filtrar y se scrollea para seguir viendo: al llegar al
+    final, Select2 pide la página siguiente a
+    ``stock:buscar_productos``. No hay producto al que no se pueda
+    llegar; lo único que cambia es que las filas viajan a medida que se
+    piden, en vez de todas dentro del HTML inicial.
+
+    En el HTML sólo se dibuja la opción YA ELEGIDA —para que la edición
+    muestre lo que tiene cargado— más la vacía del placeholder. Las demás
+    las agrega Select2 al abrirse.
+
+    Lo importante: esto cambia sólo lo que se DIBUJA. La validación sigue
+    siendo la del ``ModelChoiceField``, que comprueba el id recibido
+    contra su ``queryset`` completo (V-G7). Mandar un id que no está en la
+    lista visible no sirve de nada: el campo lo rechaza igual.
+
+    Si el JS no corre, el control queda como un ``<select>`` con la opción
+    elegida: se puede ver y guardar lo que ya estaba cargado, aunque no
+    elegir uno nuevo. Es el modo degradado aceptado para una pantalla de
+    administración.
+    """
+
+    def __init__(self, *args, url_busqueda='', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.url_busqueda = url_busqueda
+
+    def optgroups(self, name, value, attrs=None):
+        """Las opciones se recortan a la vacía más la que esté elegida.
+
+        ``self.choices`` es el iterador perezoso del ``ModelChoiceField``:
+        recorrerlo entero traería las 5.000 filas, que es justo lo que se
+        quiere evitar. Se lo reemplaza por la lista corta ANTES de que
+        ``Select.optgroups()`` lo recorra.
+
+        La opción vacía se conserva siempre: es la que muestra
+        "— Buscá un producto —". Sin ella el control queda en blanco y
+        parece roto.
+        """
+        iterador = self.choices
+        queryset = getattr(iterador, 'queryset', None)
+        if queryset is None:          # no es un ModelChoiceField: sin cambios
+            return super().optgroups(name, value, attrs)
+
+        campo = getattr(iterador, 'field', None)
+        etiqueta_vacia = getattr(campo, 'empty_label', None)
+        cortas = [('', etiqueta_vacia)] if etiqueta_vacia is not None else []
+
+        seleccionados = {str(v) for v in value if v not in (None, '')}
+        if seleccionados:
+            cortas += [(str(o.pk), str(o))
+                       for o in queryset.filter(pk__in=seleccionados)]
+
+        self.choices = cortas
+        try:
+            return super().optgroups(name, value, attrs)
+        finally:
+            # Se devuelve el iterador original: el widget se reutiliza
+            # entre renglones del formset, y dejarlo recortado haría que
+            # el siguiente no encontrara su propia opción elegida.
+            self.choices = iterador
+
+    def build_attrs(self, base_attrs, extra_attrs=None):
+        attrs = super().build_attrs(base_attrs, extra_attrs)
+        # El JS de lista.html engancha Select2 por esta marca y usa la URL
+        # como origen de datos.
+        attrs['data-catalogo'] = self.url_busqueda
+        return attrs
+
+
+# ===========================================================================
+#  IMPORTES Y CANTIDADES COMO LOS ESCRIBE UNA PERSONA
+# ===========================================================================
+def leer_numero(texto, decimales):
+    """'1.234,50', '1234,5', '1234.50' y '1,234.50' -> Decimal.
+
+    En una tablet el teclado numérico pone coma o punto según el idioma
+    del equipo, y en el mostrador se escribe como se escribe en Argentina.
+    Reglas, en orden:
+
+    * con coma y punto, el que va ÚLTIMO es el separador decimal;
+    * sólo con coma, la coma es decimal ('1500,50');
+    * sólo con punto: si el valor admite tres decimales (una cantidad en
+      kilos) el punto es decimal ('1.250' kg = 1,25); en un importe, un
+      punto seguido de exactamente tres dígitos es de miles ('1.500' =
+      mil quinientos) y si no, decimal ('12.5').
+
+    Devuelve None si el texto no es un número.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    texto = (str(texto) if texto is not None else '').strip().replace(' ', '')
+    texto = texto.replace('$', '').replace('−', '-')
+    if not texto:
+        return None
+    if ',' in texto and '.' in texto:
+        decimal = ',' if texto.rfind(',') > texto.rfind('.') else '.'
+        miles = '.' if decimal == ',' else ','
+        texto = texto.replace(miles, '').replace(decimal, '.')
+    elif ',' in texto:
+        if texto.count(',') > 1:
+            return None
+        texto = texto.replace(',', '.')
+    elif '.' in texto:
+        partes = texto.split('.')
+        if decimales < 3 and all(len(p) == 3 for p in partes[1:]):
+            texto = texto.replace('.', '')
+        elif len(partes) > 2:
+            return None
+    try:
+        return Decimal(texto)
+    except InvalidOperation:
+        return None
+
+
+class CampoNumero(forms.DecimalField):
+    """DecimalField que entiende la coma y el punto como una persona."""
+
+    def __init__(self, *args, decimales=2, **kwargs):
+        kwargs.setdefault('decimal_places', decimales)
+        kwargs.setdefault('max_digits', 12)
+        kwargs.setdefault('widget', forms.TextInput(attrs={
+            'class': 'form-control', 'inputmode': 'decimal',
+            'autocomplete': 'off'}))
+        self.decimales = decimales
+        super().__init__(*args, **kwargs)
+
+    def to_python(self, value):
+        if value in self.empty_values:
+            return None
+        numero = leer_numero(value, self.decimales)
+        if numero is None:
+            raise forms.ValidationError(
+                'Escribí un número, por ejemplo 1500 o 1500,50.',
+                code='invalid')
+        return numero
+
+    def widget_attrs(self, widget):
+        return {}
+
+    def prepare_value(self, value):
+        """Se muestra como se escribe acá: 10.000 o 1.234,50."""
+        from decimal import Decimal, InvalidOperation
+        if value in (None, ''):
+            return value
+        try:
+            numero = Decimal(str(value))
+        except InvalidOperation:
+            return value            # lo que tipeó la persona, tal cual
+        texto = f'{numero:,.{self.decimales}f}'.replace(',', '§').replace('.', ',').replace('§', '.')
+        if ',' in texto:
+            texto = texto.rstrip('0').rstrip(',')
+        return texto
+
+
+class CampoImporte(CampoNumero):
+    """Plata: dos decimales, nunca negativa."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('min_value', 0)
+        super().__init__(*args, decimales=2, **kwargs)
+
+
+class CampoCantidad(CampoNumero):
+    """Unidades o kilos: hasta tres decimales, mayor que cero."""
+
+    def __init__(self, *args, **kwargs):
+        from decimal import Decimal
+        kwargs.setdefault('min_value', Decimal('0.001'))
+        super().__init__(*args, decimales=3, **kwargs)

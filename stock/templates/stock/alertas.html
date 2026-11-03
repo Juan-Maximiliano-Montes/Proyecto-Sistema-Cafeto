@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Alertas de stock{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-boxes me-1"></i>Stock</span>
+        <h1 class="titulo-pantalla mb-0">Alertas y vencimientos</h1>
+        <p class="bajada">Lo que hay que reponer, lo que se vence{% if dias %} en los próximos {{ dias }} días{% endif %} y lo que hoy va al sector de ofertas.</p>
+    </div>
+    <div class="acciones">
+        {% if pestania == 'ofertas' and 'imprimir_ofertas' in permisos_usuario %}
+        <a href="{% url 'stock:etiquetas_oferta' %}" target="_blank" rel="noopener" class="btn btn-primary"><i class="bi bi-printer me-1"></i>Imprimir etiquetas</a>
+        {% endif %}
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'stock:exportar_alertas' %}?ver={{ pestania }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'stock:exportar_alertas' %}?ver={{ pestania }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Tipo de alerta">
+    {% for clave, etiqueta, icono in pestanias %}
+    <a href="?ver={{ clave }}" class="btn {% if clave == pestania %}btn-primary{% else %}btn-secundario{% endif %}"{% if clave == pestania %} aria-current="page"{% endif %}>
+        <i class="bi {{ icono }} me-1"></i>{{ etiqueta }}
+        {% for k, n in cantidades.items %}{% if k == clave and n %}<span class="insignia {% if clave == pestania %}insignia-neutra{% else %}insignia-aviso{% endif %} ms-1">{{ n }}</span>{% endif %}{% endfor %}
+    </a>
+    {% endfor %}
+</nav>
+<form id="herramientas" method="get"><input type="hidden" name="ver" value="{{ pestania }}"></form>
+
+{% if filas %}
+<div class="grilla">
+{% if pestania == 'faltantes' %}
+    {% for p in filas %}
+    <article class="tarjeta">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0"><h2 class="tarjeta-titulo">{{ p.nombre_producto }}</h2><p class="tarjeta-sub">{{ p.id_marca }} · {{ p.id_rubro }}</p></div>
+            <span class="insignia {% if p.stock_actual <= 0 %}insignia-peligro{% else %}insignia-aviso{% endif %}">{% if p.stock_actual <= 0 %}Agotado{% else %}Bajo{% endif %}</span>
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>Hay</dt><dd>{{ p.stock_actual|cantidad }}</dd>
+            <dt>Mínimo</dt><dd>{{ p.stock_minimo|cantidad }}</dd>
+            <dt>Proveedor</dt><dd>{{ p.id_proveedor|default:"—" }}</dd>
+        </dl>
+    </article>
+    {% endfor %}
+{% elif pestania == 'vencimientos' %}
+    {% for l in filas %}
+    {% with dias_restantes=l|dias_para_vencer:hoy %}
+    <article class="tarjeta">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0"><h2 class="tarjeta-titulo">{{ l.id_producto.nombre_producto }}</h2><p class="tarjeta-sub">{{ l.id_producto.id_marca }}{% if l.numero_lote %} · lote {{ l.numero_lote }}{% endif %}</p></div>
+            {% if dias_restantes < 0 %}<span class="insignia insignia-peligro">Vencido</span>
+            {% elif dias_restantes == 0 %}<span class="insignia insignia-peligro">Vence hoy</span>
+            {% else %}<span class="insignia insignia-aviso">{{ dias_restantes }} día{{ dias_restantes|pluralize }}</span>{% endif %}
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>Vence</dt><dd>{{ l.fecha_vencimiento|date:"d/m/Y" }}</dd>
+            <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad }}</dd>
+        </dl>
+        {% if dias_restantes < 0 %}<p class="small text-peligro mb-0"><i class="bi bi-exclamation-triangle me-1"></i>No se vende: cargalo como merma.</p>{% endif %}
+    </article>
+    {% endwith %}
+    {% endfor %}
+{% else %}
+    {% for l, porcentaje, precio in filas %}
+    <article class="tarjeta tarjeta-destacada">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0"><h2 class="tarjeta-titulo">{{ l.id_producto.nombre_producto }}</h2><p class="tarjeta-sub">{{ l.id_producto.id_marca }} · vence {{ l.fecha_vencimiento|date:"d/m" }}</p></div>
+            <span class="insignia insignia-marca">−{{ porcentaje|cantidad }} %</span>
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>Precio</dt><dd><s class="text-tenue">{{ l.id_producto.precio_venta|pesos }}</s></dd>
+            <dt>Con rebaja</dt><dd class="monto text-marca fs-5">{{ precio|pesos }}</dd>
+            <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad }}</dd>
+        </dl>
+    </article>
+    {% endfor %}
+{% endif %}
+</div>
+{% include 'parciales/_paginador.html' %}
+{% else %}
+<div class="vacio tarjeta">
+    <i class="bi bi-emoji-smile"></i>
+    {% if pestania == 'faltantes' %}No hay productos por debajo del mínimo.{% elif pestania == 'vencimientos' %}Nada por vencer en los próximos {{ dias }} días.{% else %}Hoy no hay productos en oferta por vencimiento.{% endif %}
+</div>
+{% endif %}
+{% endblock %}

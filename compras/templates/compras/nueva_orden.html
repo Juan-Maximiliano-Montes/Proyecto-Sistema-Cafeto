@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block titulo %}Cafeto · Nueva orden de compra{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url 'compras:ordenes' %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Órdenes de compra</a>
+        <h1 class="titulo-pantalla mb-0">Nueva orden</h1>
+    </div>
+</div>
+{% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
+<form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="token_operacion" value="{{ token }}">
+    <input type="hidden" name="renglones" id="renglones" value="{{ renglones_json }}">
+    <div class="tarjeta mb-3" style="max-width: 520px">
+        <label class="form-label" for="proveedor">Proveedor</label>
+        <select name="proveedor" id="proveedor" class="form-select">
+            <option value="">Elegí el proveedor…</option>
+            {% for p in proveedores %}<option value="{{ p.pk }}"{% if datos.proveedor == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="tarjeta" data-renglones data-campo="#renglones" data-info="{% url 'stock:lotes_de_producto' %}" data-precio="Precio pactado">
+        <div class="d-flex justify-content-between align-items-baseline">
+            <h2 class="subtitulo h5 mb-0">Qué se pide</h2>
+            <span class="text-secondary">Total: <strong class="monto js-total">$ 0,00</strong></span>
+        </div>
+        <select class="form-select js-catalogo js-nuevo-producto" data-catalogo="{{ catalogo }}" aria-label="Agregar producto"><option value="">+ Agregar un producto…</option></select>
+        <div class="js-lista"></div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-xl mt-3"><i class="bi bi-save me-1"></i>Guardar borrador</button>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{% static 'cafeto/js/renglones.js' %}"></script>{% endblock %}

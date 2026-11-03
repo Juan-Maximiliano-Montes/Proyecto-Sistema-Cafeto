@@ -1,0 +1,693 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% comment %}
+El mostrador. El navegador sólo arma QUÉ se lleva y CÓMO paga; los
+precios, descuentos, recargos y el vuelto los calcula el servidor en cada
+cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
+{% endcomment %}
+{% block titulo %}Cafeto · Vender{% endblock %}
+
+{% block barra_izquierda %}
+<span class="d-none d-md-inline subtitulo">Vender</span>
+{% endblock %}
+
+{% block contenido %}
+{% csrf_token %}
+<div class="mostrador" id="mostrador"
+     data-catalogo="{% url 'ventas:catalogo' %}"
+     data-cotizar="{% url 'ventas:cotizar' %}"
+     data-cobrar="{% url 'ventas:cobrar' %}"
+     data-cliente="{% url 'ventas:identificar_cliente' %}"
+     data-alta-cliente="{% url 'ventas:alta_cliente' %}"
+     data-turno="{{ turno.pk }}"
+     data-token="{{ token }}">
+
+    {# ------------------------------ CATÁLOGO ------------------------------ #}
+    <section aria-label="Productos">
+        <div class="herramientas mb-2">
+            <div class="buscador">
+                <i class="bi bi-search"></i>
+                <input type="search" id="buscar" class="form-control form-control-lg" placeholder="Buscar producto…" autocomplete="off" autofocus aria-label="Buscar producto">
+            </div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Rubros">
+            <button type="button" class="btn btn-sm btn-primary js-rubro" data-rubro="">Todos</button>
+            {% for r in rubros %}
+            <button type="button" class="btn btn-sm btn-secundario js-rubro" data-rubro="{{ r.pk }}">{{ r.nombre_rubro }}</button>
+            {% endfor %}
+        </div>
+        <div class="catalogo" id="catalogo" aria-live="polite"></div>
+        <div class="text-center mt-3">
+            <button type="button" class="btn btn-secundario d-none" id="masProductos">Ver más productos</button>
+        </div>
+    </section>
+
+    {# ------------------------------- TICKET ------------------------------- #}
+    <aside class="ticket" id="ticket" aria-label="Ticket">
+        <div class="tarjeta">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2 class="subtitulo h5 mb-0"><i class="bi bi-receipt me-1"></i>Ticket</h2>
+                <button type="button" class="btn btn-sm btn-link text-secondary" id="vaciar">Vaciar</button>
+            </div>
+
+            <div id="renglones"></div>
+            <div id="regalos"></div>
+            <p class="text-secondary small text-center py-3 mb-0" id="ticketVacio">Tocá un producto para agregarlo.</p>
+
+            {# ------------------- CLIENTE DEL CLUB (DFD 4 bloque C) ------------------- #}
+            <div id="club" class="border-top pt-2">
+                <span class="eyebrow"><i class="bi bi-award me-1"></i>Club Cafeto</span>
+                <div id="clubBuscar" class="mt-1">
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="clubTexto" placeholder="QR, teléfono o DNI" autocomplete="off" aria-label="QR, teléfono o DNI del cliente">
+                        <button type="button" class="btn btn-secundario" id="clubIdentificar">Identificar</button>
+                    </div>
+                    {% if puede_crear_cliente %}<button type="button" class="btn btn-link btn-sm p-0 mt-1" id="clubNuevo"><i class="bi bi-person-plus me-1"></i>Registrar cliente nuevo</button>{% endif %}
+                </div>
+                <div id="clubCliente" class="d-none mt-1">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div><div class="fw-semibold" id="clubNombre"></div><div class="small text-secondary" id="clubDatos"></div></div>
+                        <button type="button" class="btn btn-sm btn-link text-secondary p-0" id="clubQuitar">Quitar</button>
+                    </div>
+                    <div id="clubBeneficios" class="d-flex flex-column gap-1 mt-1"></div>
+                </div>
+            </div>
+
+            <div class="aviso aviso-error d-none mb-0" id="errorTicket" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span></span></div>
+
+            <dl class="tarjeta-datos" id="totales">
+                <dt>Subtotal</dt><dd id="tSubtotal">$ 0,00</dd>
+                <dt class="js-beneficio d-none" id="tBeneficioTexto">Beneficio del club</dt><dd class="js-beneficio d-none" id="tBeneficio"></dd>
+                <dt class="js-redondeo d-none">Redondeo</dt><dd class="js-redondeo d-none" id="tRedondeo"></dd>
+                <dt class="js-recargo d-none">Recargo</dt><dd class="js-recargo d-none" id="tRecargo"></dd>
+            </dl>
+            <div class="d-flex justify-content-between align-items-baseline border-top pt-2">
+                <span class="text-secondary">Total</span>
+                <span class="total" id="tTotal">$ 0,00</span>
+            </div>
+
+            {# ------------------------- PAGO ------------------------- #}
+            <div id="pago">
+                <span class="eyebrow">¿Cómo paga?</span>
+                <div class="d-flex flex-wrap gap-2 mt-1" id="medios">
+                    {% for m in medios %}
+                    <button type="button" class="btn btn-secundario js-medio" data-medio="{{ m.id }}" data-efectivo="{{ m.efectivo|yesno:'1,0' }}">
+                        {{ m.nombre }}{% if m.recargo != '0' and m.recargo != '0.00' %} <span class="small text-tenue">+{{ m.recargo|cantidad }}%</span>{% endif %}
+                    </button>
+                    {% endfor %}
+                </div>
+                <div id="pagos" class="mt-2 d-flex flex-column gap-2"></div>
+                <button type="button" class="btn btn-link btn-sm p-0 mt-1 d-none" id="mixto"><i class="bi bi-plus-circle me-1"></i>Pagar con dos medios</button>
+                <div class="d-flex justify-content-between align-items-baseline mt-2 d-none" id="filaVuelto">
+                    <span class="text-secondary">Vuelto</span>
+                    <span class="monto fs-3 text-exito" id="tVuelto"></span>
+                </div>
+            </div>
+
+            {# --------------- AUTORIZACIÓN (descuento sobre el tope) --------------- #}
+            <div id="autorizacion" class="d-none border-top pt-2">
+                <span class="eyebrow text-marca"><i class="bi bi-shield-check me-1"></i>Autoriza el descuento</span>
+                <div class="row g-2 mt-1">
+                    <div class="col-6"><input type="text" class="form-control" id="autorizaUsuario" placeholder="Usuario o DNI" autocomplete="off"></div>
+                    <div class="col-6"><input type="password" class="form-control" id="autorizaClave" placeholder="Clave" autocomplete="off"></div>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-primary btn-xl w-100" id="cobrar" disabled data-requiere-red>
+                <i class="bi bi-check2-circle me-1"></i>Cobrar
+            </button>
+        </div>
+    </aside>
+</div>
+
+{# En la tablet o el celular el ticket queda abajo: esta barra lo trae. #}
+<a href="#ticket" class="barra-ticket d-xl-none" id="barraTicket">
+    <span><i class="bi bi-receipt me-1"></i><span id="barraCantidad">0</span> producto(s)</span>
+    <strong class="monto" id="barraTotal">$ 0,00</strong>
+</a>
+
+{# ------------------------------ DESCUENTO ------------------------------ #}
+<div class="modal fade" id="modalDescuento" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-percent me-2"></i>Descuento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fw-semibold mb-2" id="descuentoProducto"></p>
+                <label class="form-label" for="descuentoPorcentaje">Porcentaje</label>
+                <div class="input-group mb-1"><input type="text" inputmode="decimal" class="form-control" id="descuentoPorcentaje"><span class="input-group-text">%</span></div>
+                <p class="form-text">{% if tope is None %}Sin tope para tu perfil.{% else %}Tu tope: {{ tope|cantidad }} %. Si lo superás, lo tiene que autorizar otra persona.{% endif %}</p>
+                <label class="form-label" for="descuentoMotivo">Motivo</label>
+                <select class="form-select mb-2" id="descuentoMotivo">
+                    <option value="">Elegí el motivo…</option>
+                    {% for valor, etiqueta in motivos %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+                </select>
+                <input type="text" class="form-control" id="descuentoDetalle" maxlength="120" placeholder="Detalle (obligatorio si es «Otro»)">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-link text-peligro me-auto" id="quitarDescuento">Quitar descuento</button>
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="aplicarDescuento">Aplicar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ------------------------- CLIENTE NUEVO (DFD 9) ------------------------- #}
+<div class="modal fade" id="modalCliente" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Cliente nuevo del club</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="aviso aviso-error d-none" id="clienteError" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span></span></div>
+                <div class="row g-2">
+                    <div class="col-6"><label class="form-label" for="ncApellido">Apellido</label><input type="text" class="form-control" id="ncApellido" maxlength="50"></div>
+                    <div class="col-6"><label class="form-label" for="ncNombre">Nombre</label><input type="text" class="form-control" id="ncNombre" maxlength="50"></div>
+                    <div class="col-6"><label class="form-label" for="ncTelefono">Teléfono</label><input type="text" inputmode="tel" class="form-control" id="ncTelefono" maxlength="20"></div>
+                    <div class="col-6"><label class="form-label" for="ncDni">DNI</label><input type="text" inputmode="numeric" class="form-control" id="ncDni" maxlength="10"></div>
+                    <div class="col-7"><label class="form-label" for="ncEmail">Email <span class="text-tenue">(opcional)</span></label><input type="email" class="form-control" id="ncEmail" maxlength="254"></div>
+                    <div class="col-5"><label class="form-label" for="ncNacimiento">Nacimiento <span class="text-tenue">(opcional)</span></label><input type="text" class="form-control" id="ncNacimiento" placeholder="dd/mm/aaaa" maxlength="10"></div>
+                </div>
+                <p class="form-text mb-0">Con el teléfono o el DNI se lo identifica en el mostrador. Entra a la categoría inicial y recibe su código QR.</p>
+            </div>
+            <div class="modal-footer">
+                <a href="#" target="_blank" rel="noopener" class="btn btn-secundario d-none me-auto" id="clienteTarjeta"><i class="bi bi-qr-code me-1"></i>Imprimir tarjeta</a>
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="clienteGuardar">Registrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ------------------------------ COBRADO ------------------------------ #}
+<div class="modal fade" id="modalCobrado" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-center">
+            <div class="modal-body py-4">
+                <i class="bi bi-check-circle-fill text-exito" style="font-size:3rem"></i>
+                <h2 class="titulo-pantalla mt-2 mb-0">¡Listo!</h2>
+                <p class="text-secondary mb-3" id="cobradoNumero"></p>
+                <div class="d-flex justify-content-around">
+                    <div><span class="eyebrow d-block">Total</span><span class="monto fs-3" id="cobradoTotal"></span></div>
+                    <div id="cobradoBloqueVuelto"><span class="eyebrow d-block">Vuelto</span><span class="monto fs-1 text-exito" id="cobradoVuelto"></span></div>
+                </div>
+                <p class="mt-3 mb-0 d-none" id="cobradoPuntos"></p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <a href="#" target="_blank" rel="noopener" class="btn btn-secundario" id="cobradoTicket"><i class="bi bi-printer me-1"></i>Imprimir ticket</a>
+                <button type="button" class="btn btn-primary btn-xl" id="nuevaVenta">Nueva venta</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+    var raiz = document.getElementById('mostrador');
+    var csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    var CLAVE = 'cafeto.ticket.' + raiz.dataset.turno;
+
+    // ------------------------------------------------------------------
+    //  Estado: lo que pide el cliente. Se guarda en el navegador para que
+    //  recargar la página no borre el ticket a medio armar.
+    // ------------------------------------------------------------------
+    var estado = {items: [], pagos: [], token: raiz.dataset.token, cliente: null, beneficios: []};
+    try {
+        var guardado = JSON.parse(window.sessionStorage.getItem(CLAVE) || 'null');
+        if (guardado && Array.isArray(guardado.items)) {
+            estado = guardado;
+            if (!Array.isArray(estado.beneficios)) { estado.beneficios = []; }
+        }
+    } catch (e) { /* sin almacenamiento: arranca vacío */ }
+    function persistir() {
+        try { window.sessionStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) { /* nada */ }
+    }
+    var nombres = {};       // id -> {nombre, detalle, fraccionable, unidad}
+    (estado.items || []).forEach(function (i) { nombres[i.producto] = i.info || {}; });
+
+    // ------------------------------------------------------------------
+    //  Formato argentino
+    // ------------------------------------------------------------------
+    var pesos = new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS'});
+    var numero = new Intl.NumberFormat('es-AR', {maximumFractionDigits: 3});
+    function $(id) { return document.getElementById(id); }
+    function plata(v) { return pesos.format(Number(v || 0)); }
+    function el(tag, clase, texto) {
+        var n = document.createElement(tag);
+        if (clase) { n.className = clase; }
+        if (texto != null) { n.textContent = texto; }
+        return n;
+    }
+
+    // ------------------------------------------------------------------
+    //  Catálogo
+    // ------------------------------------------------------------------
+    var filtro = {q: '', rubro: '', pagina: 1};
+    var pedidoCatalogo = null;
+    function cargarCatalogo(agregar) {
+        if (pedidoCatalogo) { pedidoCatalogo.abort(); }
+        pedidoCatalogo = new AbortController();
+        var url = raiz.dataset.catalogo + '?' + new URLSearchParams(filtro).toString();
+        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin', signal: pedidoCatalogo.signal})
+            .then(function (r) { if (r.status === 401) { location.reload(); } return r.json(); })
+            .then(function (datos) {
+                var grilla = $('catalogo');
+                if (!agregar) { grilla.textContent = ''; }
+                datos.productos.forEach(function (p) {
+                    nombres[p.id] = {nombre: p.nombre, detalle: p.detalle, fraccionable: p.fraccionable, unidad: p.unidad};
+                    var boton = el('button', 'producto-boton');
+                    boton.type = 'button';
+                    boton.dataset.producto = p.id;
+                    boton.disabled = p.agotado;
+                    boton.appendChild(el('span', 'nombre', p.nombre));
+                    if (p.detalle) { boton.appendChild(el('span', 'stock', p.detalle)); }
+                    if (p.rebaja) { boton.appendChild(el('span', 'insignia insignia-aviso align-self-start', 'Oferta por vencer')); }
+                    if (p.stock !== null) {
+                        boton.appendChild(el('span', 'stock', p.agotado ? 'Sin stock' : 'Stock: ' + numero.format(Number(p.stock)) + ' ' + p.unidad));
+                    }
+                    boton.appendChild(el('span', 'precio', plata(p.precio) + (p.fraccionable ? ' / ' + p.unidad : '')));
+                    grilla.appendChild(boton);
+                });
+                if (!agregar && !datos.productos.length) {
+                    grilla.appendChild(el('p', 'text-secondary', 'No hay productos que coincidan.'));
+                }
+                $('masProductos').classList.toggle('d-none', !datos.hay_mas);
+            })
+            .catch(function (e) { if (e.name !== 'AbortError') { mostrarError('No se pudo cargar el catálogo. Revisá la conexión.'); } });
+    }
+    var esperaBusqueda = null;
+    $('buscar').addEventListener('input', function () {
+        clearTimeout(esperaBusqueda);
+        esperaBusqueda = setTimeout(function () { filtro.q = $('buscar').value; filtro.pagina = 1; cargarCatalogo(false); }, 250);
+    });
+    // Enter: el lector de códigos de barras "tipea" el código y aprieta
+    // Enter. Se busca en el momento y, si el código es exacto o queda un
+    // solo producto, va directo al ticket.
+    $('buscar').addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') { return; }
+        e.preventDefault();
+        clearTimeout(esperaBusqueda);
+        var q = $('buscar').value.trim();
+        if (!q) { return; }
+        fetch(raiz.dataset.catalogo + '?' + new URLSearchParams({q: q, rubro: '', pagina: 1}).toString(),
+              {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+            .then(function (r) { return r.json(); })
+            .then(function (datos) {
+                var vendibles = datos.productos.filter(function (p) { return !p.agotado; });
+                var exacto = vendibles.find(function (p) { return p.codigo && p.codigo === q; });
+                var elegido = exacto || (vendibles.length === 1 ? vendibles[0] : null);
+                datos.productos.forEach(function (p) {
+                    nombres[p.id] = {nombre: p.nombre, detalle: p.detalle, fraccionable: p.fraccionable, unidad: p.unidad};
+                });
+                if (elegido) { agregar(elegido.id); $('buscar').value = ''; }
+                else if (!datos.productos.length) { mostrarError('No hay ningún producto con «' + q + '».'); }
+                filtro.q = elegido ? '' : q; filtro.pagina = 1; cargarCatalogo(false);
+            });
+    });
+    document.querySelectorAll('.js-rubro').forEach(function (b) {
+        b.addEventListener('click', function () {
+            document.querySelectorAll('.js-rubro').forEach(function (o) { o.classList.replace('btn-primary', 'btn-secundario'); });
+            b.classList.replace('btn-secundario', 'btn-primary');
+            filtro.rubro = b.dataset.rubro; filtro.pagina = 1; cargarCatalogo(false);
+        });
+    });
+    $('masProductos').addEventListener('click', function () { filtro.pagina += 1; cargarCatalogo(true); });
+    $('catalogo').addEventListener('click', function (e) {
+        var b = e.target.closest('.producto-boton');
+        if (b && !b.disabled) { agregar(Number(b.dataset.producto)); }
+    });
+
+    // ------------------------------------------------------------------
+    //  Ticket
+    // ------------------------------------------------------------------
+    function agregar(id) {
+        var item = estado.items.find(function (i) { return i.producto === id; });
+        if (item) { item.cantidad = String(Number(item.cantidad.replace(',', '.')) + 1); }
+        else { estado.items.push({producto: id, cantidad: '1', descuento: '', motivo: '', detalle: '', info: nombres[id]}); }
+        cambio();
+    }
+    function cambio() { persistir(); dibujarRenglones(); cotizarPronto(); }
+
+    function dibujarRenglones(cotizados) {
+        var lista = $('renglones');
+        lista.textContent = '';
+        $('ticketVacio').classList.toggle('d-none', estado.items.length > 0);
+        var porProducto = {};
+        // Los regalos del club van aparte: son otro renglón aunque sean el
+        // mismo producto que se está comprando.
+        (cotizados || []).forEach(function (r) { if (!r.beneficio) { porProducto[r.producto] = r; } });
+        var regalos = $('regalos');
+        regalos.textContent = '';
+        (cotizados || []).filter(function (r) { return r.beneficio; }).forEach(function (r) {
+            var fila = el('div', 'renglon');
+            var izq = el('div', 'min-w-0');
+            izq.appendChild(el('div', 'fw-semibold text-truncate', numero.format(Number(r.cantidad)) + ' × ' + (r.nombre_corto || r.nombre)));
+            izq.appendChild(el('div', 'small text-marca', 'Regalo del club'));
+            fila.append(izq, el('div', 'text-end monto', plata(r.subtotal)));
+            regalos.appendChild(fila);
+        });
+        estado.items.forEach(function (item, i) {
+            var info = item.info || nombres[item.producto] || {};
+            var calc = porProducto[item.producto];
+            var fila = el('div', 'renglon');
+            var izq = el('div', 'min-w-0');
+            izq.appendChild(el('div', 'fw-semibold text-truncate', info.nombre || ('Producto ' + item.producto)));
+            if (info.detalle) { izq.appendChild(el('div', 'small text-tenue text-truncate', info.detalle)); }
+            if (calc && Number(calc.descuento) > 0) {
+                izq.appendChild(el('div', 'small text-marca', '−' + numero.format(Number(calc.porcentaje)) + ' % · ' + calc.motivo_texto));
+            }
+            var der = el('div', 'text-end monto', calc ? plata(calc.subtotal) : '…');
+            var controles = el('div', 'd-flex align-items-center gap-1');
+            controles.style.gridColumn = '1 / -1';
+            var menos = el('button', 'btn btn-sm btn-secundario btn-icono', '−'); menos.type = 'button';
+            var cant = el('input', 'form-control form-control-sm text-center'); cant.style.width = '5rem';
+            cant.inputMode = info.fraccionable ? 'decimal' : 'numeric';
+            cant.value = item.cantidad; cant.setAttribute('aria-label', 'Cantidad');
+            var mas = el('button', 'btn btn-sm btn-secundario btn-icono', '+'); mas.type = 'button';
+            var unidad = el('span', 'small text-tenue', info.unidad || '');
+            var desc = el('button', 'btn btn-sm btn-secundario ms-auto'); desc.type = 'button'; desc.title = 'Descuento';
+            desc.innerHTML = '<i class="bi bi-percent"></i>';
+            var quitar = el('button', 'btn btn-sm btn-outline-danger'); quitar.type = 'button'; quitar.title = 'Quitar';
+            quitar.innerHTML = '<i class="bi bi-x-lg"></i>';
+            var paso = info.fraccionable ? 0.1 : 1;
+            menos.addEventListener('click', function () {
+                var v = Number(item.cantidad.replace(',', '.')) - paso;
+                if (v <= 0) { estado.items.splice(i, 1); } else { item.cantidad = String(Math.round(v * 1000) / 1000); }
+                cambio();
+            });
+            mas.addEventListener('click', function () { item.cantidad = String(Math.round((Number(item.cantidad.replace(',', '.')) + paso) * 1000) / 1000); cambio(); });
+            cant.addEventListener('change', function () { item.cantidad = cant.value.trim() || '1'; cambio(); });
+            quitar.addEventListener('click', function () { estado.items.splice(i, 1); cambio(); });
+            desc.addEventListener('click', function () { abrirDescuento(item); });
+            controles.append(menos, cant, mas, unidad, desc, quitar);
+            fila.append(izq, der, controles);
+            lista.appendChild(fila);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    //  Pagos
+    // ------------------------------------------------------------------
+    function dibujarPagos(cobros) {
+        var cont = $('pagos');
+        cont.textContent = '';
+        var porMedio = {};
+        (cobros || []).forEach(function (c) { porMedio[c.medio] = c; });
+        document.querySelectorAll('.js-medio').forEach(function (b) {
+            var elegido = estado.pagos.some(function (p) { return p.medio === Number(b.dataset.medio); });
+            b.classList.toggle('btn-primary', elegido); b.classList.toggle('btn-secundario', !elegido);
+        });
+        estado.pagos.forEach(function (pago, i) {
+            var boton = document.querySelector('.js-medio[data-medio="' + pago.medio + '"]');
+            var efectivo = boton && boton.dataset.efectivo === '1';
+            var calc = porMedio[pago.medio];
+            var fila = el('div', 'd-flex flex-wrap align-items-center gap-2');
+            fila.appendChild(el('span', 'fw-semibold me-auto', boton ? boton.childNodes[0].textContent.trim() : 'Medio'));
+            if (estado.pagos.length > 1) {
+                var monto = el('input', 'form-control form-control-sm'); monto.style.width = '7rem';
+                monto.inputMode = 'decimal'; monto.placeholder = i === estado.pagos.length - 1 ? 'El resto' : 'Monto';
+                monto.value = pago.monto || ''; monto.setAttribute('aria-label', 'Monto con este medio');
+                monto.addEventListener('change', function () { pago.monto = monto.value.trim(); persistir(); cotizarPronto(); });
+                fila.appendChild(monto);
+            }
+            if (calc) { fila.appendChild(el('span', 'small text-secondary', plata(calc.importe) + (Number(calc.recargo) ? ' (recargo ' + plata(calc.recargo) + ')' : ''))); }
+            if (efectivo) {
+                var recibido = el('input', 'form-control'); recibido.style.width = '8rem';
+                recibido.inputMode = 'decimal'; recibido.placeholder = 'Te da…';
+                recibido.value = pago.recibido || ''; recibido.setAttribute('aria-label', 'Efectivo recibido');
+                recibido.addEventListener('change', function () { pago.recibido = recibido.value.trim(); persistir(); cotizarPronto(); });
+                fila.appendChild(recibido);
+            }
+            var quitar = el('button', 'btn btn-sm btn-link text-peligro p-0'); quitar.type = 'button';
+            quitar.innerHTML = '<i class="bi bi-x-circle"></i>'; quitar.title = 'Quitar este medio';
+            quitar.addEventListener('click', function () { estado.pagos.splice(i, 1); persistir(); dibujarPagos(); cotizarPronto(); });
+            fila.appendChild(quitar);
+            cont.appendChild(fila);
+        });
+        $('mixto').classList.toggle('d-none', estado.pagos.length !== 1);
+    }
+    var mixtoActivo = false;
+    $('mixto').addEventListener('click', function () { mixtoActivo = true; });
+    document.querySelectorAll('.js-medio').forEach(function (b) {
+        b.addEventListener('click', function () {
+            var id = Number(b.dataset.medio);
+            var ya = estado.pagos.findIndex(function (p) { return p.medio === id; });
+            if (ya !== -1) { estado.pagos.splice(ya, 1); }
+            else if (mixtoActivo && estado.pagos.length === 1) { estado.pagos.push({medio: id, monto: '', recibido: ''}); mixtoActivo = false; }
+            else { estado.pagos = [{medio: id, monto: '', recibido: ''}]; }
+            persistir(); dibujarPagos(); cotizarPronto();
+        });
+    });
+
+    // ------------------------------------------------------------------
+    //  Descuento
+    // ------------------------------------------------------------------
+    var itemDescuento = null;
+    function abrirDescuento(item) {
+        itemDescuento = item;
+        var info = item.info || nombres[item.producto] || {};
+        $('descuentoProducto').textContent = info.nombre || '';
+        $('descuentoPorcentaje').value = item.descuento || '';
+        $('descuentoMotivo').value = item.motivo || '';
+        $('descuentoDetalle').value = item.detalle || '';
+        bootstrap.Modal.getOrCreateInstance($('modalDescuento')).show();
+    }
+    $('aplicarDescuento').addEventListener('click', function () {
+        itemDescuento.descuento = $('descuentoPorcentaje').value.trim();
+        itemDescuento.motivo = $('descuentoMotivo').value;
+        itemDescuento.detalle = $('descuentoDetalle').value.trim();
+        bootstrap.Modal.getInstance($('modalDescuento')).hide();
+        cambio();
+    });
+    $('quitarDescuento').addEventListener('click', function () {
+        itemDescuento.descuento = ''; itemDescuento.motivo = ''; itemDescuento.detalle = '';
+        bootstrap.Modal.getInstance($('modalDescuento')).hide();
+        cambio();
+    });
+
+    // ------------------------------------------------------------------
+    //  Club Cafeto: identificar al cliente y elegir beneficios
+    // ------------------------------------------------------------------
+    function pintarCliente() {
+        var c = estado.cliente;
+        $('clubBuscar').classList.toggle('d-none', !!c);
+        $('clubCliente').classList.toggle('d-none', !c);
+        if (!c) { $('clubBeneficios').textContent = ''; return; }
+        $('clubNombre').textContent = c.nombre;
+        $('clubDatos').textContent = c.categoria + ' · ' + numero.format(c.disponibles) + ' puntos disponibles';
+    }
+    function pintarBeneficios(lista) {
+        var cont = $('clubBeneficios');
+        cont.textContent = '';
+        (lista || []).forEach(function (b) {
+            var fila = el('div', 'd-flex align-items-center gap-2 small');
+            var texto = b.descripcion + (b.porcentaje ? ' (' + numero.format(Number(b.porcentaje)) + ' %)' : '');
+            if (b.automatico_descuento) {
+                fila.appendChild(el('span', 'insignia ' + (b.aplicado ? 'insignia-exito' : 'insignia-neutra'), b.aplicado ? 'Se aplica' : 'Sin efecto'));
+                fila.appendChild(el('span', 'me-auto', texto));
+            } else {
+                var elegido = estado.beneficios.indexOf(b.id) !== -1;
+                fila.appendChild(el('span', 'me-auto', texto + (b.puntos ? ' · ' + numero.format(b.puntos) + ' pts' : ' · regalo de la categoría')));
+                var boton = el('button', 'btn btn-sm ' + (elegido ? 'btn-primary' : 'btn-secundario'), elegido ? 'Quitar' : (b.puntos ? 'Canjear' : 'Aplicar'));
+                boton.type = 'button';
+                boton.addEventListener('click', function () {
+                    var i = estado.beneficios.indexOf(b.id);
+                    if (i === -1) { estado.beneficios.push(b.id); } else { estado.beneficios.splice(i, 1); }
+                    cambio();
+                });
+                fila.appendChild(boton);
+            }
+            cont.appendChild(fila);
+        });
+    }
+    function identificar() {
+        var q = $('clubTexto').value.trim();
+        if (!q) { return; }
+        fetch(raiz.dataset.cliente + '?' + new URLSearchParams({q: q}).toString(),
+              {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+            .then(function (r) { if (r.status === 401) { location.reload(); } return r.json(); })
+            .then(function (r) {
+                if (!r.ok) { mostrarError(r.error); return; }
+                mostrarError('');
+                estado.cliente = r.cliente; estado.beneficios = [];
+                $('clubTexto').value = '';
+                pintarCliente(); cambio();
+            })
+            .catch(function () { mostrarError('No se pudo buscar al cliente. Revisá la conexión.'); });
+    }
+    $('clubIdentificar').addEventListener('click', identificar);
+    $('clubTexto').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); identificar(); } });
+    $('clubQuitar').addEventListener('click', function () { estado.cliente = null; estado.beneficios = []; pintarCliente(); cambio(); });
+    if ($('clubNuevo')) {
+        $('clubNuevo').addEventListener('click', function () {
+            ['ncApellido', 'ncNombre', 'ncTelefono', 'ncDni', 'ncEmail', 'ncNacimiento'].forEach(function (i) { $(i).value = ''; });
+            $('ncTelefono').value = /^[\d\s()+-]{7,}$/.test($('clubTexto').value.trim()) ? $('clubTexto').value.trim() : '';
+            $('clienteError').classList.add('d-none'); $('clienteTarjeta').classList.add('d-none');
+            $('clienteGuardar').disabled = false;
+            bootstrap.Modal.getOrCreateInstance($('modalCliente')).show();
+        });
+    }
+    $('clienteGuardar').addEventListener('click', function () {
+        var nacimiento = $('ncNacimiento').value.trim();
+        var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(nacimiento);
+        var cuerpo = {
+            apellido_cliente: $('ncApellido').value, nombre_cliente: $('ncNombre').value,
+            telefono_cliente: $('ncTelefono').value, dni_cliente: $('ncDni').value,
+            email_cliente: $('ncEmail').value,
+            fecha_nacimiento: m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : nacimiento
+        };
+        $('clienteGuardar').disabled = true;
+        enviar(raiz.dataset.altaCliente, cuerpo).then(function (r) {
+            if (!r.ok) {
+                $('clienteError').querySelector('span').textContent = r.error;
+                $('clienteError').classList.remove('d-none');
+                $('clienteGuardar').disabled = false;
+                return;
+            }
+            estado.cliente = r.cliente; estado.beneficios = [];
+            $('clienteError').classList.add('d-none');
+            $('clienteTarjeta').href = r.tarjeta; $('clienteTarjeta').classList.remove('d-none');
+            pintarCliente(); cambio();
+        }).catch(function () { $('clienteGuardar').disabled = false; });
+    });
+
+    // ------------------------------------------------------------------
+    //  Servidor
+    // ------------------------------------------------------------------
+    function pedido() {
+        var cuerpo = {
+            token: estado.token,
+            cliente: estado.cliente ? estado.cliente.id : null,
+            beneficios: estado.beneficios || [],
+            items: estado.items.map(function (i) { return {producto: i.producto, cantidad: i.cantidad, descuento: i.descuento, motivo: i.motivo, detalle: i.detalle}; }),
+            pagos: estado.pagos
+        };
+        if (!$('autorizacion').classList.contains('d-none') && $('autorizaUsuario').value) {
+            cuerpo.autoriza = {usuario: $('autorizaUsuario').value, clave: $('autorizaClave').value};
+        }
+        return cuerpo;
+    }
+    function enviar(url, cuerpo, senal) {
+        return fetch(url, {
+            method: 'POST', credentials: 'same-origin', signal: senal,
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+            body: JSON.stringify(cuerpo)
+        }).then(function (r) {
+            if (r.status === 401) { location.reload(); throw new Error('sesión'); }
+            if (!r.ok && r.status !== 200) { throw new Error('servidor'); }
+            return r.json();
+        });
+    }
+    function mostrarError(texto) {
+        var caja = $('errorTicket');
+        caja.querySelector('span').textContent = texto || '';
+        caja.classList.toggle('d-none', !texto);
+    }
+
+    var ultima = null, enCurso = null, esperaCotizar = null;
+    function cotizarPronto() { clearTimeout(esperaCotizar); esperaCotizar = setTimeout(cotizar, 200); }
+    function cotizar() {
+        if (enCurso) { enCurso.abort(); }
+        if (!estado.items.length) {
+            ultima = null; mostrarError(''); pintarTotales(null); dibujarRenglones(); dibujarPagos(); return;
+        }
+        enCurso = new AbortController();
+        enviar(raiz.dataset.cotizar, pedido(), enCurso.signal).then(function (r) {
+            if (!r.ok) {
+                ultima = null;
+                mostrarError(r.error);
+                if (/autoriz|tope/i.test(r.error)) { $('autorizacion').classList.remove('d-none'); }
+                $('cobrar').disabled = true;
+                return;
+            }
+            mostrarError('');
+            ultima = r;
+            if (r.cliente) { estado.cliente = r.cliente; pintarCliente(); }
+            pintarBeneficios(r.beneficios);
+            if (r.pide_autorizacion) { $('autorizacion').classList.remove('d-none'); }
+            dibujarRenglones(r.renglones);
+            dibujarPagos(r.cobros);
+            pintarTotales(r);
+        }).catch(function (e) {
+            if (e.name !== 'AbortError') { mostrarError('No se pudo calcular el ticket. Revisá la conexión.'); $('cobrar').disabled = true; }
+        });
+    }
+    function pintarTotales(r) {
+        $('tSubtotal').textContent = plata(r ? r.subtotal : 0);
+        var beneficio = r && Number(r.descuento) > 0;
+        document.querySelectorAll('.js-beneficio').forEach(function (n) { n.classList.toggle('d-none', !beneficio); });
+        if (beneficio) { $('tBeneficio').textContent = '−' + plata(r.descuento); $('tBeneficioTexto').textContent = r.descuento_texto; }
+        var redondeo = r && Number(r.redondeo) !== 0, recargo = r && Number(r.recargo) !== 0;
+        document.querySelectorAll('.js-redondeo').forEach(function (n) { n.classList.toggle('d-none', !redondeo); });
+        document.querySelectorAll('.js-recargo').forEach(function (n) { n.classList.toggle('d-none', !recargo); });
+        if (redondeo) { $('tRedondeo').textContent = plata(r.redondeo); }
+        if (recargo) { $('tRecargo').textContent = plata(r.recargo); }
+        $('tTotal').textContent = plata(r ? r.total : 0);
+        $('barraTotal').textContent = plata(r ? r.total : 0);
+        $('barraCantidad').textContent = estado.items.length;
+        var vuelto = r && Number(r.vuelto) > 0;
+        $('filaVuelto').classList.toggle('d-none', !vuelto);
+        if (vuelto) { $('tVuelto').textContent = plata(r.vuelto); }
+        $('cobrar').disabled = !(r && r.cobros && r.cobros.length) || !navigator.onLine;
+    }
+
+    $('cobrar').addEventListener('click', function () {
+        var boton = $('cobrar');
+        boton.disabled = true;
+        boton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Cobrando…';
+        enviar(raiz.dataset.cobrar, pedido()).then(function (r) {
+            boton.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Cobrar';
+            if (!r.ok) { mostrarError(r.error); boton.disabled = false; return; }
+            $('cobradoNumero').textContent = 'Venta N° ' + r.venta + (r.repetida ? ' (ya estaba registrada)' : '');
+            $('cobradoTotal').textContent = plata(r.total);
+            $('cobradoVuelto').textContent = plata(r.vuelto);
+            $('cobradoBloqueVuelto').classList.toggle('d-none', Number(r.vuelto) <= 0);
+            $('cobradoTicket').href = r.ticket;
+            var p = r.puntos;
+            $('cobradoPuntos').classList.toggle('d-none', !p);
+            if (p) {
+                $('cobradoPuntos').textContent = p.cliente + ': +' + numero.format(p.ganados) + ' puntos' +
+                    (p.canjeados ? ' (canjeó ' + numero.format(p.canjeados) + ')' : '') +
+                    '. Le quedan ' + numero.format(p.disponibles) + '.' +
+                    (p.ascendio ? ' ¡Subió a ' + p.categoria + '!' : '');
+            }
+            bootstrap.Modal.getOrCreateInstance($('modalCobrado')).show();
+        }).catch(function () {
+            // Puede haberse cobrado y perdido la respuesta: el MISMO token
+            // hace que reintentar devuelva la misma venta, no una nueva.
+            boton.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Reintentar cobro';
+            boton.disabled = false;
+            mostrarError('No llegó la respuesta del servidor. Tocá «Reintentar cobro»: si ya se había cobrado, no se cobra dos veces.');
+        });
+    });
+    function nuevaVenta() {
+        estado = {items: [], pagos: [], cliente: null, beneficios: [], token: (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : ''};
+        if (!estado.token) { location.reload(); return; }
+        $('autorizaUsuario').value = ''; $('autorizaClave').value = '';
+        $('autorizacion').classList.add('d-none');
+        persistir(); ultima = null; mostrarError('');
+        dibujarRenglones(); dibujarPagos(); pintarTotales(null); pintarCliente();
+        $('buscar').value = ''; $('buscar').focus();
+    }
+    $('nuevaVenta').addEventListener('click', function () { bootstrap.Modal.getInstance($('modalCobrado')).hide(); nuevaVenta(); });
+    $('vaciar').addEventListener('click', function () {
+        if (!estado.items.length) { return; }
+        Cafeto.confirmar({titulo: '¿Vaciar el ticket?', texto: 'Se quitan todos los productos cargados.', aceptar: 'Sí, vaciar', peligro: true})
+            .then(function (ok) { if (ok) { estado.items = []; estado.pagos = []; estado.cliente = null; estado.beneficios = []; pintarCliente(); cambio(); } });
+    });
+    $('autorizaClave').addEventListener('change', cotizarPronto);
+
+    cargarCatalogo(false);
+    dibujarRenglones(); dibujarPagos(); pintarCliente();
+    if (estado.items.length) { cotizar(); }
+})();
+</script>
+{% endblock %}

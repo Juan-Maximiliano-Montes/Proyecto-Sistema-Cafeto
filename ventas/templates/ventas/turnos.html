@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Turnos de caja{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-cash-stack me-1"></i>Ventas y caja</span>
+        <h1 class="titulo-pantalla mb-0">Turnos de caja</h1>
+        <p class="bajada">Aperturas, arqueos y diferencias de cada cajón.</p>
+    </div>
+    <div class="acciones">
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'ventas:exportar_turnos' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'ventas:exportar_turnos' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<form method="get" id="herramientas" class="herramientas">
+    <input type="hidden" name="pagina" value="1">
+    <select name="caja" class="form-select" aria-label="Caja" data-auto-enviar>
+        <option value="">Caja: todas</option>
+        {% for c in cajas %}<option value="{{ c.pk }}"{% if filtro.caja == c.pk|stringformat:'s' %} selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="">Todos los turnos</option>
+        <option value="abiertos"{% if filtro.estado == 'abiertos' %} selected{% endif %}>Abiertos</option>
+        <option value="con_diferencia"{% if filtro.estado == 'con_diferencia' %} selected{% endif %}>Con diferencia</option>
+    </select>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ filtro.desde }}" class="form-control"></label>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ filtro.hasta }}" class="form-control"></label>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+    {% if request.GET %}<a href="{% url 'ventas:turnos' %}" class="btn btn-link text-secondary">Limpiar</a>{% endif %}
+</form>
+
+{% if diferencia_total %}
+<div class="aviso {% if diferencia_total < 0 %}aviso-error{% else %}aviso-aviso{% endif %}"><i class="bi bi-calculator"></i><span>Diferencia acumulada con estos filtros: <strong>{{ diferencia_total|pesos }}</strong></span></div>
+{% endif %}
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Caja</th><th>Apertura</th><th>Cierre</th><th class="table-numero">Esperado</th><th class="table-numero">Contado</th><th class="table-numero">Diferencia</th><th></th></tr></thead>
+        <tbody>
+        {% for t in filas %}
+            <tr>
+                <td>{{ t.id_caja_registradora }}</td>
+                <td><span class="d-block">{{ t.fecha_apertura|date:"d/m/Y H:i" }}</span><span class="small text-tenue">{{ t.id_usuario_apertura }}</span></td>
+                <td>{% if t.fecha_cierre %}<span class="d-block">{{ t.fecha_cierre|date:"d/m/Y H:i" }}</span><span class="small text-tenue">{{ t.id_usuario_cierre }}{% if t.tipo_cierre != 'NORMAL' %} · {{ t.get_tipo_cierre_display }}{% endif %}</span>{% else %}<span class="insignia insignia-exito">Abierto</span>{% endif %}</td>
+                <td class="table-numero">{{ t.monto_esperado|pesos }}</td>
+                <td class="table-numero">{{ t.monto_final|pesos }}</td>
+                <td class="table-numero">{% if t.diferencia_caja is None %}—{% elif t.diferencia_caja == 0 %}<span class="text-exito">Justa</span>{% else %}<span class="{% if t.diferencia_caja < 0 %}text-peligro{% else %}text-marca{% endif %} fw-semibold">{{ t.diferencia_caja|pesos }}</span>{% endif %}</td>
+                <td class="text-end"><button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'ventas:ficha_turno' t.pk %}" data-modal="#modalTurno" data-titulo="{{ t.id_caja_registradora }} · {{ t.fecha_apertura|date:'d/m/Y' }}" title="Ver detalle"><i class="bi bi-eye"></i></button></td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="7" class="vacio"><i class="bi bi-cash-stack"></i>No hay turnos con estos filtros.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% include 'parciales/_paginador.html' %}
+
+<div class="modal fade" id="modalTurno" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-cash-stack me-2"></i><span class="js-titulo-remoto">Turno</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body js-remoto"></div>
+            <div class="modal-footer"><button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

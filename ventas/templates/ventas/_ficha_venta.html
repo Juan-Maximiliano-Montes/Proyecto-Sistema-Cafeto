@@ -1,0 +1,56 @@
+{% load cafeto %}
+{% if venta.anulada %}
+<div class="aviso aviso-error mb-3" role="status"><i class="bi bi-x-octagon-fill"></i><span><strong>Venta anulada</strong> el {{ venta.fecha_anulacion|date:"d/m/Y H:i" }}{% if venta.id_usuario_solicitante_id != venta.id_usuario_anulacion_id %}: la pidió {{ venta.id_usuario_solicitante }} y la autorizó {{ venta.id_usuario_anulacion }}{% else %} por {{ venta.id_usuario_anulacion }}{% endif %}. Motivo: {{ motivo_anulacion }}. El stock, el efectivo del cajón y los puntos ya volvieron (lo cobrado con tarjeta, QR o transferencia se revierte en el posnet o el banco). No suma en los totales.</span></div>
+{% endif %}
+<dl class="ficha mb-3">
+    <dt>Estado</dt><dd>{% if venta.anulada %}<span class="insignia insignia-peligro">Anulada</span>{% else %}<span class="insignia insignia-exito">Completada</span>{% endif %}</dd>
+    <dt>Fecha</dt><dd>{{ venta.fecha_venta|date:"d/m/Y" }} {{ venta.hora_venta|time:"H:i" }}</dd>
+    <dt>Caja</dt><dd>{{ venta.id_turno_caja.id_caja_registradora }} · turno {{ venta.id_turno_caja_id }}</dd>
+    <dt>Vendió</dt><dd>{{ venta.id_usuario }}</dd>
+    {% if venta.comprobante_fiscal_ref %}<dt>Comprobante fiscal</dt><dd>{{ venta.comprobante_fiscal_ref }}</dd>{% endif %}
+</dl>
+<div class="table-responsive mb-3">
+<table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Producto</th><th class="table-numero">Cant.</th><th class="table-numero">Precio</th><th class="table-numero">Desc.</th><th class="table-numero">Subtotal</th></tr></thead>
+    <tbody>
+    {% for r in renglones %}
+        <tr>
+            <td>{{ r.descripcion_item }}{% if r.motivo_descuento %}<span class="d-block small text-tenue">{{ r.get_motivo_descuento_display }}{% if r.detalle_motivo %}: {{ r.detalle_motivo }}{% endif %}{% if r.id_usuario_autorizante %} · autorizó {{ r.id_usuario_autorizante.nombre }}{% endif %}</span>{% endif %}</td>
+            <td class="table-numero">{{ r.cantidad|cantidad }}</td>
+            <td class="table-numero">{{ r.precio_unitario|pesos }}</td>
+            <td class="table-numero">{% if r.monto_descuento_linea %}−{{ r.monto_descuento_linea|pesos }}{% endif %}</td>
+            <td class="table-numero">{{ r.subtotal|pesos }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+<dl class="ficha mb-3">
+    <dt>Subtotal</dt><dd class="monto">{{ venta.subtotal|pesos }}</dd>
+    {% if venta.ajuste_redondeo %}<dt>Redondeo</dt><dd class="monto">{{ venta.ajuste_redondeo|pesos }}</dd>{% endif %}
+    {% if venta.monto_recargo %}<dt>Recargo</dt><dd class="monto">{{ venta.monto_recargo|pesos }}</dd>{% endif %}
+    <dt>Total</dt><dd class="monto fs-5">{{ venta.total_venta|pesos }}</dd>
+    {% for p in pagos %}<dt>{{ p.id_medio_pago }}</dt><dd>{{ p.monto|pesos }}{% if p.monto_recargo %} + {{ p.monto_recargo|pesos }} de recargo{% endif %}{% if p.monto_recibido %} · recibió {{ p.monto_recibido|pesos }}, vuelto {{ p.monto_vuelto|pesos }}{% endif %}</dd>{% endfor %}
+</dl>
+{% if cambios %}
+<h6 class="subtitulo">Cambios y devoluciones</h6>
+{% for c in cambios %}
+<div class="tarjeta mb-2">
+    <div class="d-flex justify-content-between"><strong>Cambio N° {{ c.pk }}</strong><span class="small text-secondary">{{ c.fecha_cambio|date:"d/m/Y H:i" }} · {{ c.id_usuario.nombre }}</span></div>
+    <span class="small">{{ c.get_motivo_display }}{% if c.detalle_motivo %}: {{ c.detalle_motivo }}{% endif %}</span>
+    <ul class="small mb-0">
+        {% for d in c.detalles.all %}<li>{% if d.sentido == 'DEVUELVE' %}Devolvió{% else %}Se llevó{% endif %} {{ d.cantidad|cantidad }} × {{ d.id_producto }} ({{ d.subtotal|pesos }}){% if d.sentido == 'DEVUELVE' and not d.reingresa_stock %} — no volvió al stock{% endif %}</li>{% endfor %}
+    </ul>
+    {% if c.importe_devuelto %}<span class="small text-peligro">Se devolvieron {{ c.importe_devuelto|pesos }} con {{ c.id_medio_pago }}{% if c.id_usuario_autorizante %} (autorizó {{ c.id_usuario_autorizante.nombre }}){% endif %}</span>{% endif %}
+    {% if c.importe_cobrado %}<span class="small text-exito">Se cobraron {{ c.importe_cobrado|pesos }} con {{ c.id_medio_pago }}</span>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% if token_anulacion %}
+<details class="tarjeta mt-3">
+    <summary class="fw-semibold text-danger"><i class="bi bi-x-octagon me-1"></i>Anular esta venta</summary>
+    {% include 'ventas/_form_anulacion.html' with desde='ventas' %}
+</details>
+{% elif no_se_anula %}
+<p class="small text-secondary mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>No se puede anular: {{ no_se_anula }}</p>
+{% endif %}

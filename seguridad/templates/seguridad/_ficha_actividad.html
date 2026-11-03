@@ -1,0 +1,89 @@
+{% comment %}
+Detalle de un registro de auditoría, para el modal del ojo.
+
+Las dos fotos JSONB se muestran lado a lado, con una fila por campo y la
+etiqueta en castellano. Lo que cambió va primero y resaltado: una
+modificación de quince campos en la que sólo se tocó el precio tiene que
+mostrar ese precio, no quince filas iguales entre las que haya que buscar.
+
+No hay ni un control de formulario acá. El libro es append-only.
+{% endcomment %}
+
+<dl class="ficha mb-3">
+    <dt>Fecha y hora</dt>
+    <dd>{{ registro.fecha_hora|date:"d/m/Y H:i:s" }}</dd>
+
+    <dt>Usuario</dt>
+    <dd>
+        {% if registro.id_usuario %}
+            {{ registro.id_usuario.apellido }}, {{ registro.id_usuario.nombre }}
+            <span class="text-secondary">({{ registro.id_usuario.dni_usuario }})</span>
+        {% else %}<span class="text-tenue">Proceso del sistema</span>{% endif %}
+    </dd>
+
+    {% if registro.id_perfil_efectivo %}
+    <dt>Con el perfil</dt>
+    <dd>{{ registro.id_perfil_efectivo.nombre }}</dd>
+    {% endif %}
+
+    <dt>Operación</dt>
+    <dd>{{ registro.operacion_realizada }}</dd>
+
+    <dt>Resultado</dt>
+    <dd>{% if registro.resultado_operacion == 'RECHAZADA' %}<span class="insignia insignia-peligro"><i class="bi bi-x-octagon"></i>Rechazada</span>{% else %}<span class="insignia insignia-exito"><i class="bi bi-check2"></i>Exitosa</span>{% endif %}</dd>
+
+    <dt>Módulo afectado</dt>
+    <dd><span class="insignia insignia-neutra">{{ registro.modulo_afectado }}</span></dd>
+
+    {% if registro.id_sesion.ip_origen %}
+    <dt>Desde</dt>
+    <dd>{{ registro.id_sesion.ip_origen }}</dd>
+    {% endif %}
+
+    {% if registro.detalle_operacion %}
+    <dt>Detalle</dt>
+    <dd>{{ registro.detalle_operacion }}</dd>
+    {% endif %}
+</dl>
+
+{% if registro.resultado_operacion == 'RECHAZADA' %}
+<div class="aviso aviso-error py-2 mb-0"><i class="bi bi-x-octagon-fill"></i><span>El sistema rechazó esta operación por un control de seguridad: no cambió ningún dato. El motivo está en el detalle.</span></div>
+{% else %}
+<div class="aviso aviso-aviso py-2 mb-3"><i class="bi bi-info-circle-fill"></i><span>{{ resumen }}</span></div>
+
+{% if filas %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-0">
+    <thead>
+        <tr>
+            <th style="width: 34%">Campo</th>
+            {% if hubo_antes %}<th style="width: 33%">Antes</th>{% endif %}
+            <th style="width: 33%">{% if hubo_antes %}Después{% else %}Valor{% endif %}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for fila in filas %}
+        <tr{% if fila.destacada %} class="fila-destacada"{% endif %}>
+            <th class="fw-normal {% if fila.destacada %}text-marca{% else %}text-secondary{% endif %}">
+                {% if fila.destacada %}
+                <i class="bi bi-arrow-right-short"></i>
+                {% endif %}
+                {{ fila.etiqueta }}
+            </th>
+            {% if hubo_antes %}
+            <td class="{% if fila.destacada %}text-decoration-line-through opacity-75{% endif %}">
+                {{ fila.antes }}
+            </td>
+            {% endif %}
+            <td class="{% if fila.destacada %}fw-bold{% endif %}">
+                {{ fila.despues }}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<p class="text-secondary mb-0">Este registro no guardó el detalle de los campos.</p>
+{% endif %}
+{% endif %}

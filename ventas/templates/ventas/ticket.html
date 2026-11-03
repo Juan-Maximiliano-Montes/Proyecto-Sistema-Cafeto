@@ -1,0 +1,71 @@
+{% load cafeto static %}<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket N° {{ venta.pk }}</title>
+<style>
+    @page { size: 80mm auto; margin: 4mm; }
+    body { font: 12px/1.35 'Courier New', monospace; color: #000; background: #fff; max-width: 76mm; margin: 0 auto; padding: 8px; }
+    h1 { font-size: 15px; text-align: center; margin: 0; }
+    .centro { text-align: center; }
+    .linea { border-top: 1px dashed #000; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { vertical-align: top; padding: 1px 0; }
+    .der { text-align: right; white-space: nowrap; }
+    .total { font-size: 16px; font-weight: bold; }
+    .nota { font-size: 10px; text-align: center; margin-top: 8px; }
+    .acciones { text-align: center; margin: 12px 0; }
+    .anulada { border: 2px solid #000; text-align: center; padding: 4px; margin: 6px 0; font-weight: bold; }
+    .anulada span { display: block; font-weight: normal; font-size: 11px; }
+    @media print { .acciones { display: none; } }
+</style>
+</head>
+<body>
+<h1>{{ negocio.nombre_fantasia }}</h1>
+<div class="centro">{{ negocio.razon_social }}{% if negocio.cuit %}<br>CUIT {{ negocio.cuit }}{% endif %}{% if negocio.domicilio %}<br>{{ negocio.domicilio }}{% endif %}</div>
+<div class="linea"></div>
+<div>Venta N° {{ venta.pk }} · {{ venta.fecha_venta|date:"d/m/Y" }} {{ venta.hora_venta|time:"H:i" }}</div>
+<div>{{ venta.id_turno_caja.id_caja_registradora }} · Atendió {{ venta.id_usuario.nombre }}</div>
+{% if venta.anulada %}
+<div class="anulada">*** VENTA ANULADA ***
+    <span>{{ venta.fecha_anulacion|date:"d/m/Y H:i" }} · autorizó {{ venta.id_usuario_anulacion }}</span>
+    {% if venta.id_usuario_solicitante_id != venta.id_usuario_anulacion_id %}<span>pidió {{ venta.id_usuario_solicitante }}</span>{% endif %}
+    <span>{{ motivo_anulacion }}</span>
+</div>
+{% endif %}
+<div class="linea"></div>
+<table>
+{% for r in renglones %}
+    <tr><td colspan="2">{{ r.descripcion_item }}</td></tr>
+    <tr><td>&nbsp;&nbsp;{{ r.cantidad|cantidad }} x {{ r.precio_unitario|pesos }}</td><td class="der">{{ r.subtotal|pesos }}</td></tr>
+    {% if r.monto_descuento_linea %}<tr><td>&nbsp;&nbsp;Desc. {{ r.get_motivo_descuento_display }}</td><td class="der">−{{ r.monto_descuento_linea|pesos }}</td></tr>{% endif %}
+{% endfor %}
+</table>
+<div class="linea"></div>
+<table>
+    {% if venta.monto_descuento %}<tr><td>{{ venta.id_beneficio }}</td><td class="der">−{{ venta.monto_descuento|pesos }}</td></tr>{% endif %}
+    {% if venta.ajuste_redondeo %}<tr><td>Redondeo</td><td class="der">{{ venta.ajuste_redondeo|pesos }}</td></tr>{% endif %}
+    {% if venta.monto_recargo %}<tr><td>Recargo</td><td class="der">{{ venta.monto_recargo|pesos }}</td></tr>{% endif %}
+    <tr class="total"><td>TOTAL</td><td class="der">{{ venta.total_venta|pesos }}</td></tr>
+    {% for p in pagos %}
+    <tr><td>{{ p.id_medio_pago }}</td><td class="der">{{ p.monto|pesos }}</td></tr>
+    {% if p.monto_recibido %}<tr><td>&nbsp;&nbsp;Recibido</td><td class="der">{{ p.monto_recibido|pesos }}</td></tr>
+    <tr><td>&nbsp;&nbsp;Vuelto</td><td class="der">{{ p.monto_vuelto|pesos }}</td></tr>{% endif %}
+    {% endfor %}
+</table>
+{% if puntos %}
+<div class="linea"></div>
+<div class="centro">Club Cafeto · {{ puntos.cliente.nombre_cliente }} {{ puntos.cliente.apellido_cliente }}</div>
+<table>
+    {% if puntos.canjeados %}<tr><td>Puntos canjeados</td><td class="der">−{{ puntos.canjeados }}</td></tr>{% endif %}
+    <tr><td>Puntos de esta compra</td><td class="der">+{{ puntos.ganados }}</td></tr>
+    {% if puntos.saldo is not None %}<tr><td>Saldo de puntos</td><td class="der">{{ puntos.saldo }}</td></tr>{% endif %}
+    <tr><td>Categoría</td><td class="der">{{ puntos.cliente.id_categoria }}</td></tr>
+</table>
+{% endif %}
+<div class="nota">Comprobante interno, no válido como factura.<br>Cambios dentro de los {{ negocio.dias_para_cambios }} días con este ticket.<br>¡Gracias por elegirnos!</div>
+<div class="acciones"><button onclick="window.print()">Imprimir</button></div>
+<script>window.addEventListener('load', function () { try { window.print(); } catch (e) {} });</script>
+</body>
+</html>

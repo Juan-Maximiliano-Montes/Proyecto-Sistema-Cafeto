@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Compras{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-bag me-1"></i>Compras y gastos</span>
+        <h1 class="titulo-pantalla mb-0">Compras</h1>
+    </div>
+    <div class="acciones">
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'compras:exportar_compras' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'compras:exportar_compras' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+        {% if 'registrar_compra' in permisos_usuario %}<a href="{% url 'compras:recepcion' %}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Recibir mercadería</a>{% endif %}
+    </div>
+</div>
+
+<form method="get" id="herramientas" class="herramientas">
+    <input type="hidden" name="pagina" value="1">
+    <select name="proveedor" class="form-select" aria-label="Proveedor" data-auto-enviar>
+        <option value="">Proveedor: todos</option>
+        {% for p in proveedores %}<option value="{{ p.pk }}"{% if filtro.proveedor == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="">Estado: todos</option>
+        {% for v, e in estados %}<option value="{{ v }}"{% if filtro.estado == v %} selected{% endif %}>{{ e }}</option>{% endfor %}
+    </select>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ filtro.desde }}" class="form-control"></label>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ filtro.hasta }}" class="form-control"></label>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+</form>
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Fecha</th><th>Proveedor</th><th>Comprobante</th><th class="table-numero">Total</th><th class="table-numero">Falta pagar</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+        {% for c in filas %}
+            <tr>
+                <td>{{ c.fecha_compra|date:"d/m/Y" }}</td>
+                <td>{{ c.id_proveedor }}</td>
+                <td class="small">{{ c.get_tipo_comprobante_display }} {{ c.numero_formateado }}</td>
+                <td class="table-numero monto">{{ c.total_compra|pesos }}</td>
+                <td class="table-numero">{% if c.saldo_pendiente %}{{ c.saldo_pendiente|pesos }}{% if c.fecha_vencimiento_pago %}<span class="d-block small text-tenue">vence {{ c.fecha_vencimiento_pago|date:"d/m" }}</span>{% endif %}{% else %}—{% endif %}</td>
+                <td><span class="insignia {% if c.estado_compra == 'PAGADA' %}insignia-exito{% elif c.estado_compra == 'EN_PROCESO_PAGO' %}insignia-aviso{% else %}insignia-neutra{% endif %}">{{ c.get_estado_compra_display }}</span></td>
+                <td class="text-end"><button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'compras:ficha_compra' c.pk %}" data-modal="#modalCompra" data-titulo="{{ c.id_proveedor }} · {{ c.numero_formateado }}" title="Ver detalle"><i class="bi bi-eye"></i></button></td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="7" class="vacio"><i class="bi bi-bag"></i>No hay compras con estos filtros.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% include 'parciales/_paginador.html' %}
+
+<div class="modal fade" id="modalCompra" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title"><i class="bi bi-receipt-cutoff me-2"></i><span class="js-titulo-remoto">Compra</span></h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+            <div class="modal-body js-remoto"></div>
+            <div class="modal-footer"><button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

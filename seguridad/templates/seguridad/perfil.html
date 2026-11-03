@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Mi Perfil{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-person-badge me-1"></i>Mi cuenta</span>
+        <h1 class="titulo-pantalla mb-0">Hola, {{ usuario.nombre }}</h1>
+        <p class="bajada">Tus datos son de sólo lectura. Si algo está mal, avisale a un administrador.</p>
+    </div>
+    <div class="acciones">
+        <a href="{% url 'seguridad:cambiar_clave' %}" class="btn btn-secundario"><i class="bi bi-key me-1"></i>Cambiar mi clave</a>
+    </div>
+</div>
+
+<article class="tarjeta" style="max-width: 680px;">
+    <div class="tarjeta-cabeza">
+        <div class="d-flex gap-3 align-items-center">
+            <span class="avatar" style="width:3rem;height:3rem;font-size:1.05rem" aria-hidden="true">{{ usuario|iniciales }}</span>
+            <div>
+                <h2 class="tarjeta-titulo">{{ usuario.nombre }} {{ usuario.apellido }}</h2>
+                <p class="tarjeta-sub"><code class="text-marca">{{ usuario.nombre_usuario }}</code></p>
+            </div>
+        </div>
+        {% if not usuario.borrado_logico %}<span class="insignia insignia-exito">Activo</span>{% else %}<span class="insignia insignia-neutra">Inactivo</span>{% endif %}
+    </div>
+    <dl class="ficha">
+        <dt>DNI</dt><dd>{{ usuario.dni_usuario }}</dd>
+        <dt>Correo</dt><dd>{{ usuario.correo|default:"—" }}</dd>
+        <dt>Perfil</dt>
+        <dd>
+            {{ usuario.id_perfil.nombre }}
+            {% if usuario.es_titular %}<span class="insignia insignia-marca ms-1"><i class="bi bi-award"></i>Titular</span>{% endif %}
+        </dd>
+        {% if usuario.tiene_perfil_temporal_vigente %}
+        <dt>Perfil temporal</dt>
+        <dd>
+            <span class="insignia insignia-aviso"><i class="bi bi-hourglass-split"></i>{{ usuario.id_perfil_temporal.nombre }}</span>
+            <span class="small text-secondary d-block mt-1">Hasta el {{ usuario.temporal_hasta|date:'d/m/Y H:i' }}</span>
+        </dd>
+        {% endif %}
+        <dt>Clave</dt>
+        <dd>{% if usuario.debe_cambiar_clave %}<span class="insignia insignia-aviso">Provisoria</span>{% else %}Cambiada el {{ usuario.fecha_cambio_clave|date:'d/m/Y'|default:'—' }}{% endif %}</dd>
+        <dt>Última modificación</dt><dd>{{ usuario.fecha_ultima_modificacion|date:'d/m/Y H:i'|default:'—' }}</dd>
+    </dl>
+</article>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% load cafeto %}
+<dl class="ficha mb-3">
+    <dt>Caja</dt><dd>{{ turno.id_caja_registradora }}</dd>
+    <dt>Abrió</dt><dd>{{ turno.id_usuario_apertura }} · {{ turno.fecha_apertura|date:"d/m/Y H:i" }}</dd>
+    {% if turno.fecha_cierre %}
+    <dt>Cerró</dt><dd>{{ turno.id_usuario_cierre }} · {{ turno.fecha_cierre|date:"d/m/Y H:i" }} <span class="insignia insignia-neutra ms-1">{{ turno.get_tipo_cierre_display }}</span></dd>
+    {% if turno.id_usuario_supervisor %}<dt>Supervisó</dt><dd>{{ turno.id_usuario_supervisor }}</dd>{% endif %}
+    <dt>Esperado</dt><dd class="monto">{{ turno.monto_esperado|pesos }}</dd>
+    <dt>Contado</dt><dd class="monto">{{ turno.monto_final|pesos }}</dd>
+    <dt>Diferencia</dt><dd class="monto {% if turno.diferencia_caja < 0 %}text-peligro{% endif %}">{{ turno.diferencia_caja|pesos }}</dd>
+    {% if turno.observacion_diferencia %}<dt>Explicación</dt><dd>{{ turno.observacion_diferencia }}</dd>{% endif %}
+    {% else %}
+    <dt>Estado</dt><dd><span class="insignia insignia-exito">Abierto</span></dd>
+    {% endif %}
+    <dt>Ventas</dt><dd>{{ ventas.cantidad|default:0 }} · {{ ventas.total|pesos }}{% if ventas.anuladas %} <span class="text-danger small">({{ ventas.anuladas }} anulada{{ ventas.anuladas|pluralize }}, fuera del total)</span>{% endif %}</dd>
+</dl>
+{% if recaudacion %}
+<h6 class="subtitulo">Recaudación por medio de pago</h6>
+<div class="table-responsive mb-3">
+<table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Medio</th><th class="table-numero">Ventas</th><th class="table-numero">Cobrado</th><th class="table-numero">Cambios</th><th class="table-numero">Total</th></tr></thead>
+    <tbody>
+    {% for r in recaudacion %}
+        <tr><td>{{ r.medio }}</td><td class="table-numero">{{ r.ventas }}</td><td class="table-numero">{{ r.cobrado|pesos }}</td><td class="table-numero">{{ r.cambios|pesos }}</td><td class="table-numero">{{ r.total|pesos }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% if not turno.abierto %}<p class="mb-3"><a href="{% url 'ventas:recaudacion' turno.pk %}" target="_blank" rel="noopener">Documento de recaudación para imprimir</a></p>{% endif %}
+{% endif %}
+{% if resumen %}
+<h6 class="subtitulo">Resumen del efectivo</h6>
+<dl class="ficha mb-3">{% for etiqueta, monto in resumen %}<dt>{{ etiqueta }}</dt><dd class="monto">{{ monto|pesos }}</dd>{% endfor %}</dl>
+{% endif %}
+<h6 class="subtitulo">Movimientos</h6>
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th><th class="table-numero">Monto</th></tr></thead>
+    <tbody>
+    {% for m in movimientos %}
+        <tr><td>{{ m.fecha_hora|time:"H:i" }}</td><td>{{ m.get_tipo_movimiento_display }}</td><td>{{ m.concepto }}</td><td>{{ m.id_usuario.nombre }}</td><td class="table-numero">{{ m.monto|pesos }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>

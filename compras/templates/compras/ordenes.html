@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Órdenes de compra{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-bag me-1"></i>Compras y gastos</span>
+        <h1 class="titulo-pantalla mb-0">Órdenes de compra</h1>
+    </div>
+    <div class="acciones"><a href="{% url 'compras:nueva_orden' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Nueva orden</a></div>
+</div>
+<form method="get" id="herramientas" class="herramientas">
+    <input type="hidden" name="pagina" value="1">
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="">Estado: todos</option>
+        {% for v, e in estados %}<option value="{{ v }}"{% if estado == v %} selected{% endif %}>{{ e }}</option>{% endfor %}
+    </select>
+</form>
+{% if filas %}
+<div class="grilla">
+    {% for o in filas %}
+    <a href="{% url 'compras:orden' o.pk %}" class="tarjeta text-reset">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0"><h2 class="tarjeta-titulo">Orden N° {{ o.pk }}</h2><p class="tarjeta-sub">{{ o.id_proveedor }}</p></div>
+            <span class="insignia {% if o.estado_orden == 'EMITIDA' %}insignia-aviso{% elif o.estado_orden == 'RECEPCIONADA' %}insignia-exito{% elif o.estado_orden == 'CANCELADA' %}insignia-peligro{% else %}insignia-neutra{% endif %}">{{ o.get_estado_orden_display }}</span>
+        </div>
+        <dl class="tarjeta-datos"><dt>Fecha</dt><dd>{{ o.fecha_orden|date:"d/m/Y" }}</dd><dt>Total</dt><dd class="monto">{{ o.total_orden|pesos }}</dd></dl>
+    </a>
+    {% endfor %}
+</div>
+{% include 'parciales/_paginador.html' %}
+{% else %}
+<div class="vacio tarjeta"><i class="bi bi-journal-text"></i>No hay órdenes con estos filtros.</div>
+{% endif %}
+{% endblock %}

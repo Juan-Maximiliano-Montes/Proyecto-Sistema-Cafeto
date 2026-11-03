@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+
+{% block titulo %}Cafeto · Permisos{% endblock %}
+
+{% block contenido %}
+
+{% comment %}
+Panel de Permisos en modo SÓLO LECTURA.
+
+El catálogo de permisos no se administra desde acá: cada código existe
+porque una vista lo exige con @requiere_permiso. Un permiso creado desde
+la pantalla no tendría ninguna vista detrás que lo consulte, y renombrar
+un código rompería en silencio el match con el decorador. Por eso esta
+pantalla sólo lista y muestra el detalle.
+
+Lo que el Administrador SÍ hace es asignar o desasignar estos permisos a
+los perfiles, y eso vive en la pantalla de Perfiles (modal "Editar
+perfil", con el tilde de permisos agrupado por módulo).
+{% endcomment %}
+
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-shield-lock me-1"></i>Equipo y permisos</span>
+        <h1 class="titulo-pantalla mb-0">Permisos</h1>
+        <p class="bajada">Catálogo de sólo lectura. Qué perfil tiene cada uno se decide en Perfiles.</p>
+    </div>
+    {% if 'ver_perfiles' in permisos_usuario %}
+    <div class="acciones">
+        <a href="{% url 'seguridad:perfiles' %}" class="btn btn-secundario">
+            <i class="bi bi-person-vcard me-1"></i>Asignar a perfiles
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<form method="get" id="herramientas" class="herramientas" role="search">
+    <input type="hidden" name="pagina" value="1">
+    <div class="buscador">
+        <i class="bi bi-search"></i>
+        <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
+               placeholder="Código, nombre o descripción…" aria-label="Buscar">
+    </div>
+    <select name="modulo" class="form-select" aria-label="Módulo" data-auto-enviar>
+        <option value="">Módulo: todos</option>
+        {% for valor, etiqueta in modulos %}
+        <option value="{{ valor }}"{% if modulo == valor %} selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Buscar</button>
+    {% if request.GET %}<a href="{% url 'seguridad:permisos' %}" class="btn btn-link text-secondary">Limpiar</a>{% endif %}
+</form>
+
+{% if permisos %}
+<div class="grilla">
+    {% for perm in permisos %}
+    <article class="tarjeta"
+             data-id="{{ perm.id_permiso }}" data-codigo="{{ perm.codigo }}" data-nombre="{{ perm.nombre }}"
+             data-descripcion="{{ perm.descripcion|default:'' }}" data-modulo-texto="{{ perm.get_modulo_display }}"
+             data-modificado="{{ perm.fecha_modificacion|date:'d/m/Y H:i' }}"
+             data-modificado-por="{{ perm.usuario_modificacion.nombre_usuario|default_if_none:'' }}"
+             data-perfiles="{% for pf in perm.perfiles.all %}{{ pf.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0">
+                <h2 class="tarjeta-titulo">{{ perm.nombre }}</h2>
+                <p class="tarjeta-sub"><code class="text-marca">{{ perm.codigo }}</code></p>
+            </div>
+            <span class="insignia {% if perm.es_exclusivo_del_administrador %}insignia-marca{% else %}insignia-neutra{% endif %}">{{ perm.get_modulo_display }}</span>
+        </div>
+        <p class="small text-secondary mb-0">{{ perm.descripcion|default:"—" }}</p>
+        <div class="d-flex flex-wrap gap-1">
+            {% for pf in perm.perfiles.all %}
+            <span class="insignia insignia-neutra">{{ pf.nombre }}</span>
+            {% empty %}
+            <span class="small text-tenue">{% if perm.es_exclusivo_del_administrador %}Sólo administrador{% else %}Ningún perfil{% endif %}</span>
+            {% endfor %}
+        </div>
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario btn-detalle" title="Ver detalle">
+                <i class="bi bi-eye"></i><span class="ms-1">Ver</span>
+            </button>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="vacio tarjeta">
+    <i class="bi bi-key"></i>
+    <p class="mb-2">No hay permisos que coincidan con la búsqueda.</p>
+    <a href="{% url 'seguridad:permisos' %}" class="btn btn-secundario btn-sm">Ver todos</a>
+</div>
+{% endif %}
+
+{% include 'parciales/_paginador.html' %}
+
+<div class="modal fade" id="modalDetalle" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Detalle del permiso</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="ficha">
+                    <dt>ID</dt><dd id="det_id"></dd>
+
+                    <dt>Código</dt>
+                    <dd><code class="text-marca" id="det_codigo"></code></dd>
+
+                    <dt>Módulo</dt><dd id="det_modulo"></dd>
+
+                    <dt>Nombre</dt><dd id="det_nombre"></dd>
+
+                    <dt>Descripción</dt><dd id="det_descripcion"></dd>
+
+                    <dt>Perfiles que lo usan</dt><dd id="det_perfiles"></dd>
+
+                    <dt>Última modificación</dt><dd id="det_modificado"></dd>
+
+                    <dt>Modificado por</dt><dd id="det_modificado_por"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+    function texto(id, valor) { document.getElementById(id).textContent = valor || '—'; }
+    document.addEventListener('click', function (evento) {
+        var boton = evento.target.closest('.btn-detalle');
+        if (!boton) { return; }
+        var t = boton.closest('.tarjeta');
+        ['id', 'codigo', 'nombre', 'descripcion'].forEach(function (c) { texto('det_' + c, t.dataset[c]); });
+        texto('det_modulo', t.dataset.moduloTexto);
+        texto('det_modificado', t.dataset.modificado);
+        texto('det_modificado_por', t.dataset.modificadoPor);
+        var destino = document.getElementById('det_perfiles');
+        destino.textContent = '';
+        var perfiles = (t.dataset.perfiles || '').split(', ').filter(Boolean);
+        if (!perfiles.length) { destino.textContent = 'Ningún perfil'; }
+        perfiles.forEach(function (nombre) {
+            var chip = document.createElement('span');
+            chip.className = 'insignia insignia-neutra me-1 mb-1';
+            chip.textContent = nombre;
+            destino.appendChild(chip);
+        });
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('modalDetalle')).show();
+    });
+})();
+</script>
+{% endblock %}

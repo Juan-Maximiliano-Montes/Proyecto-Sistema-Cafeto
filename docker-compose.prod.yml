@@ -1,0 +1,48 @@
+# docker-compose.prod.yml — el sistema en el NAS del local (Alternativa II).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Lo que cambia respecto de desarrollo:
+#   * la base NO publica su puerto: sólo la ve el contenedor web;
+#   * Adminer no se levanta (es una puerta de entrada a la base);
+#   * el código NO se monta: corre lo que quedó en la imagen;
+#   * gunicorn en lugar del servidor de desarrollo (DJANGO_DEBUG=False);
+#   * un servicio de respaldo diario de la base, a la carpeta ./respaldos.
+#
+# El acceso desde afuera del local (la dueña desde su casa) va por el
+# proxy inverso del NAS con HTTPS o por una VPN; nunca exponiendo el
+# puerto 8000 directo a internet. Ver el README.
+services:
+  db:
+    ports: !reset []
+
+  adminer:
+    profiles: ["herramientas"]
+
+  web:
+    volumes: !reset []
+    restart: unless-stopped
+    environment:
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_CONFIAR_EN_PROXY: ${DJANGO_CONFIAR_EN_PROXY:-False}
+      DJANGO_HTTPS: ${DJANGO_HTTPS:-False}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+
+  respaldo:
+    image: postgres:16
+    container_name: cafeto_respaldo
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB}
+      CAFETO_RESPALDOS_DIAS: ${CAFETO_RESPALDOS_DIAS:-14}
+    volumes:
+      - ./respaldos:/respaldos
+      - ./docker/respaldar.sh:/respaldar.sh:ro
+    entrypoint: ["sh", "/respaldar.sh"]
+    depends_on:
+      db:
+        condition: service_healthy

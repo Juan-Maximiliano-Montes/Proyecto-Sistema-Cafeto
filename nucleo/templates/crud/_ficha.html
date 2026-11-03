@@ -1,0 +1,50 @@
+{% comment %}
+Ficha de sólo lectura de una fila, para el modal del ojo.
+
+No hay un solo control de formulario acá: ni input, ni select, ni botón de
+guardar. Es a propósito. Una pantalla de consulta que se parece a una de
+edición invita a tocar, y después hay que explicar por qué el cambio no se
+guardó. Lo que no se puede modificar, no se dibuja como modificable.
+
+Los datos vienen armados de `datos_de_la_ficha()`: ya traen la etiqueta y
+el valor legible, así que acá no se decide nada.
+{% endcomment %}
+
+{% load cafeto %}
+<dl class="ficha">
+    <dt>N°</dt>
+    <dd><span class="insignia insignia-neutra">{{ fila.pk }}</span></dd>
+
+    {% for etiqueta, valor in datos %}
+    <dt>{{ etiqueta }}</dt>
+    <dd>
+        {% if valor is True %}
+            <span class="text-exito"><i class="bi bi-check-circle-fill"></i> Sí</span>
+        {% elif valor is False %}
+            <span class="text-tenue"><i class="bi bi-dash-circle"></i> No</span>
+        {% else %}
+            {{ valor|default_if_none:"—" }}
+        {% endif %}
+    </dd>
+    {% endfor %}
+
+    {% if cfg.tiene_baja %}
+    <dt>Estado</dt>
+    <dd>
+        {% if fila.borrado_logico %}
+            <span class="insignia insignia-neutra">Dado de baja</span>
+        {% else %}
+            <span class="insignia insignia-exito">Vigente</span>
+        {% endif %}
+    </dd>
+    {% endif %}
+
+    {% if fila.fecha_modificacion %}
+    <dt>Última modificación</dt>
+    <dd>
+        {{ fila.fecha_modificacion|date:"d/m/Y H:i" }}
+        {% if fila.usuario_modificacion %} · {{ fila.usuario_modificacion }}{% endif %}
+    </dd>
+    {% endif %}
+</dl>
+{% if cfg.ficha_extra %}{% include cfg.ficha_extra %}{% endif %}

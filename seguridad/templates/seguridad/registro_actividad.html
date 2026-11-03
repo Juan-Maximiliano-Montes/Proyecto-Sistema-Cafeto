@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% comment %}
+Registro de Actividad: LOG_AUDITORIA en modo lectura.
+
+No hay botón "Nuevo", ni lápiz, ni tacho. El único botón de la columna de
+Acciones es el ojo. Es a propósito: el libro es append-only y el mixin
+LibroInmutable rechaza cualquier UPDATE o DELETE, así que un botón de
+editar estaría prometiendo algo imposible.
+{% endcomment %}
+
+{% block titulo %}Cafeto · Registro de Actividad{% endblock %}
+
+{% block contenido %}
+
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-shield-lock me-1"></i>Equipo y permisos</span>
+        <h1 class="titulo-pantalla mb-0">Registro de Actividad</h1>
+        <p class="bajada">Quién hizo qué y cuándo, y también lo que el sistema rechazó (accesos sin permiso, autorizaciones y anulaciones fuera de regla). Es de sólo lectura: lo que quedó escrito no se cambia.</p>
+    </div>
+    <div class="acciones">
+        <span class="insignia insignia-neutra align-self-center"><i class="bi bi-lock"></i>Sólo lectura</span>
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-download me-1"></i>Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'seguridad:exportar_actividad' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'seguridad:exportar_actividad' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+{% if alertas_total %}
+{# Alertas de intentos fallidos que esta persona todavía no revisó. Revisar no #}
+{# toca las alertas: agrega un asiento "revisé" al mismo libro. #}
+<section id="alertas" class="aviso aviso-error mb-3 d-block" aria-labelledby="titulo-alertas">
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-shield-exclamation"></i>
+        <strong id="titulo-alertas">{{ alertas_total }} alerta{{ alertas_total|pluralize }} de seguridad sin revisar</strong>
+        <form method="post" action="{% url 'seguridad:revisar_alertas' %}" class="ms-auto">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secundario btn-sm"><i class="bi bi-check2-all me-1"></i>Marcar como revisadas</button>
+        </form>
+    </div>
+    <ul class="mb-0 ps-4">
+        {% for alerta in alertas %}
+        <li><span class="text-secondary">{{ alerta.fecha_hora|date:"d/m/Y H:i" }}</span> · {{ alerta.detalle_operacion }}</li>
+        {% endfor %}
+    </ul>
+    {% if alertas_total > alertas|length %}<p class="small mb-0 mt-1">Se muestran las {{ alertas|length }} más recientes; el resto está en el listado.</p>{% endif %}
+</section>
+{% endif %}
+
+<form method="get" id="herramientas" class="tarjeta mb-3">
+    <input type="hidden" name="pagina" value="1">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label" for="{{ formulario.usuario.id_for_label }}">{{ formulario.usuario.label }}</label>
+            {{ formulario.usuario }}
+            {% for error in formulario.usuario.errors %}<p class="error-campo">{{ error }}</p>{% endfor %}
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="{{ formulario.operacion.id_for_label }}">{{ formulario.operacion.label }}</label>
+            {{ formulario.operacion }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label" for="{{ formulario.resultado.id_for_label }}">{{ formulario.resultado.label }}</label>
+            {{ formulario.resultado }}
+        </div>
+        <div class="col-md-2">
+            <label class="form-label" for="{{ formulario.modulo.id_for_label }}">{{ formulario.modulo.label }}</label>
+            {{ formulario.modulo }}
+        </div>
+        <div class="col-md-2{% if formulario.desde.errors %} con-error{% endif %}">
+            <label class="form-label" for="{{ formulario.desde.id_for_label }}">{{ formulario.desde.label }}</label>
+            {{ formulario.desde }}
+            {% for error in formulario.desde.errors %}<p class="error-campo">{{ error }}</p>{% endfor %}
+        </div>
+        <div class="col-md-2{% if formulario.hasta.errors %} con-error{% endif %}">
+            <label class="form-label" for="{{ formulario.hasta.id_for_label }}">{{ formulario.hasta.label }}</label>
+            {{ formulario.hasta }}
+            {% for error in formulario.hasta.errors %}<p class="error-campo">{{ error }}</p>{% endfor %}
+        </div>
+        <div class="col-md-8">
+            <label class="form-label" for="{{ formulario.busqueda.id_for_label }}">{{ formulario.busqueda.label }}</label>
+            {{ formulario.busqueda }}
+        </div>
+        <div class="col-12 d-flex gap-2">
+            <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+            {% if hay_filtros %}<a href="{% url 'seguridad:actividad' %}" class="btn btn-link text-secondary">Limpiar filtros</a>{% endif %}
+        </div>
+    </div>
+</form>
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th>Fecha / Hora</th>
+                <th>Usuario</th>
+                <th>Operación</th>
+                <th>Resultado</th>
+                <th>Módulo afectado</th>
+                <th class="text-center">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for registro in registros %}
+            <tr>
+                <td class="text-nowrap">{{ registro.fecha_hora|date:"d/m/Y H:i" }}</td>
+                <td>
+                    {% if registro.id_usuario %}
+                        {{ registro.id_usuario.apellido }}, {{ registro.id_usuario.nombre }}
+                        {% if registro.id_perfil_efectivo %}<span class="d-block small text-tenue">{{ registro.id_perfil_efectivo.nombre }}</span>{% endif %}
+                    {% else %}<span class="text-tenue">Sistema</span>{% endif %}
+                </td>
+                <td>{{ registro.operacion_realizada }}</td>
+                <td>{% if registro.resultado_operacion == 'RECHAZADA' %}<span class="insignia insignia-peligro"><i class="bi bi-x-octagon"></i>Rechazada</span>{% else %}<span class="insignia insignia-exito"><i class="bi bi-check2"></i>Exitosa</span>{% endif %}</td>
+                <td><span class="insignia insignia-neutra">{{ registro.modulo_afectado }}</span></td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-sm btn-secundario boton-ver-actividad"
+                            data-remoto="{% url 'seguridad:actividad' %}{{ registro.pk }}/"
+                            data-modal="#modalActividad" data-titulo="{{ registro.operacion_realizada }}"
+                            title="Ver detalle">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" class="vacio">
+                    <i class="bi bi-clock-history"></i>
+                    {% if hay_filtros %}No hay actividad que coincida con los filtros.{% else %}Todavía no hay actividad registrada.{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+{% include 'parciales/_paginador.html' %}
+
+<div class="modal fade" id="modalActividad" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i><span class="js-titulo-remoto">Detalle</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body js-remoto"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

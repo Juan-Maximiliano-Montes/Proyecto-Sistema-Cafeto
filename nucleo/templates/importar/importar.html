@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block titulo %}Cafeto · Importar {{ importador.titulo|lower }}{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url importador.volver %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Volver</a>
+        <h1 class="titulo-pantalla mb-0">Importar {{ importador.titulo|lower }}</h1>
+        <p class="bajada">Subí la planilla, revisá qué va a pasar con cada fila y confirmá. Si hay un error, no se importa nada.</p>
+    </div>
+    <div class="acciones">
+        <a href="{% url 'importar_modelo' importador.clave %}" class="btn btn-secundario"><i class="bi bi-file-earmark-arrow-down me-1"></i>Planilla modelo</a>
+    </div>
+</div>
+
+{% if not pendiente %}
+<form method="post" enctype="multipart/form-data" class="tarjeta" style="max-width: 640px">
+    {% csrf_token %}
+    <h2 class="subtitulo h5 mb-0">1. Subí la planilla</h2>
+    <p class="small text-secondary mb-0">Excel (.xlsx) o .csv, hasta 2 MB. Las columnas se reconocen por el título, en cualquier orden. Las amarillas de la planilla modelo son obligatorias.</p>
+    <input type="file" name="archivo" accept=".xlsx,.csv" class="form-control" required aria-label="Planilla">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Revisar la planilla</button>
+</form>
+<div class="tarjeta mt-3">
+    <h2 class="subtitulo h6 mb-0">Columnas</h2>
+    <dl class="ficha">{% for c in importador.columnas %}<dt>{{ c.titulo }}{% if c.obligatoria %} <span class="text-peligro">*</span>{% endif %}</dt><dd class="small">{{ c.ayuda }}</dd>{% endfor %}</dl>
+</div>
+{% else %}
+<div class="grilla grilla-compacta mb-3">
+    <div class="tarjeta kpi"><span class="eyebrow">Altas</span><span class="valor">{{ altas }}</span></div>
+    <div class="tarjeta kpi"><span class="eyebrow">Cambios</span><span class="valor">{{ cambios }}</span></div>
+    <div class="tarjeta kpi"><span class="eyebrow">Sin cambios</span><span class="valor">{{ iguales }}</span></div>
+    <div class="tarjeta kpi{% if errores %} tarjeta-destacada{% endif %}"><span class="eyebrow">Con errores</span><span class="valor{% if errores %} text-peligro{% endif %}">{{ errores }}</span></div>
+</div>
+
+{% if errores %}
+<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ errores }} fila(s) con errores. Corregí la planilla y volvé a subirla: así no se importa nada a medias.</span></div>
+{% else %}
+<div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span>La planilla «{{ pendiente.archivo }}» está lista para importar.</span></div>
+{% endif %}
+
+<div class="d-flex gap-2 mb-3">
+    <form method="post" action="{% url 'importar_descartar' importador.clave %}">{% csrf_token %}<button type="submit" class="btn btn-secundario"><i class="bi bi-x-lg me-1"></i>Descartar y subir otra</button></form>
+    {% if not errores %}
+    <form method="post" action="{% url 'importar_confirmar' importador.clave %}" data-titulo="¿Importar?" data-aceptar="Sí, importar"
+          data-confirmar="Se aplican {{ altas }} alta(s) y {{ cambios }} cambio(s), todo junto.">
+        {% csrf_token %}<button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-check2-all me-1"></i>Confirmar la importación</button>
+    </form>
+    {% endif %}
+</div>
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <thead><tr><th>Fila</th><th>Qué pasa</th><th>Detalle</th></tr></thead>
+        <tbody>
+        {% for r in resultados %}
+            <tr{% if not r.ok %} class="fila-destacada"{% endif %}>
+                <td class="text-nowrap">{{ r.numero }}</td>
+                <td>{% if not r.ok %}<span class="insignia insignia-peligro">Error</span>{% elif r.accion == 'ALTA' %}<span class="insignia insignia-exito">Alta</span>{% elif r.accion == 'CAMBIO' %}<span class="insignia insignia-aviso">Cambio</span>{% else %}<span class="insignia insignia-neutra">Sin cambios</span>{% endif %}</td>
+                <td>{{ r.descripcion }}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

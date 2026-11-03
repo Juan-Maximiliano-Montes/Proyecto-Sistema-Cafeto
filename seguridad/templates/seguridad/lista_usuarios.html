@@ -1,0 +1,512 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% comment %}
+Directorio del personal. Exclusivo del perfil administrador (ver_usuarios).
+
+Cada persona es una tarjeta. Las acciones delicadas (restablecer la clave,
+cambiar el perfil, prestar uno temporal) van en el menú "Más" para que no
+se toquen por accidente; las que cambian el estado piden confirmación.
+{% endcomment %}
+{% block titulo %}Cafeto · Usuarios{% endblock %}
+
+{% block contenido %}
+{% with puede_crear=permisos_usuario|contiene:'crear_usuario' puede_editar=permisos_usuario|contiene:'editar_usuario' puede_restablecer=permisos_usuario|contiene:'restablecer_clave' puede_perfil=permisos_usuario|contiene:'cambiar_perfil_usuario' puede_temporal=permisos_usuario|contiene:'asignar_perfil_temporal' puede_reactivar=permisos_usuario|contiene:'reactivar_usuario' puede_baja=permisos_usuario|contiene:'baja_usuario' %}
+
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-shield-lock me-1"></i>Equipo y permisos</span>
+        <h1 class="titulo-pantalla mb-0">Usuarios</h1>
+    </div>
+    <div class="acciones">
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-download me-1"></i>Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'seguridad:exportar' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'seguridad:exportar' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+        {% if request.usuario_actual.es_titular %}
+        <button class="btn btn-secundario" data-bs-toggle="modal" data-bs-target="#modalTitularidad"
+                title="Pasarle la titularidad del sistema a otro administrador">
+            <i class="bi bi-award me-1"></i>Transferir titularidad
+        </button>
+        {% endif %}
+        {% if puede_crear %}
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrear">
+            <i class="bi bi-person-plus me-1"></i>Nuevo usuario
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<form method="get" id="herramientas" class="herramientas" role="search">
+    <input type="hidden" name="pagina" value="1">
+    <div class="buscador">
+        <i class="bi bi-search"></i>
+        <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
+               placeholder="Nombre, apellido, DNI o usuario…" aria-label="Buscar">
+    </div>
+    <select name="perfil" class="form-select" aria-label="Perfil" data-auto-enviar>
+        <option value="">Perfil: todos</option>
+        {% for p in perfiles %}
+        <option value="{{ p.id_perfil }}"{% if perfil == p.id_perfil|stringformat:'s' %} selected{% endif %}>{{ p.nombre }}</option>
+        {% endfor %}
+    </select>
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="activos"{% if estado == 'activos' %} selected{% endif %}>Activos</option>
+        <option value="inactivos"{% if estado == 'inactivos' %} selected{% endif %}>Inactivos</option>
+        <option value="todos"{% if estado == 'todos' %} selected{% endif %}>Todos</option>
+    </select>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Buscar</button>
+    {% if request.GET %}<a href="{% url 'seguridad:lista' %}" class="btn btn-link text-secondary">Limpiar</a>{% endif %}
+</form>
+
+{% if usuarios %}
+<div class="grilla">
+    {% for u in usuarios %}
+    <article class="tarjeta{% if u.borrado_logico %} baja{% endif %}"
+             data-usuario="{{ u.nombre_usuario }}" data-nombre="{{ u.nombre }} {{ u.apellido }}"
+             data-dni="{{ u.dni_usuario }}" data-correo="{{ u.correo|default:'' }}"
+             data-perfil="{{ u.id_perfil.nombre }}" data-perfil-temporal="{{ u.id_perfil_temporal.nombre|default:'' }}">
+        <div class="tarjeta-cabeza">
+            <div class="d-flex gap-2 align-items-center min-w-0">
+                <span class="avatar flex-shrink-0" aria-hidden="true">{{ u|iniciales }}</span>
+                <div class="min-w-0">
+                    <h2 class="tarjeta-titulo text-truncate">{{ u.apellido }}, {{ u.nombre }}</h2>
+                    <p class="tarjeta-sub"><code class="text-marca">{{ u.nombre_usuario }}</code></p>
+                </div>
+            </div>
+            {% if u.borrado_logico %}
+            <span class="insignia insignia-neutra">Inactivo</span>
+            {% else %}
+            <span class="insignia insignia-exito">Activo</span>
+            {% endif %}
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>DNI</dt><dd>{{ u.dni_usuario }}</dd>
+            <dt>Perfil</dt><dd>{{ u.id_perfil.nombre }}</dd>
+            <dt>Correo</dt><dd>{{ u.correo|default:"—" }}</dd>
+        </dl>
+        <div class="d-flex flex-wrap gap-1">
+            {% if u.es_titular %}<span class="insignia insignia-marca" title="Titular del sistema"><i class="bi bi-award"></i>Titular</span>{% endif %}
+            {% if u.debe_cambiar_clave %}<span class="insignia insignia-aviso" title="Tiene una clave provisoria"><i class="bi bi-key"></i>Clave provisoria</span>{% endif %}
+            {% if u.id_perfil_temporal_id %}
+            <span class="insignia {% if u.tiene_perfil_temporal_vigente %}insignia-aviso{% else %}insignia-neutra{% endif %}" title="{{ u.temporal_motivo }}">
+                <i class="bi bi-hourglass-split"></i>{{ u.id_perfil_temporal.nombre }} · {{ u.temporal_desde|date:'d/m H:i' }} → {{ u.temporal_hasta|date:'d/m H:i' }}
+            </span>
+            {% endif %}
+        </div>
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario btn-detalle" data-url="{% url 'seguridad:detalle' u.id_usuario %}" title="Ver detalle">
+                <i class="bi bi-eye"></i><span class="ms-1">Ver</span>
+            </button>
+            {% if puede_editar %}
+            <button type="button" class="btn btn-sm btn-secundario btn-editar" data-url="{% url 'seguridad:editar' u.id_usuario %}" title="Editar correo">
+                <i class="bi bi-pencil"></i><span class="ms-1">Editar</span>
+            </button>
+            {% endif %}
+
+            {% if not u.es_titular and not u.borrado_logico %}
+            {% if puede_restablecer or puede_perfil or puede_temporal and not u.id_perfil.es_sistema %}
+            <div class="dropdown">
+                <button class="btn btn-sm btn-secundario" data-bs-toggle="dropdown" aria-expanded="false" title="Más acciones">
+                    <i class="bi bi-three-dots"></i>
+                </button>
+                <ul class="dropdown-menu">
+                    {% if puede_restablecer %}
+                    <li>
+                        <form method="post" action="{% url 'seguridad:restablecer_clave' u.id_usuario %}"
+                              data-titulo="¿Restablecer la clave?" data-aceptar="Sí, restablecer"
+                              data-confirmar="Se genera una clave provisoria para {{ u.nombre_usuario }}. Tendrá que cambiarla al ingresar.">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item btn-restablecer"><i class="bi bi-key me-2"></i>Restablecer clave</button>
+                        </form>
+                    </li>
+                    {% endif %}
+                    {% if puede_perfil %}
+                    <li><button type="button" class="dropdown-item btn-perfil" data-url="{% url 'seguridad:cambiar_perfil' u.id_usuario %}"><i class="bi bi-person-gear me-2"></i>Cambiar perfil</button></li>
+                    {% endif %}
+                    {% if puede_temporal and not u.id_perfil.es_sistema %}
+                        {% if u.id_perfil_temporal_id %}
+                        <li>
+                            <form method="post" action="{% url 'seguridad:revocar_temporal' u.id_usuario %}"
+                                  data-titulo="¿Quitar el perfil temporal?" data-aceptar="Sí, quitarlo"
+                                  data-confirmar="{{ u.nombre_usuario }} deja de operar como {{ u.id_perfil_temporal.nombre }} y vuelve a {{ u.id_perfil.nombre }}.">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item btn-revocar"><i class="bi bi-hourglass-bottom me-2"></i>Quitar perfil temporal</button>
+                            </form>
+                        </li>
+                        {% else %}
+                        <li><button type="button" class="dropdown-item btn-temporal" data-url="{% url 'seguridad:perfil_temporal' u.id_usuario %}"><i class="bi bi-hourglass-split me-2"></i>Perfil temporal (reemplazo)</button></li>
+                        {% endif %}
+                    {% endif %}
+                </ul>
+            </div>
+            {% endif %}
+            {% endif %}
+
+            {% if u.borrado_logico %}
+                {% if puede_reactivar %}
+                <form method="post" action="{% url 'seguridad:reactivar' u.id_usuario %}" class="ms-auto"
+                      data-titulo="¿Reactivar este usuario?" data-aceptar="Sí, reactivar"
+                      data-confirmar="{{ u.nombre_usuario }} vuelve a poder ingresar al sistema.">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-success btn-reactivar"><i class="bi bi-arrow-counterclockwise me-1"></i>Reactivar</button>
+                </form>
+                {% endif %}
+            {% elif puede_baja %}
+                {% if u.es_titular %}
+                <span class="ms-auto btn btn-sm btn-secundario disabled" title="El titular del sistema no se da de baja: primero se transfiere la titularidad">
+                    <i class="bi bi-shield-lock"></i>
+                </span>
+                {% elif u.es_ultimo_administrador %}
+                <span class="ms-auto btn btn-sm btn-secundario disabled" title="No se puede dar de baja: es el único administrador activo del sistema">
+                    <i class="bi bi-shield-lock"></i>
+                </span>
+                {% else %}
+                <form method="post" action="{% url 'seguridad:eliminar' u.id_usuario %}" class="ms-auto"
+                      data-titulo="¿Dar de baja este usuario?" data-aceptar="Sí, dar de baja" data-peligro="1"
+                      data-confirmar="{{ u.nombre_usuario }} no va a poder ingresar. No se borra: queda inactivo y se puede reactivar.">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja" aria-label="Dar de baja"><i class="bi bi-person-x"></i></button>
+                </form>
+                {% endif %}
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="vacio tarjeta">
+    <i class="bi bi-people"></i>
+    <p class="mb-2">No hay usuarios que coincidan con la búsqueda.</p>
+    <a href="{% url 'seguridad:lista' %}" class="btn btn-secundario btn-sm">Ver todos</a>
+</div>
+{% endif %}
+
+{% include 'parciales/_paginador.html' %}
+
+{# ---------- MODAL: CREAR ---------- #}
+{% if puede_crear %}
+<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true"{% if abrir_modal_crear %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="{% url 'seguridad:crear' %}" class="modal-content form-una-vez" id="formCrear" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Nuevo usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-secondary small">
+                    El nombre de usuario se genera solo y la clave inicial es el DNI.
+                    El sistema le va a pedir que la cambie en el primer ingreso.
+                </p>
+                {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+                <div class="mb-3{% if form.dni_usuario.errors %} con-error{% endif %}">
+                    <label for="id_dni_usuario" class="form-label">DNI</label>
+                    {{ form.dni_usuario }}
+                    <p id="avisoDni" class="error-campo d-none"><i class="bi bi-exclamation-circle-fill me-1"></i>Ya existe un usuario con ese DNI.</p>
+                    {% if form.dni_usuario.errors %}<p class="error-campo">{{ form.dni_usuario.errors|striptags }}</p>{% endif %}
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3{% if form.apellido.errors %} con-error{% endif %}">
+                        <label for="{{ form.apellido.id_for_label }}" class="form-label">Apellido</label>
+                        {{ form.apellido }}
+                        {% if form.apellido.errors %}<p class="error-campo">{{ form.apellido.errors|striptags }}</p>{% endif %}
+                    </div>
+                    <div class="col-md-6 mb-3{% if form.nombre.errors %} con-error{% endif %}">
+                        <label for="{{ form.nombre.id_for_label }}" class="form-label">Nombre</label>
+                        {{ form.nombre }}
+                        {% if form.nombre.errors %}<p class="error-campo">{{ form.nombre.errors|striptags }}</p>{% endif %}
+                    </div>
+                </div>
+                <div class="mb-3{% if form.correo.errors %} con-error{% endif %}">
+                    <label for="{{ form.correo.id_for_label }}" class="form-label">Correo</label>
+                    {{ form.correo }}
+                    {% if form.correo.errors %}<p class="error-campo">{{ form.correo.errors|striptags }}</p>{% endif %}
+                </div>
+                <div class="mb-3{% if form.id_perfil.errors %} con-error{% endif %}">
+                    <label for="{{ form.id_perfil.id_for_label }}" class="form-label">Perfil</label>
+                    {{ form.id_perfil }}
+                    {% if form.id_perfil.errors %}<p class="error-campo">{{ form.id_perfil.errors|striptags }}</p>{% endif %}
+                </div>
+                <div class="mb-1{% if form.clave_operador.errors %} con-error{% endif %}">
+                    <label for="{{ form.clave_operador.id_for_label }}" class="form-label">{{ form.clave_operador.label }}</label>
+                    {{ form.clave_operador }}
+                    <div class="form-text">{{ form.clave_operador.help_text }}</div>
+                    {% if form.clave_operador.errors %}<p class="error-campo">{{ form.clave_operador.errors|striptags }}</p>{% endif %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="btnGuardarCrear" data-requiere-red><i class="bi bi-check-lg me-1"></i>Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ---------- MODAL: EDITAR (SÓLO CORREO) ---------- #}
+{% if puede_editar %}
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-hidden="true"{% if abrir_modal_editar %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" id="formEditar" class="modal-content" novalidate
+              {% if abrir_modal_editar %}action="{% url 'seguridad:editar' editar_id %}"{% endif %}>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Editar usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="aviso aviso-aviso small py-2"><i class="bi bi-lock"></i><span>Por regla del sistema sólo se puede modificar el <b>correo</b>.</span></div>
+                <dl class="ficha mb-3 small">
+                    <dt>DNI</dt><dd id="edit_dni_txt"></dd>
+                    <dt>Usuario</dt><dd id="edit_usuario_txt"></dd>
+                    <dt>Nombre</dt><dd id="edit_nombre_txt"></dd>
+                </dl>
+                <div class="mb-2{% if form_editar.correo.errors %} con-error{% endif %}">
+                    <label class="form-label" for="edit_correo">Correo</label>
+                    <input type="email" name="correo" id="edit_correo" class="form-control" required maxlength="254"
+                           value="{% if abrir_modal_editar %}{{ form_editar.data.correo }}{% endif %}">
+                    {% if form_editar.correo.errors %}<p class="error-campo">{{ form_editar.correo.errors|striptags }}</p>{% endif %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-check-lg me-1"></i>Actualizar correo</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ---------- MODAL: VER DETALLE (SÓLO LECTURA) ---------- #}
+<div class="modal fade" id="modalDetalle" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Detalle del usuario</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="ficha">
+                    <dt>DNI</dt><dd id="det_dni"></dd>
+                    <dt>Nombre completo</dt><dd id="det_nombre"></dd>
+                    <dt>Correo</dt><dd id="det_correo"></dd>
+                    <dt>Usuario</dt><dd><code class="text-marca" id="det_usuario"></code></dd>
+                    <dt>Perfil</dt><dd id="det_perfil"></dd>
+                    <dt>Estado</dt><dd id="det_estado"></dd>
+                    <dt>Última modificación</dt><dd id="det_fecha_mod"></dd>
+                    <dt>Fecha de baja</dt><dd id="det_fecha_baja"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---------- MODAL: CAMBIAR PERFIL (permanente, con re-autenticación) ---------- #}
+{% if puede_perfil %}
+<div class="modal fade" id="modalPerfil" tabindex="-1" aria-hidden="true"{% if abrir_modal_perfil %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" id="formPerfil" class="modal-content" novalidate
+              {% if perfil_id %}action="{% url 'seguridad:cambiar_perfil' perfil_id %}"{% endif %}>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Cambiar perfil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-secondary mb-3">
+                    Cambio <b>permanente</b> de <span id="perfil_usuario_txt" class="fw-semibold"></span>.
+                    Para un reemplazo por unos días usá el perfil temporal.
+                </p>
+                {% if form_perfil.non_field_errors %}<div class="aviso aviso-error small"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form_perfil.non_field_errors|striptags }}</span></div>{% endif %}
+                {% for campo in form_perfil %}
+                <div class="mb-3{% if campo.errors %} con-error{% endif %}">
+                    <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                    {{ campo }}
+                    {% if campo.errors %}<p class="error-campo">{{ campo.errors|striptags }}</p>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Cambiar perfil</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ---------- MODAL: PERFIL TEMPORAL ---------- #}
+{% if puede_temporal %}
+<div class="modal fade" id="modalTemporal" tabindex="-1" aria-hidden="true"{% if abrir_modal_temporal %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" id="formTemporal" class="modal-content" novalidate
+              {% if temporal_id %}action="{% url 'seguridad:perfil_temporal' temporal_id %}"{% endif %}>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-hourglass-split me-2"></i>Perfil temporal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-secondary mb-3">
+                    <span id="temporal_usuario_txt" class="fw-semibold"></span> opera con otro perfil
+                    durante el rango elegido (máximo 31 días) y después vuelve solo al suyo.
+                    El perfil administrador no se presta.
+                </p>
+                {% if form_temporal.non_field_errors %}<div class="aviso aviso-error small"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form_temporal.non_field_errors|striptags }}</span></div>{% endif %}
+                {% for campo in form_temporal %}
+                <div class="mb-3{% if campo.errors %} con-error{% endif %}">
+                    <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                    {{ campo }}
+                    {% if campo.errors %}<p class="error-campo">{{ campo.errors|striptags }}</p>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Asignar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ---------- MODAL: TRANSFERIR TITULARIDAD (sólo el titular) ---------- #}
+{% if request.usuario_actual.es_titular %}
+<div class="modal fade" id="modalTitularidad" tabindex="-1" aria-hidden="true"{% if abrir_modal_titularidad %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="{% url 'seguridad:transferir_titularidad' %}" class="modal-content" novalidate
+              data-titulo="¿Transferir la titularidad?" data-aceptar="Sí, transferir" data-peligro="1"
+              data-confirmar="Vas a dejar de ser el titular del sistema. Esto no se deshace desde tu usuario.">
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-award me-2"></i>Transferir titularidad</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="aviso aviso-aviso small py-2"><i class="bi bi-info-circle-fill"></i>
+                    <span>El titular es el dueño del sistema: nadie le puede dar de baja, cambiar el perfil
+                    ni restablecer la clave desde la aplicación. Al transferirla, vos dejás de serlo.</span></div>
+                {% if form_titularidad.non_field_errors %}<div class="aviso aviso-error small"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form_titularidad.non_field_errors|striptags }}</span></div>{% endif %}
+                {% for campo in form_titularidad %}
+                <div class="mb-3{% if campo.errors %} con-error{% endif %}">
+                    <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                    {{ campo }}
+                    {% if campo.errors %}<p class="error-campo">{{ campo.errors|striptags }}</p>{% endif %}
+                </div>
+                {% endfor %}
+                {% if not form_titularidad.fields.nuevo_titular.queryset.exists %}
+                <p class="error-campo mb-0">No hay otro administrador activo. Primero dá de alta al nuevo titular con perfil administrador.</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-danger"><i class="bi bi-check-lg me-1"></i>Transferir</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endwith %}
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+    function tarjeta(boton) { return boton.closest('.tarjeta'); }
+    function abrir(id) { bootstrap.Modal.getOrCreateInstance(document.getElementById(id)).show(); }
+    function texto(id, valor) { var nodo = document.getElementById(id); if (nodo) { nodo.textContent = valor || '—'; } }
+    function insignia(clase, contenido) {
+        var span = document.createElement('span');
+        span.className = 'insignia ' + clase + ' me-1';
+        span.textContent = contenido;
+        return span;
+    }
+    // Deja elegir cualquier perfil menos el que ya tiene.
+    function marcarPerfilActual(form, actual) {
+        form.querySelectorAll('select option').forEach(function (opcion) {
+            opcion.disabled = opcion.textContent.trim() === actual;
+        });
+    }
+
+    // ¿El DNI ya existe? Se pregunta al servidor mientras se tipea.
+    var dni = document.getElementById('id_dni_usuario');
+    if (dni) {
+        var espera = null;
+        dni.addEventListener('input', function () {
+            var valor = dni.value.replace(/\D/g, '');
+            var aviso = document.getElementById('avisoDni');
+            var guardar = document.getElementById('btnGuardarCrear');
+            clearTimeout(espera);
+            if (valor.length < 7) { aviso.classList.add('d-none'); guardar.disabled = false; return; }
+            espera = setTimeout(function () {
+                fetch("{% url 'seguridad:verificar_dni' %}?dni=" + encodeURIComponent(valor),
+                      {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+                    .then(function (r) { return r.json(); })
+                    .then(function (r) {
+                        aviso.classList.toggle('d-none', !r.existe);
+                        guardar.disabled = !!r.existe;
+                    })
+                    .catch(function () { /* sin red: decide el servidor al guardar */ });
+            }, 300);
+        });
+    }
+
+    document.addEventListener('click', function (evento) {
+        var boton;
+        if ((boton = evento.target.closest('.btn-detalle'))) {
+            fetch(boton.dataset.url, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
+                .then(function (r) { return r.json(); })
+                .then(function (u) {
+                    texto('det_dni', u.dni_usuario);
+                    texto('det_nombre', u.nombre_completo);
+                    texto('det_correo', u.correo);
+                    texto('det_usuario', u.nombre_usuario);
+                    texto('det_perfil', u.perfil);
+                    texto('det_fecha_mod', u.fecha_ultima_modificacion);
+                    texto('det_fecha_baja', u.fecha_baja);
+                    var estado = document.getElementById('det_estado');
+                    estado.textContent = '';
+                    estado.appendChild(u.borrado_logico ? insignia('insignia-neutra', 'Inactivo') : insignia('insignia-exito', 'Activo'));
+                    if (u.debe_cambiar_clave) { estado.appendChild(insignia('insignia-aviso', 'Clave provisoria')); }
+                    if (u.es_ultimo_administrador) { estado.appendChild(insignia('insignia-marca', 'Único administrador activo')); }
+                    abrir('modalDetalle');
+                });
+        } else if ((boton = evento.target.closest('.btn-editar'))) {
+            var t = tarjeta(boton);
+            document.getElementById('formEditar').action = boton.dataset.url;
+            texto('edit_dni_txt', t.dataset.dni);
+            texto('edit_usuario_txt', t.dataset.usuario);
+            texto('edit_nombre_txt', t.dataset.nombre);
+            document.getElementById('edit_correo').value = t.dataset.correo;
+            abrir('modalEditar');
+        } else if ((boton = evento.target.closest('.btn-perfil'))) {
+            var tp = tarjeta(boton);
+            var formPerfil = document.getElementById('formPerfil');
+            formPerfil.action = boton.dataset.url;
+            texto('perfil_usuario_txt', tp.dataset.nombre + ' (hoy: ' + tp.dataset.perfil + ')');
+            marcarPerfilActual(formPerfil, tp.dataset.perfil);
+            formPerfil.querySelector('select').value = '';
+            abrir('modalPerfil');
+        } else if ((boton = evento.target.closest('.btn-temporal'))) {
+            var tt = tarjeta(boton);
+            var formTemporal = document.getElementById('formTemporal');
+            formTemporal.action = boton.dataset.url;
+            texto('temporal_usuario_txt', tt.dataset.nombre);
+            marcarPerfilActual(formTemporal, tt.dataset.perfil);
+            abrir('modalTemporal');
+        }
+    });
+})();
+</script>
+{% endblock %}

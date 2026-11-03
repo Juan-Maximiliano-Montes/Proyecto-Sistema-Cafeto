@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block titulo %}Cafeto · Recibir mercadería{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url 'compras:compras' %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Compras</a>
+        <h1 class="titulo-pantalla mb-0">Recibir mercadería</h1>
+        <p class="bajada">Cargá la factura como viene. El total se calcula solo y el stock entra al guardar.{% if orden %} Basado en la orden N° {{ orden.pk }}.{% endif %}</p>
+    </div>
+</div>
+{% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
+
+<form method="post" novalidate class="row g-3">
+    {% csrf_token %}
+    <input type="hidden" name="token_operacion" value="{{ token }}">
+    <input type="hidden" name="renglones" id="renglones" value="{{ renglones_json }}">
+    {% if orden %}<input type="hidden" name="orden" value="{{ orden.pk }}">{% endif %}
+
+    <div class="col-xl-4">
+        <div class="tarjeta">
+            <h2 class="subtitulo h5 mb-0">La factura</h2>
+            <div>
+                <label class="form-label" for="proveedor">Proveedor</label>
+                <select name="proveedor" id="proveedor" class="form-select"{% if orden %} disabled{% endif %}>
+                    <option value="">Elegí el proveedor…</option>
+                    {% for p in proveedores %}<option value="{{ p.pk }}"{% if datos.proveedor == p.pk|stringformat:'s' or orden.id_proveedor_id == p.pk %} selected{% endif %}>{{ p }}</option>{% endfor %}
+                </select>
+                {% if orden %}<input type="hidden" name="proveedor" value="{{ orden.id_proveedor_id }}">{% endif %}
+            </div>
+            <div class="row g-2">
+                <div class="col-12">
+                    <label class="form-label" for="tipo">Comprobante</label>
+                    <select name="tipo_comprobante" id="tipo" class="form-select">
+                        {% for v, e in tipos %}<option value="{{ v }}"{% if datos.tipo_comprobante == v %} selected{% endif %}>{{ e }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-5"><label class="form-label" for="punto">Punto de venta</label><input type="text" inputmode="numeric" name="punto_venta" id="punto" value="{{ datos.punto_venta|default:'' }}" class="form-control" placeholder="0001"></div>
+                <div class="col-7"><label class="form-label" for="numero">Número</label><input type="text" inputmode="numeric" name="numero" id="numero" value="{{ datos.numero|default:'' }}" class="form-control" placeholder="00012345"></div>
+                <div class="col-6"><label class="form-label" for="fecha">Fecha</label><input type="date" name="fecha" id="fecha" value="{{ datos.fecha|default:hoy }}" class="form-control"></div>
+                <div class="col-6"><label class="form-label" for="vence_pago">Se paga hasta</label><input type="date" name="vence_pago" id="vence_pago" value="{{ datos.vence_pago|default:'' }}" class="form-control"></div>
+                <div class="col-12"><label class="form-label" for="otros">Otros conceptos (percepciones, flete)</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="otros" id="otros" value="{{ datos.otros|default:'' }}" class="form-control" placeholder="0"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-8">
+        <div class="tarjeta" data-renglones data-campo="#renglones" data-con-lotes="1"
+             data-info="{% url 'stock:lotes_de_producto' %}" data-precio="Costo unitario">
+            <div class="d-flex justify-content-between align-items-baseline">
+                <h2 class="subtitulo h5 mb-0">Lo que llegó</h2>
+                <span class="text-secondary">Mercadería: <strong class="monto js-total">$ 0,00</strong></span>
+            </div>
+            <select class="form-select js-catalogo js-nuevo-producto" data-catalogo="{{ catalogo }}" aria-label="Agregar producto">
+                <option value="">+ Agregar un producto…</option>
+            </select>
+            <div class="js-lista"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-xl w-100 mt-3" data-requiere-red><i class="bi bi-box-arrow-in-down me-1"></i>Guardar la compra y entrar el stock</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'cafeto/js/renglones.js' %}"></script>{% endblock %}

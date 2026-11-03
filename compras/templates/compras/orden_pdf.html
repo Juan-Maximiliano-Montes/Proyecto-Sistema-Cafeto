@@ -1,0 +1,34 @@
+{% load cafeto %}<!DOCTYPE html>
+<html lang="es-AR"><head><meta charset="utf-8"><title>Orden de compra N° {{ orden.pk }}</title>
+<style>
+    @font-face { font-family: 'Inter'; src: url('{{ fuente_inter }}'); }
+    @font-face { font-family: 'Lora'; font-weight: 600; src: url('{{ fuente_lora }}'); }
+    @page { size: A4; margin: 18mm 15mm; }
+    body { font-family: 'Inter', sans-serif; font-size: 10pt; color: #161616; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #FAB41F; padding-bottom: 8pt; }
+    header img { height: 34pt; }
+    h1 { font-family: 'Lora', serif; font-size: 16pt; margin: 12pt 0 4pt; }
+    .datos { display: flex; justify-content: space-between; gap: 20pt; margin-bottom: 12pt; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #FAB41F; text-align: left; padding: 5pt; }
+    td { padding: 5pt; border-bottom: .5pt solid #E6E2D8; }
+    .num { text-align: right; }
+    .total { font-family: 'Lora', serif; font-size: 13pt; }
+    .pie { margin-top: 24pt; font-size: 8.5pt; color: #5B6078; }
+</style></head><body>
+<header>
+    <img src="{{ logo }}" alt="">
+    <div style="text-align:right">{{ negocio.razon_social }}{% if negocio.cuit %}<br>CUIT {{ negocio.cuit }}{% endif %}{% if negocio.domicilio %}<br>{{ negocio.domicilio }}{% endif %}{% if negocio.telefono %}<br>Tel. {{ negocio.telefono }}{% endif %}</div>
+</header>
+<h1>Orden de compra N° {{ orden.pk }}</h1>
+<div class="datos">
+    <div><strong>Proveedor:</strong> {{ orden.id_proveedor }}<br>CUIT {{ orden.id_proveedor.cuit_proveedor }}</div>
+    <div><strong>Fecha:</strong> {{ orden.fecha_orden|date:"d/m/Y" }}</div>
+</div>
+<table>
+    <thead><tr><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio pactado</th><th class="num">Subtotal</th></tr></thead>
+    <tbody>{% for r in renglones %}<tr><td>{{ r.id_producto }}</td><td class="num">{{ r.cantidad_pedida|cantidad }}</td><td class="num">{{ r.precio_unitario|pesos }}</td><td class="num">{{ r.subtotal|pesos }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="3" class="num"><strong>Total</strong></td><td class="num total">{{ orden.total_orden|pesos }}</td></tr></tfoot>
+</table>
+<p class="pie">Por favor, indicar en la factura el número de esta orden. Ante cualquier diferencia, comunicarse con {{ negocio.nombre_fantasia }}{% if negocio.correo %} ({{ negocio.correo }}){% endif %}.</p>
+</body></html>

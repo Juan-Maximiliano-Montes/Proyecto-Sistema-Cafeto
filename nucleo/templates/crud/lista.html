@@ -1,0 +1,243 @@
+{% extends 'base.html' %}
+{% load crud_extras cafeto %}
+{% comment %}
+Pantalla única de los CRUD de catálogo (productos, rubros, marcas, medios
+de pago, cajas, tipos de egreso, provincias, localidades...).
+
+Todo lo que cambia entre una entidad y otra viene en `cfg`
+(ConfiguracionCRUD): el título, el ícono, las columnas, los filtros y los
+nombres de los permisos. Una corrección de usabilidad vale para todas.
+
+Se muestra en TARJETAS y de a poco (12, 24, 48 o 96): nadie lee una lista
+de quinientos renglones, y en una tablet una tabla ancha no entra. La
+primera columna de la configuración es el título de la tarjeta; las demás,
+sus datos.
+
+Los botones se muestran sólo con el permiso correspondiente. Eso es
+cosmético: la seguridad de verdad la hace el decorador `exige()` en la
+vista, que corta el acceso aunque alguien escriba la URL a mano.
+{% endcomment %}
+
+{% block titulo %}Cafeto · {{ cfg.titulo }}{% endblock %}
+
+{% block contenido %}
+{% with puede_crear=permisos_usuario|contiene:permiso_crear puede_editar=permisos_usuario|contiene:permiso_editar puede_baja=permisos_usuario|contiene:permiso_eliminar puede_reactivar=permisos_usuario|contiene:permiso_reactivar %}
+
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi {{ cfg.icono }} me-1"></i>{{ cfg.plural|capfirst }}</span>
+        <h1 class="titulo-pantalla mb-0">{{ cfg.titulo }}</h1>
+    </div>
+    <div class="acciones">
+        {% for accion in acciones_extra %}
+        <a href="{{ accion.url }}" class="btn btn-secundario"><i class="bi {{ accion.icono }} me-1"></i>{{ accion.etiqueta }}</a>
+        {% endfor %}
+        {% if permisos_usuario|contiene:permiso_exportar %}
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-download me-1"></i>Exportar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_exportar }}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel (lo filtrado)</a></li>
+                <li><a class="dropdown-item" href="{{ url_exportar }}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF (lo filtrado)</a></li>
+            </ul>
+        </div>
+        {% endif %}
+        {% if puede_crear %}
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrear">
+            <i class="bi bi-plus-lg me-1"></i>{{ cfg.nuevo }}
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+{# ---------- BÚSQUEDA Y FILTROS ---------- #}
+<form method="get" id="herramientas" class="herramientas" role="search">
+    <input type="hidden" name="pagina" value="1">
+    <div class="buscador">
+        <i class="bi bi-search"></i>
+        <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
+               placeholder="Buscar {{ cfg.plural }}…" aria-label="Buscar">
+    </div>
+    {% for filtro, opciones, elegido in filtros %}
+    <select name="{{ filtro.clave }}" class="form-select" aria-label="{{ filtro.etiqueta }}" data-auto-enviar>
+        <option value="">{{ filtro.etiqueta }}: todos</option>
+        {% for valor, etiqueta in opciones %}
+        <option value="{{ valor }}"{% if elegido == valor|stringformat:"s" %} selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+    </select>
+    {% endfor %}
+    {% if cfg.tiene_baja %}
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="vigentes"{% if estado == 'vigentes' %} selected{% endif %}>Vigentes</option>
+        <option value="baja"{% if estado == 'baja' %} selected{% endif %}>Dados de baja</option>
+        <option value="todos"{% if estado == 'todos' %} selected{% endif %}>Todos</option>
+    </select>
+    {% endif %}
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Buscar</button>
+    {% if request.GET %}
+    <a href="{{ url_lista }}" class="btn btn-link text-secondary" title="Limpiar la búsqueda y los filtros">Limpiar</a>
+    {% endif %}
+</form>
+
+{# ---------- TARJETAS ---------- #}
+{% if filas %}
+<div class="grilla">
+    {% for fila in filas %}
+    <article class="tarjeta{% if cfg.tiene_baja and fila.borrado_logico %} baja{% endif %}">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0">
+                {% with primera=cfg.columnas.0 %}
+                <h2 class="tarjeta-titulo">{{ fila|valor_de:primera.atributo|default:fila }}</h2>
+                {% endwith %}
+                <p class="tarjeta-sub">N° {{ fila.pk }}</p>
+            </div>
+            {% if cfg.tiene_baja %}
+                {% if fila.borrado_logico %}
+                <span class="insignia insignia-neutra">Dado de baja</span>
+                {% else %}
+                <span class="insignia insignia-exito">Vigente</span>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        {% if cfg.columnas|length > 1 %}
+        <dl class="tarjeta-datos">
+            {% for columna in cfg.columnas %}{% if not forloop.first and columna.en_tarjeta %}
+            {% with valor=fila|valor_de:columna.atributo %}
+            <dt>{{ columna.etiqueta }}</dt>
+            <dd>
+                {% if columna.formato == 'si_no' %}
+                    {% if valor %}<span class="text-exito"><i class="bi bi-check-circle-fill"></i> Sí</span>{% else %}<span class="text-tenue">No</span>{% endif %}
+                {% elif columna.formato == 'dinero' %}
+                    <span class="monto">{{ valor|pesos }}</span>
+                {% elif columna.formato == 'numero' %}
+                    {# un 0 es un valor, no un vacío #}
+                    {{ valor|cantidad }}
+                {% else %}
+                    {{ valor|default:"—" }}
+                {% endif %}
+            </dd>
+            {% endwith %}
+            {% endif %}{% endfor %}
+        </dl>
+        {% endif %}
+
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario boton-ver"
+                    data-remoto="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_ver' fila.pk %}"
+                    data-modal="#modalVer" data-titulo="{{ fila }}" title="Ver ficha">
+                <i class="bi bi-eye"></i><span class="ms-1">Ver</span>
+            </button>
+            {% if not cfg.tiene_baja or not fila.borrado_logico %}
+                {% if puede_editar %}
+                <button type="button" class="btn btn-sm btn-secundario boton-editar"
+                        data-remoto="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_editar' fila.pk %}?formulario=1"
+                        data-accion="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_editar' fila.pk %}"
+                        data-modal="#modalEditar" data-titulo="Editar: {{ fila }}" title="Editar">
+                    <i class="bi bi-pencil"></i><span class="ms-1">Editar</span>
+                </button>
+                {% endif %}
+                {% if cfg.tiene_baja and puede_baja %}
+                <form method="post" action="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_eliminar' fila.pk %}"
+                      class="ms-auto form-confirmar" data-titulo="Dar de baja"
+                      data-confirmar="¿Dar de baja «{{ fila }}»? Queda guardado y se puede reactivar cuando quieras."
+                      data-aceptar="Sí, dar de baja" data-peligro="1">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja" aria-label="Dar de baja">
+                        <i class="bi bi-archive"></i>
+                    </button>
+                </form>
+                {% endif %}
+            {% elif puede_reactivar %}
+                <form method="post" action="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_reactivar' fila.pk %}"
+                      class="ms-auto form-confirmar" data-titulo="Reactivar"
+                      data-confirmar="¿Reactivar «{{ fila }}»?" data-aceptar="Sí, reactivar">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-success">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivar
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="vacio tarjeta">
+    <i class="bi {% if busqueda or request.GET %}bi-search{% else %}{{ cfg.icono }}{% endif %}"></i>
+    {% if busqueda or request.GET %}
+    <p class="mb-2">No hay {{ cfg.plural }} que coincidan con la búsqueda.</p>
+    <a href="{{ url_lista }}" class="btn btn-secundario btn-sm">Ver todos</a>
+    {% else %}
+    <p class="mb-2">Todavía no hay {{ cfg.plural }} cargados.</p>
+    {% if puede_crear %}<button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrear"><i class="bi bi-plus-lg me-1"></i>Cargar el primero</button>{% endif %}
+    {% endif %}
+</div>
+{% endif %}
+
+{% include 'parciales/_paginador.html' %}
+
+{# ---------- MODAL: FICHA DE SÓLO LECTURA ---------- #}
+<div class="modal fade" id="modalVer" tabindex="-1" aria-hidden="true" aria-labelledby="tituloVer">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i><span class="js-titulo-remoto" id="tituloVer">Ficha</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body js-remoto"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ---------- MODAL: ALTA ---------- #}
+{% if puede_crear %}
+<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true"{% if abrir_modal_crear %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="{{ url_crear }}" class="modal-content form-una-vez" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi {{ cfg.icono }} me-2"></i>{% if abrir_modal_crear %}Revisá los datos{% else %}{{ cfg.nuevo }}{% endif %}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                {% include 'crud/_campos.html' with form=formulario formset=formset %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" data-requiere-red>Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{# ---------- MODAL: EDICIÓN ---------- #}
+{% if puede_editar %}
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-hidden="true"{% if abrir_modal_editar %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" id="formEditar" class="modal-content form-una-vez" novalidate
+              action="{% if abrir_modal_editar %}{% url cfg.espacio|add:':'|add:cfg.clave|add:'_editar' editar_pk %}{% endif %}">
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil me-2"></i><span class="js-titulo-remoto">{% if abrir_modal_editar %}Revisá los datos{% else %}Editar{% endif %}</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body js-remoto" id="cuerpoEditar">
+                {% if abrir_modal_editar %}{% include 'crud/_campos.html' with form=formulario_editar formset=formset_editar %}{% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary" data-requiere-red>Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,198 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Caja{% endblock %}
+
+{% block contenido %}
+{% with puede_abrir=permisos_usuario|contiene:'abrir_caja' puede_mover=permisos_usuario|contiene:'mover_efectivo' puede_cerrar=permisos_usuario|contiene:'cerrar_caja' puede_vender=permisos_usuario|contiene:'vender' %}
+
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-cash-stack me-1"></i>Ventas y caja</span>
+        <h1 class="titulo-pantalla mb-0">{% if caja %}{{ caja }}{% else %}¿En qué caja estás?{% endif %}</h1>
+        {% if turno %}
+        <p class="bajada">Turno abierto por {{ turno.id_usuario_apertura.nombre }} el {{ turno.fecha_apertura|date:"d/m" }} a las {{ turno.fecha_apertura|time:"H:i" }}.</p>
+        {% elif caja %}
+        <p class="bajada">La caja está cerrada.</p>
+        {% else %}
+        <p class="bajada">Elegí el cajón en el que opera este dispositivo. Queda recordado para la próxima vez.</p>
+        {% endif %}
+    </div>
+    <div class="acciones">
+        {% if caja %}
+        <form method="post" action="{% url 'ventas:elegir_caja' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secundario"><i class="bi bi-arrow-left-right me-1"></i>Cambiar de caja</button>
+        </form>
+        {% endif %}
+        {% if turno and puede_vender %}
+        <a href="{% url 'ventas:mostrador' %}" class="btn btn-primary"><i class="bi bi-cart3 me-1"></i>Ir a vender</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if not caja %}
+{# ---------- ELEGIR CAJA ---------- #}
+<div class="grilla">
+    {% for c, abierto in cajas %}
+    <form method="post" action="{% url 'ventas:elegir_caja' %}" class="tarjeta">
+        {% csrf_token %}
+        <input type="hidden" name="caja" value="{{ c.pk }}">
+        <div class="tarjeta-cabeza">
+            <h2 class="tarjeta-titulo"><i class="bi bi-shop me-1 text-marca"></i>{{ c }}</h2>
+            {% if abierto %}<span class="insignia insignia-exito">Abierta</span>{% else %}<span class="insignia insignia-neutra">Cerrada</span>{% endif %}
+        </div>
+        <p class="tarjeta-sub mb-0">{% if abierto %}Turno de {{ abierto.id_usuario_apertura.nombre }} desde las {{ abierto.fecha_apertura|time:"H:i" }}{% else %}Sin turno abierto{% endif %}</p>
+        <div class="tarjeta-pie"><button type="submit" class="btn btn-primary w-100">Operar en esta caja</button></div>
+    </form>
+    {% empty %}
+    <div class="vacio tarjeta"><i class="bi bi-shop"></i><p class="mb-0">No hay cajas registradoras cargadas. Pedile al administrador que cree una.</p></div>
+    {% endfor %}
+</div>
+
+{% elif not turno %}
+{# ---------- ABRIR ---------- #}
+<div class="row g-3">
+    <div class="col-lg-6">
+        {% if puede_abrir %}
+        <form method="post" action="{% url 'ventas:abrir_turno' %}" class="tarjeta p-4 form-una-vez" novalidate>
+            {% csrf_token %}
+            {{ form_apertura.token_operacion }}
+            <h2 class="subtitulo h4 mb-1">Abrir la caja</h2>
+            <p class="text-secondary small">Contá el cambio con el que arrancás y cargalo.</p>
+            <label class="form-label" for="{{ form_apertura.monto_inicial.id_for_label }}">{{ form_apertura.monto_inicial.label }}</label>
+            <div class="input-group input-group-lg mb-1">
+                <span class="input-group-text">$</span>
+                {{ form_apertura.monto_inicial }}
+            </div>
+            <p class="form-text">{{ form_apertura.monto_inicial.help_text }}</p>
+            <button type="submit" class="btn btn-primary btn-xl w-100 mt-2" data-requiere-red><i class="bi bi-unlock me-1"></i>Abrir la caja</button>
+        </form>
+        {% else %}
+        <div class="aviso aviso-aviso"><i class="bi bi-lock-fill"></i><span>La caja está cerrada y tu perfil no puede abrirla. Pedile a quien corresponda que la abra.</span></div>
+        {% endif %}
+    </div>
+    {% if ultimo_turno %}
+    <div class="col-lg-6">
+        <div class="tarjeta">
+            <span class="eyebrow">Último turno</span>
+            <dl class="tarjeta-datos">
+                <dt>Cerró</dt><dd>{{ ultimo_turno.id_usuario_cierre }}</dd>
+                <dt>Cuándo</dt><dd>{{ ultimo_turno.fecha_cierre|date:"d/m/Y H:i" }}</dd>
+                <dt>Tipo</dt><dd>{{ ultimo_turno.get_tipo_cierre_display }}</dd>
+            </dl>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% else %}
+{# ---------- TURNO ABIERTO ---------- #}
+{% if arqueo %}
+<div class="aviso aviso-aviso">
+    <i class="bi bi-hourglass-split"></i>
+    <span>Tenés un cierre empezado: ya declaraste lo contado. <a href="{% url 'ventas:cierre' %}" class="fw-semibold">Terminar el cierre</a></span>
+</div>
+{% endif %}
+
+<div class="grilla grilla-compacta mb-3">
+    <div class="tarjeta kpi">
+        <span class="eyebrow">Ventas del turno</span>
+        <span class="valor">{{ cantidad_ventas }}</span>
+        {% if ve_saldo %}<span class="detalle">{{ total_ventas|pesos }} en total</span>{% endif %}
+    </div>
+    {% if ve_saldo %}
+    <div class="tarjeta kpi tarjeta-destacada">
+        <span class="eyebrow">Efectivo en el cajón</span>
+        <span class="valor">{{ saldo|pesos }}</span>
+        <span class="detalle">según el libro de caja</span>
+    </div>
+    {% endif %}
+    <div class="tarjeta kpi">
+        <span class="eyebrow">Fondo inicial</span>
+        <span class="valor">{{ turno.monto_inicial|pesos }}</span>
+        <span class="detalle">{{ turno.id_usuario_apertura }}</span>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-xl-8">
+        <div class="tarjeta p-0 overflow-hidden">
+            <div class="d-flex justify-content-between align-items-center px-3 pt-3">
+                <h2 class="subtitulo h5 mb-0">Movimientos del turno</h2>
+            </div>
+            <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th><th class="table-numero">Monto</th></tr></thead>
+                <tbody>
+                {% for m in filas %}
+                    <tr>
+                        <td class="text-nowrap">{{ m.fecha_hora|time:"H:i" }}</td>
+                        <td><span class="insignia {% if m.monto < 0 %}insignia-peligro{% else %}insignia-exito{% endif %}">{{ m.get_tipo_movimiento_display }}</span></td>
+                        <td>{{ m.concepto }}</td>
+                        <td class="small text-secondary">{{ m.id_usuario.nombre }}</td>
+                        <td class="table-numero monto">{{ m.monto|pesos }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <form id="herramientas" method="get"></form>
+        {% include 'parciales/_paginador.html' %}
+        {% if resumen %}
+        <div class="tarjeta mt-3">
+            <span class="eyebrow">Resumen por tipo</span>
+            <dl class="tarjeta-datos">
+                {% for etiqueta, monto in resumen %}<dt>{{ etiqueta }}</dt><dd class="monto">{{ monto|pesos }}</dd>{% endfor %}
+            </dl>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-xl-4 d-flex flex-column gap-3">
+        {% if puede_mover %}
+        <form method="post" action="{% url 'ventas:mover_efectivo' %}" class="tarjeta form-una-vez" novalidate>
+            {% csrf_token %}
+            {{ form_movimiento.token_operacion }}
+            <h2 class="subtitulo h5 mb-0">Refuerzo o retiro</h2>
+            <div class="d-flex flex-column gap-2">
+                <div>
+                    {% for opcion in form_movimiento.tipo %}
+                    <div class="form-check">{{ opcion.tag }}<label class="form-check-label" for="{{ opcion.id_for_label }}">{{ opcion.choice_label }}</label></div>
+                    {% endfor %}
+                </div>
+                <div>
+                    <label class="form-label" for="{{ form_movimiento.monto.id_for_label }}">{{ form_movimiento.monto.label }}</label>
+                    <div class="input-group"><span class="input-group-text">$</span>{{ form_movimiento.monto }}</div>
+                </div>
+                <div>
+                    <label class="form-label" for="{{ form_movimiento.concepto.id_for_label }}">{{ form_movimiento.concepto.label }}</label>
+                    {{ form_movimiento.concepto }}
+                </div>
+            </div>
+            <button type="submit" class="btn btn-secundario" data-requiere-red><i class="bi bi-arrow-down-up me-1"></i>Registrar</button>
+        </form>
+        {% endif %}
+
+        {% if puede_cerrar and not arqueo %}
+        <form method="post" action="{% url 'ventas:declarar_arqueo' %}" class="tarjeta" novalidate
+              data-titulo="¿Cerrar con este conteo?" data-aceptar="Sí, es lo que conté"
+              data-confirmar="Lo que declares queda registrado y no se puede cambiar después. Contá dos veces.">
+            {% csrf_token %}
+            {{ form_arqueo.token_operacion }}
+            <h2 class="subtitulo h5 mb-0">Cerrar la caja</h2>
+            <p class="small text-secondary mb-0">Contá el efectivo del cajón sin mirar el sistema. Después vas a ver si hay diferencia.</p>
+            <div>
+                <label class="form-label" for="{{ form_arqueo.monto_contado.id_for_label }}">{{ form_arqueo.monto_contado.label }}</label>
+                <div class="input-group input-group-lg"><span class="input-group-text">$</span>{{ form_arqueo.monto_contado }}</div>
+            </div>
+            <div class="form-check">{{ form_arqueo.relevo }}<label class="form-check-label" for="{{ form_arqueo.relevo.id_for_label }}">{{ form_arqueo.relevo.label }}</label></div>
+            <button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-lock me-1"></i>Declarar lo contado</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% endwith %}
+{% endblock %}

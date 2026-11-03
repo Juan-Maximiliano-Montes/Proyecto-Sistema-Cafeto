@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · {{ ajuste.get_tipo_ajuste_display }} N° {{ ajuste.pk }}{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url 'stock:ajustes' %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Conteos y mermas</a>
+        <h1 class="titulo-pantalla mb-0">{{ ajuste.get_tipo_ajuste_display }} N° {{ ajuste.pk }}</h1>
+        <p class="bajada">{{ ajuste.get_motivo_display }}{% if ajuste.detalle_motivo %}: {{ ajuste.detalle_motivo }}{% endif %} · cargó {{ ajuste.id_usuario }} el {{ ajuste.fecha_ajuste|date:"d/m/Y H:i" }}</p>
+    </div>
+    <span class="insignia {% if ajuste.estado_ajuste == 'PENDIENTE' %}insignia-aviso{% elif ajuste.estado_ajuste == 'APROBADO' %}insignia-exito{% elif ajuste.estado_ajuste == 'RECHAZADO' %}insignia-peligro{% else %}insignia-neutra{% endif %} fs-6">{{ ajuste.get_estado_ajuste_display }}</span>
+</div>
+
+{% if ajuste.id_usuario_autorizante %}
+<div class="aviso {% if ajuste.estado_ajuste == 'APROBADO' %}aviso-exito{% else %}aviso-error{% endif %}"><i class="bi bi-person-check"></i><span>{{ ajuste.get_estado_ajuste_display }} por {{ ajuste.id_usuario_autorizante }} el {{ ajuste.fecha_resolucion|date:"d/m/Y H:i" }}{% if ajuste.observacion_resolucion %}: {{ ajuste.observacion_resolucion }}{% endif %}</span></div>
+{% endif %}
+
+<div class="tarjeta p-0 overflow-hidden mb-3">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <thead><tr>
+            <th>Producto</th><th>Lote</th>
+            {% if ajuste.tipo_ajuste == 'CONTEO' %}
+                {% if ve_diferencias %}<th class="table-numero">Sistema</th>{% endif %}<th class="table-numero">Contado</th>{% if ve_diferencias %}<th class="table-numero">Diferencia</th>{% endif %}
+            {% else %}
+                <th class="table-numero">Cantidad</th>{% if ajuste.tipo_ajuste == 'TRASPASO' %}<th>Pasa a</th><th class="table-numero">Entra</th>{% endif %}
+            {% endif %}
+            {% if ve_diferencias %}<th class="table-numero">Valor</th>{% endif %}
+        </tr></thead>
+        <tbody>
+        {% for r in renglones %}
+            <tr>
+                <td>{{ r.id_producto }}</td>
+                <td class="small">{% if r.id_lote %}vence {{ r.id_lote.fecha_vencimiento|date:"d/m/Y" }}{% else %}—{% endif %}</td>
+                {% if ajuste.tipo_ajuste == 'CONTEO' %}
+                    {% if ve_diferencias %}<td class="table-numero">{{ r.cantidad_teorica|cantidad }}</td>{% endif %}
+                    <td class="table-numero">{{ r.cantidad_contada|cantidad }}</td>
+                    {% if ve_diferencias %}<td class="table-numero {% if r.diferencia < 0 %}text-peligro{% elif r.diferencia > 0 %}text-exito{% endif %} fw-semibold">{{ r.diferencia|cantidad }}</td>{% endif %}
+                {% else %}
+                    <td class="table-numero">{{ r.cantidad|cantidad }}</td>
+                    {% if ajuste.tipo_ajuste == 'TRASPASO' %}<td>{{ r.id_producto_destino }}</td><td class="table-numero">{{ r.cantidad_destino|cantidad }}</td>{% endif %}
+                {% endif %}
+                {% if ve_diferencias %}<td class="table-numero">{{ r.importe|pesos }}</td>{% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+        {% if ve_diferencias and importe is not None %}
+        <tfoot><tr><th colspan="10" class="table-numero">Valor del ajuste (al costo): <span class="monto">{{ importe|pesos }}</span></th></tr></tfoot>
+        {% endif %}
+    </table>
+    </div>
+</div>
+
+{% if puede_resolver %}
+<form method="post" action="{% url 'stock:resolver' ajuste.pk %}" class="tarjeta" style="max-width: 640px">
+    {% csrf_token %}
+    <input type="hidden" name="token_operacion" value="{{ token }}">
+    <h2 class="subtitulo h5 mb-0">Resolver</h2>
+    <p class="small text-secondary mb-0">Al aprobar, recién ahí se mueve el stock. Al rechazar no se toca nada, pero hay que decir por qué.</p>
+    <input type="text" name="observacion" class="form-control" maxlength="120" placeholder="Observación (obligatoria para rechazar)" aria-label="Observación">
+    <div class="d-flex gap-2">
+        <button type="submit" name="decision" value="rechazar" class="btn btn-outline-danger"><i class="bi bi-x-lg me-1"></i>Rechazar</button>
+        <button type="submit" name="decision" value="aprobar" class="btn btn-primary flex-grow-1" data-requiere-red><i class="bi bi-check-lg me-1"></i>Aprobar y mover el stock</button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

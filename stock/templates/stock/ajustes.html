@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Conteos y mermas{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-boxes me-1"></i>Stock</span>
+        <h1 class="titulo-pantalla mb-0">Conteos y mermas</h1>
+        <p class="bajada">Nada mueve el stock hasta que lo aprueba quien autoriza los ajustes.</p>
+    </div>
+    <div class="acciones">
+        {% if 'contar_stock' in permisos_usuario %}<a href="{% url 'stock:conteo' %}" class="btn btn-secundario"><i class="bi bi-clipboard-check me-1"></i>{% if conteo %}Seguir el conteo{% else %}Contar stock{% endif %}</a>{% endif %}
+        {% if 'registrar_traspaso' in permisos_usuario %}<a href="{% url 'stock:traspaso' %}" class="btn btn-secundario"><i class="bi bi-arrow-left-right me-1"></i>Traspaso</a>{% endif %}
+        {% if 'registrar_merma' in permisos_usuario %}<a href="{% url 'stock:merma' %}" class="btn btn-primary"><i class="bi bi-trash3 me-1"></i>Cargar merma</a>{% endif %}
+    </div>
+</div>
+
+{% if conteo %}
+<div class="aviso aviso-aviso"><i class="bi bi-clipboard-check"></i><span>Hay un conteo {{ conteo.get_estado_ajuste_display|lower }} (lo empezó {{ conteo.id_usuario.nombre }} el {{ conteo.fecha_ajuste|date:"d/m H:i" }}).</span></div>
+{% endif %}
+
+<form method="get" id="herramientas" class="herramientas">
+    <input type="hidden" name="pagina" value="1">
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value=""{% if not estado %} selected{% endif %}>Estado: todos</option>
+        {% for v, e in estados %}<option value="{{ v }}"{% if estado == v %} selected{% endif %}>{{ e }}{% if v == 'PENDIENTE' and pendientes %} ({{ pendientes }}){% endif %}</option>{% endfor %}
+    </select>
+    <select name="tipo" class="form-select" aria-label="Tipo" data-auto-enviar>
+        <option value="">Tipo: todos</option>
+        {% for v, e in tipos %}<option value="{{ v }}"{% if tipo == v %} selected{% endif %}>{{ e }}</option>{% endfor %}
+    </select>
+</form>
+
+{% if filas %}
+<div class="grilla">
+    {% for a in filas %}
+    <a href="{% url 'stock:ajuste' a.pk %}" class="tarjeta text-reset">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0"><h2 class="tarjeta-titulo">{{ a.get_tipo_ajuste_display }} N° {{ a.pk }}</h2><p class="tarjeta-sub">{{ a.get_motivo_display }}{% if a.detalle_motivo %}: {{ a.detalle_motivo }}{% endif %}</p></div>
+            <span class="insignia {% if a.estado_ajuste == 'PENDIENTE' %}insignia-aviso{% elif a.estado_ajuste == 'APROBADO' %}insignia-exito{% elif a.estado_ajuste == 'RECHAZADO' %}insignia-peligro{% else %}insignia-neutra{% endif %}">{{ a.get_estado_ajuste_display }}</span>
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>Cargó</dt><dd>{{ a.id_usuario.nombre }} · {{ a.fecha_ajuste|date:"d/m H:i" }}</dd>
+            {% if a.id_usuario_autorizante %}<dt>Resolvió</dt><dd>{{ a.id_usuario_autorizante.nombre }} · {{ a.fecha_resolucion|date:"d/m H:i" }}</dd>{% endif %}
+        </dl>
+    </a>
+    {% endfor %}
+</div>
+{% include 'parciales/_paginador.html' %}
+{% else %}
+<div class="vacio tarjeta"><i class="bi bi-clipboard"></i>{% if estado == 'PENDIENTE' %}No hay ajustes esperando autorización.{% else %}No hay ajustes con estos filtros.{% endif %}</div>
+{% endif %}
+{% endblock %}

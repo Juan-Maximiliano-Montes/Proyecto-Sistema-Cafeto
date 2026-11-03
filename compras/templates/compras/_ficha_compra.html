@@ -1,0 +1,27 @@
+{% load cafeto %}
+<dl class="ficha mb-3">
+    <dt>Proveedor</dt><dd>{{ compra.id_proveedor }}</dd>
+    <dt>Comprobante</dt><dd>{{ compra.get_tipo_comprobante_display }} {{ compra.numero_formateado }} · {{ compra.fecha_compra|date:"d/m/Y" }}</dd>
+    <dt>Cargó</dt><dd>{{ compra.id_usuario }}</dd>
+    {% if compra.id_orden_compra %}<dt>Orden</dt><dd>N° {{ compra.id_orden_compra_id }}</dd>{% endif %}
+</dl>
+<div class="table-responsive mb-3">
+<table class="table table-sm align-middle mb-0">
+    <thead><tr><th>Producto</th><th class="table-numero">Cantidad</th><th class="table-numero">Costo</th><th class="table-numero">Subtotal</th></tr></thead>
+    <tbody>
+    {% for r in renglones %}
+        <tr><td>{{ r.id_producto }}{% for l in r.lotes.all %}<span class="d-block small text-tenue">Lote {{ l.numero_lote|default:"s/n" }} · vence {{ l.fecha_vencimiento|date:"d/m/Y" }} · {{ l.cantidad_inicial|cantidad }}</span>{% endfor %}</td><td class="table-numero">{{ r.cantidad_recibida|cantidad }}</td><td class="table-numero">{{ r.precio_costo_unitario|pesos }}</td><td class="table-numero">{{ r.subtotal|pesos }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+<dl class="ficha mb-3">
+    {% if compra.importe_otros_conceptos %}<dt>Otros conceptos</dt><dd class="monto">{{ compra.importe_otros_conceptos|pesos }}</dd>{% endif %}
+    <dt>Total</dt><dd class="monto fs-5">{{ compra.total_compra|pesos }}</dd>
+    <dt>Pagado</dt><dd class="monto">{{ compra.pagado|pesos }}</dd>
+    <dt>Falta pagar</dt><dd class="monto {% if compra.saldo_pendiente %}text-peligro{% endif %}">{{ compra.saldo_pendiente|pesos }}</dd>
+</dl>
+{% if egresos %}
+<h6 class="subtitulo">Pagos</h6>
+<ul class="small mb-0">{% for e in egresos %}<li>{{ e.fecha_egreso|date:"d/m/Y"|default:"Sin pagar" }} · {{ e.monto|pesos }} con {{ e.id_medio_pago|default:"—" }} · {{ e.get_estado_pago_display }}</li>{% endfor %}</ul>
+{% endif %}

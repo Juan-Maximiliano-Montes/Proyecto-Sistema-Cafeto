@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Actualizar precios{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url 'stock:productos_lista' %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Productos</a>
+        <h1 class="titulo-pantalla mb-0">Actualizar precios</h1>
+        <p class="bajada">Para cuando llega la lista nueva: elegí a qué productos alcanza, el porcentaje y el redondeo. Primero ves cómo queda.</p>
+    </div>
+</div>
+{% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
+
+<form method="get" class="tarjeta mb-3">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label" for="rubro">Rubro</label><select name="rubro" id="rubro" class="form-select"><option value="">Todos</option>{% for r in rubros %}<option value="{{ r.pk }}"{% if datos.rubro == r.pk|stringformat:'s' %} selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label" for="marca">Marca</label><select name="marca" id="marca" class="form-select"><option value="">Todas</option>{% for m in marcas %}<option value="{{ m.pk }}"{% if datos.marca == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><label class="form-label" for="proveedor">Proveedor</label><select name="proveedor" id="proveedor" class="form-select"><option value="">Todos</option>{% for p in proveedores %}<option value="{{ p.pk }}"{% if datos.proveedor == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><label class="form-label" for="porcentaje">%</label><input type="text" inputmode="decimal" name="porcentaje" id="porcentaje" value="{{ datos.porcentaje|default:'' }}" class="form-control" placeholder="8"></div>
+        <div class="col-md-2"><label class="form-label" for="redondeo">Redondeo</label><select name="redondeo" id="redondeo" class="form-select">{% for valor, etiqueta in redondeos %}<option value="{{ valor }}"{% if valor == paso %} selected{% endif %}>{{ etiqueta }}</option>{% endfor %}</select></div>
+        <div class="col-12"><button type="submit" class="btn btn-secundario"><i class="bi bi-eye me-1"></i>Ver cómo queda</button></div>
+    </div>
+</form>
+
+{% if filas %}
+<div class="aviso aviso-aviso"><i class="bi bi-info-circle-fill"></i><span>Alcanza a <strong>{{ total }}</strong> producto(s){% if total > filas|length %} (se muestran los primeros {{ filas|length }}){% endif %}.</span></div>
+<div class="tarjeta p-0 overflow-hidden mb-3">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <thead><tr><th>Producto</th><th class="table-numero">Hoy</th><th class="table-numero">Queda</th></tr></thead>
+        <tbody>{% for p, antes, despues in filas %}<tr><td>{{ p }}</td><td class="table-numero">{{ antes|pesos }}</td><td class="table-numero fw-semibold">{{ despues|pesos }}</td></tr>{% endfor %}</tbody>
+    </table>
+    </div>
+</div>
+<form method="post" data-titulo="¿Actualizar {{ total }} precio(s)?" data-aceptar="Sí, actualizar" data-confirmar="Los precios nuevos valen desde la próxima venta.">
+    {% csrf_token %}
+    <input type="hidden" name="token_operacion" value="{{ token }}">
+    <input type="hidden" name="rubro" value="{{ datos.rubro|default:'' }}"><input type="hidden" name="marca" value="{{ datos.marca|default:'' }}">
+    <input type="hidden" name="proveedor" value="{{ datos.proveedor|default:'' }}"><input type="hidden" name="porcentaje" value="{{ datos.porcentaje }}">
+    <input type="hidden" name="redondeo" value="{{ paso }}">
+    <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-check2-all me-1"></i>Aplicar los precios nuevos</button>
+</form>
+{% endif %}
+{% endblock %}

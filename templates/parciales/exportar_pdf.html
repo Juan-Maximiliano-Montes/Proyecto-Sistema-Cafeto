@@ -1,0 +1,64 @@
+{% load l10n %}<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<title>{{ titulo }}</title>
+<style>
+    @font-face { font-family: 'Inter'; font-weight: 400; src: url('{{ fuente_inter }}'); }
+    @font-face { font-family: 'Inter'; font-weight: 600; src: url('{{ fuente_inter_negrita }}'); }
+    @font-face { font-family: 'Lora'; font-weight: 600; src: url('{{ fuente_lora }}'); }
+    @page {
+        size: A4 {% if apaisado %}landscape{% else %}portrait{% endif %};
+        margin: 16mm 12mm 16mm 12mm;
+        @bottom-left { content: string(pie); font: 8pt 'Inter'; color: #8A8F9C; }
+        @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt 'Inter'; color: #8A8F9C; }
+    }
+    body { font-family: 'Inter', sans-serif; font-size: 9pt; color: #161616; }
+    header { display: flex; justify-content: space-between; align-items: flex-end;
+             border-bottom: 3px solid #FAB41F; padding-bottom: 6pt; margin-bottom: 10pt; }
+    header img { height: 30pt; }
+    h1 { string-set: pie content(); font-family: 'Lora', serif; font-weight: 600; font-size: 15pt; margin: 0; }
+    .bajada { color: #5B6078; font-size: 8pt; margin-top: 2pt; }
+    table { width: 100%; border-collapse: collapse; }
+    thead { display: table-header-group; }
+    th { background: #FAB41F; color: #161616; text-align: left; font-weight: 600; padding: 4pt 5pt; }
+    td { padding: 3.5pt 5pt; border-bottom: 0.5pt solid #E6E2D8; vertical-align: top; }
+    tr:nth-child(even) td { background: #FBF8F1; }
+    tr { page-break-inside: avoid; }
+    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .vacio { text-align: center; color: #8A8F9C; padding: 20pt; }
+</style>
+</head>
+<body>
+<header>
+    <div>
+        <h1>{{ titulo }}</h1>
+        <div class="bajada">
+            {{ comercio }} · Generado el {{ generado|date:"d/m/Y H:i" }}{% if descripcion %} · {{ descripcion }}{% endif %}
+            · {{ renglones|length }} registro{{ renglones|length|pluralize }}
+        </div>
+    </div>
+    {% if logo %}<img src="{{ logo }}" alt="">{% endif %}
+</header>
+<table>
+    <thead>
+        <tr>{% for c in columnas %}<th{% if c.formato == 'numero' or c.formato == 'dinero' %} class="num"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+    {% for renglon in renglones %}
+        <tr>
+        {% for formato, valor in renglon %}
+            {% if formato == 'dinero' %}<td class="num">{% if valor is not None %}$ {{ valor|floatformat:"2g" }}{% endif %}</td>
+            {% elif formato == 'numero' %}<td class="num">{% if valor is not None %}{{ valor|floatformat:"-3g" }}{% endif %}</td>
+            {% elif formato == 'fecha' %}<td>{{ valor|date:"d/m/Y" }}</td>
+            {% elif formato == 'fecha_hora' %}<td>{{ valor|date:"d/m/Y H:i" }}</td>
+            {% else %}<td>{{ valor|default_if_none:"" }}</td>{% endif %}
+        {% endfor %}
+        </tr>
+    {% empty %}
+        <tr><td class="vacio" colspan="{{ columnas|length }}">No hay registros con estos filtros.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</body>
+</html>

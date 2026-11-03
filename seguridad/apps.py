@@ -1,0 +1,8 @@
+"""Módulo Seguridad y Acceso: usuarios, perfiles, permisos, sesiones y auditoría."""
+from django.apps import AppConfig
+
+
+class SeguridadConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'seguridad'
+    verbose_name = 'Seguridad y Acceso'

@@ -1,0 +1,28 @@
+{% load cafeto %}
+<p class="small text-secondary mt-2 mb-2">Para una venta que no debió existir (pago rechazado, carga equivocada, cobro duplicado, el cliente desistió). Vuelven el stock, el efectivo y los puntos; la venta queda en la lista como <strong>anulada</strong>, con quién la pidió, quién la autorizó y el motivo. Si el cliente trae algo después, es un cambio o una devolución.</p>
+<form method="post" action="{% url 'ventas:anular_venta' venta.pk %}" data-titulo="Anular la venta N° {{ venta.pk }}" data-confirmar="Se anula la venta de {{ venta.total_venta|pesos }} y vuelven el stock, el efectivo y los puntos. No se puede deshacer." data-aceptar="Sí, anular" data-peligro="1">
+    {% csrf_token %}
+    <input type="hidden" name="token_operacion" value="{{ token_anulacion }}">
+    <input type="hidden" name="desde" value="{{ desde }}">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-6">
+            <label class="form-label small" for="motivo-anulacion-{{ venta.pk }}">Motivo <span class="text-peligro" aria-hidden="true">*</span></label>
+            <select name="motivo" id="motivo-anulacion-{{ venta.pk }}" class="form-select" required>
+                <option value="">Elegí…</option>
+                {% for valor, etiqueta in motivos_anulacion %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small" for="detalle-anulacion-{{ venta.pk }}">Detalle <span class="text-secondary">(obligatorio si es «Otro»)</span></label>
+            <input type="text" name="detalle" id="detalle-anulacion-{{ venta.pk }}" class="form-control" maxlength="120">
+        </div>
+        {% if pide_clave %}
+        <div class="col-12"><p class="small mb-0"><i class="bi bi-person-lock me-1"></i>{% if venta_propia %}Es una venta tuya: la autoriza otra persona.{% else %}La autoriza el Encargado o la Administración, ahí mismo.{% endif %}</p></div>
+        <div class="col-md-6"><input type="text" name="autoriza_usuario" class="form-control" placeholder="Usuario o DNI de quien autoriza" autocomplete="off" aria-label="Usuario de quien autoriza" required></div>
+        <div class="col-md-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Su clave" autocomplete="off" aria-label="Clave de quien autoriza" required></div>
+        {% endif %}
+        <div class="col-12 d-grid d-md-flex justify-content-md-end">
+            <button type="submit" class="btn btn-danger"><i class="bi bi-x-octagon me-1"></i>{% if pide_clave %}Autorizar y anular{% else %}Anular{% endif %}</button>
+        </div>
+    </div>
+</form>

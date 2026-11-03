@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Producción{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-boxes me-1"></i>Stock</span>
+        <h1 class="titulo-pantalla mb-0">Producción</h1>
+        <p class="bajada">Cargá cada tanda: entran las unidades y salen los insumos de la receta.</p>
+    </div>
+</div>
+<div class="row g-3">
+    <div class="col-lg-5">
+        {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
+        {% if productos %}
+        <form method="post" class="tarjeta" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="token_operacion" value="{{ token }}">
+            <h2 class="subtitulo h5 mb-0">Nueva tanda</h2>
+            <div>
+                <label class="form-label" for="producto">¿Qué se hizo?</label>
+                <select name="producto" id="producto" class="form-select">
+                    <option value="">Elegí el producto…</option>
+                    {% for p in productos %}<option value="{{ p.pk }}" data-vence="{{ p.controla_vencimiento|yesno:'si,no' }}"{% if datos.producto == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="cantidad">¿Cuántas salieron?</label>
+                <input type="text" inputmode="decimal" name="cantidad" id="cantidad" value="{{ datos.cantidad|default:'' }}" class="form-control form-control-lg">
+            </div>
+            <div>
+                <label class="form-label" for="vence">Se puede vender hasta</label>
+                <input type="date" name="vence" id="vence" value="{{ datos.vence|default:'' }}" class="form-control">
+                <p class="form-text">Sólo para lo que controla vencimiento.</p>
+            </div>
+            <div>
+                <label class="form-label" for="observacion">Observación</label>
+                <input type="text" name="observacion" id="observacion" value="{{ datos.observacion|default:'' }}" maxlength="120" class="form-control">
+            </div>
+            <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-fire me-1"></i>Cargar tanda</button>
+        </form>
+        {% else %}
+        <div class="vacio tarjeta"><i class="bi bi-fire"></i>No hay productos «producidos por tanda» cargados. Se dan de alta en Productos, con su receta.</div>
+        {% endif %}
+    </div>
+    <div class="col-lg-7">
+        <div class="tarjeta p-0 overflow-hidden">
+            <h2 class="subtitulo h5 px-3 pt-3 mb-0">Últimas tandas</h2>
+            <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead><tr><th>Cuándo</th><th>Producto</th><th class="table-numero">Cantidad</th><th class="table-numero">Costo c/u</th><th>Quién</th></tr></thead>
+                <tbody>
+                {% for p in filas %}
+                    <tr><td class="text-nowrap">{{ p.fecha_produccion|date:"d/m H:i" }}</td><td>{{ p.id_producto }}{% if p.fecha_vencimiento %}<span class="d-block small text-tenue">vence {{ p.fecha_vencimiento|date:"d/m" }}</span>{% endif %}</td><td class="table-numero">{{ p.cantidad|cantidad }}</td><td class="table-numero">{{ p.costo_unitario|pesos }}</td><td class="small">{{ p.id_usuario.nombre }}</td></tr>
+                {% empty %}
+                    <tr><td colspan="5" class="text-center text-secondary py-4">Todavía no se cargó ninguna tanda.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <form id="herramientas" method="get"></form>
+        {% include 'parciales/_paginador.html' %}
+    </div>
+</div>
+{% endblock %}

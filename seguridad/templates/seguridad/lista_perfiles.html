@@ -1,0 +1,332 @@
+{% extends 'base.html' %}
+
+{% block titulo %}Cafeto · Perfiles{% endblock %}
+
+{% block contenido %}
+{% load cafeto %}
+{% with puede_crear=permisos_usuario|contiene:'crear_perfil' puede_editar=permisos_usuario|contiene:'editar_perfil' puede_baja=permisos_usuario|contiene:'eliminar_perfil' puede_reactivar=permisos_usuario|contiene:'reactivar_perfil' %}
+
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-shield-lock me-1"></i>Equipo y permisos</span>
+        <h1 class="titulo-pantalla mb-0">Perfiles</h1>
+        <p class="bajada">Qué puede hacer cada puesto. Los permisos de Seguridad son sólo del administrador.</p>
+    </div>
+    {% if puede_crear %}
+    <div class="acciones">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCrear">
+            <i class="bi bi-plus-lg me-1"></i>Nuevo perfil
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<form method="get" id="herramientas" class="herramientas" role="search">
+    <input type="hidden" name="pagina" value="1">
+    <div class="buscador">
+        <i class="bi bi-search"></i>
+        <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
+               placeholder="Nombre o descripción del perfil…" aria-label="Buscar">
+    </div>
+    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+        <option value="vigentes"{% if estado == 'vigentes' %} selected{% endif %}>Vigentes</option>
+        <option value="baja"{% if estado == 'baja' %} selected{% endif %}>Dados de baja</option>
+        <option value="todos"{% if estado == 'todos' %} selected{% endif %}>Todos</option>
+    </select>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Buscar</button>
+    {% if request.GET %}<a href="{% url 'seguridad:perfiles' %}" class="btn btn-link text-secondary">Limpiar</a>{% endif %}
+</form>
+
+{% if perfiles %}
+<div class="grilla">
+    {% for p in perfiles %}
+    <article class="tarjeta{% if p.borrado_logico %} baja{% endif %}"
+             data-id="{{ p.id_perfil }}" data-nombre="{{ p.nombre }}" data-descripcion="{{ p.descripcion|default:'' }}"
+             data-sistema="{{ p.es_sistema|yesno:'1,0' }}"
+             data-tope="{% if p.tope_descuento_porcentaje is not None %}{{ p.tope_descuento_porcentaje|stringformat:'s' }}{% endif %}"
+             data-permisos="{% for perm in p.permisos.all %}{{ perm.id_permiso }}{% if not forloop.last %},{% endif %}{% endfor %}"
+             data-permisos-texto="{% for perm in p.permisos.all %}{{ perm.codigo }}{% if not forloop.last %}, {% endif %}{% endfor %}"
+             data-usuarios="{{ p.cantidad_usuarios }}"
+             data-modificado="{{ p.fecha_modificacion|date:'d/m/Y H:i' }}"
+             data-modificado-por="{{ p.usuario_modificacion.nombre_usuario|default_if_none:'' }}">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0">
+                <h2 class="tarjeta-titulo">{{ p.nombre }}</h2>
+                <p class="tarjeta-sub">{{ p.descripcion|default:"Sin descripción" }}</p>
+            </div>
+            {% if p.borrado_logico %}<span class="insignia insignia-neutra">Dado de baja</span>
+            {% elif p.es_sistema %}<span class="insignia insignia-marca">acceso total</span>
+            {% else %}<span class="insignia insignia-exito">Vigente</span>{% endif %}
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>Usuarios</dt><dd>{{ p.cantidad_usuarios }}</dd>
+            <dt>Permisos</dt><dd>{% if p.es_sistema %}Todos{% else %}{{ p.permisos.all|length }}{% endif %}</dd>
+            <dt>Tope de descuento</dt><dd>{% if p.tope_descuento_porcentaje is None %}Sin tope{% else %}{{ p.tope_descuento_porcentaje|cantidad }} %{% endif %}</dd>
+        </dl>
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario btn-detalle" title="Ver detalle">
+                <i class="bi bi-eye"></i><span class="ms-1">Ver</span>
+            </button>
+            {% if puede_editar and not p.borrado_logico %}
+            <button type="button" class="btn btn-sm btn-secundario btn-editar" data-url="{% url 'seguridad:editar_perfil' p.id_perfil %}" title="Editar perfil">
+                <i class="bi bi-pencil"></i><span class="ms-1">Editar</span>
+            </button>
+            {% endif %}
+            {% if p.borrado_logico %}
+                {% if puede_reactivar %}
+                <form method="post" class="ms-auto" action="{% url 'seguridad:reactivar_perfil' p.id_perfil %}"
+                      data-titulo="¿Reactivar el perfil?" data-aceptar="Sí, reactivar" data-confirmar="«{{ p.nombre }}» vuelve a poder asignarse.">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise me-1"></i>Reactivar</button>
+                </form>
+                {% endif %}
+            {% elif puede_baja and not p.es_sistema %}
+                <form method="post" class="ms-auto" action="{% url 'seguridad:eliminar_perfil' p.id_perfil %}"
+                      data-titulo="¿Dar de baja el perfil?" data-aceptar="Sí, dar de baja" data-peligro="1"
+                      data-confirmar="«{{ p.nombre }}» sólo se puede dar de baja si nadie lo tiene asignado.">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja el perfil" aria-label="Dar de baja"><i class="bi bi-archive"></i></button>
+                </form>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="vacio tarjeta">
+    <i class="bi bi-person-vcard"></i>
+    <p class="mb-2">No hay perfiles que coincidan con la búsqueda.</p>
+    <a href="{% url 'seguridad:perfiles' %}" class="btn btn-secundario btn-sm">Ver todos</a>
+</div>
+{% endif %}
+
+{% include 'parciales/_paginador.html' %}
+
+{% if puede_crear %}
+<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true"{% if abrir_modal_crear %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <form method="post" action="{% url 'seguridad:crear_perfil' %}" class="modal-content form-una-vez" novalidate>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuevo perfil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="{{ form.nombre.id_for_label }}" class="form-label">Nombre</label>
+                    {{ form.nombre }}
+                    {% if form.nombre.errors %}<div class="error-campo">{{ form.nombre.errors|striptags }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.descripcion.id_for_label }}" class="form-label">Descripción</label>
+                    {{ form.descripcion }}
+                    {% if form.descripcion.errors %}<div class="error-campo">{{ form.descripcion.errors|striptags }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="{{ form.tope_descuento_porcentaje.id_for_label }}" class="form-label">{{ form.tope_descuento_porcentaje.label }}</label>
+                    {{ form.tope_descuento_porcentaje }}
+                    <div class="form-text">{{ form.tope_descuento_porcentaje.help_text }}</div>
+                    {% if form.tope_descuento_porcentaje.errors %}<div class="error-campo">{{ form.tope_descuento_porcentaje.errors|striptags }}</div>{% endif %}
+                </div>
+                <label class="form-label">{{ form.permisos.label }}</label>
+                <div class="card">
+                    <div class="card-body py-2" style="max-height: 300px; overflow-y: auto;">
+                        {% comment %}
+                        El catálogo se muestra agrupado por el campo 'modulo'
+                        del permiso: así se encuentra rápido lo que se busca.
+                        {% endcomment %}
+                        {% for etiqueta, permisos_modulo in permisos_por_modulo %}
+                            <p class="text-marca small fw-semibold text-uppercase mb-1 mt-2">
+                                <i class="bi bi-folder2-open me-1"></i>{{ etiqueta }}
+                            </p>
+                            {% for perm in permisos_modulo %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="permisos" value="{{ perm.id_permiso }}"
+                                           id="crear_perm_{{ perm.id_permiso }}">
+                                    <label class="form-check-label" for="crear_perm_{{ perm.id_permiso }}">
+                                        <code class="text-marca">{{ perm.codigo }}</code>
+                                        <span class="text-secondary small">— {{ perm.nombre }}</span>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+                </div>
+                <p class="text-secondary small mt-2 mb-0">
+                    <i class="bi bi-info-circle me-1"></i>El perfil <b>Administrador</b> tiene
+                    acceso total por diseño, sin importar lo que se tilde acá.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+{% if puede_editar %}
+<div class="modal fade" id="modalEditar" tabindex="-1" aria-hidden="true"{% if abrir_modal_editar %} data-modal-auto{% endif %}>
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <form method="post" id="formEditar" class="modal-content" novalidate
+              {% if abrir_modal_editar %}action="{% url 'seguridad:editar_perfil' editar_id %}"{% endif %}>
+            {% csrf_token %}
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Editar perfil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" name="nombre" id="edit_nombre" class="form-control" maxlength="40" required value="{% if abrir_modal_editar %}{{ form_editar.data.nombre }}{% endif %}">
+                    {% if form_editar.nombre.errors %}<div class="error-campo">{{ form_editar.nombre.errors|striptags }}</div>{% endif %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descripción</label>
+                    <input type="text" name="descripcion" id="edit_descripcion" class="form-control" maxlength="120" value="{% if abrir_modal_editar %}{{ form_editar.data.descripcion }}{% endif %}">
+                </div>
+                <div class="mb-3" id="bloque_tope">
+                    <label class="form-label" for="edit_tope">Tope de descuento (%)</label>
+                    <input type="number" name="tope_descuento_porcentaje" id="edit_tope" class="form-control" min="0" max="100" step="0.5">
+                    <div class="form-text">Porcentaje máximo de descuento por renglón sin pedir autorización. 0 = no puede descontar.</div>
+                </div>
+                <label class="form-label">Permisos habilitados para este perfil</label>
+                <div class="card">
+                    <div class="card-body py-2" style="max-height: 300px; overflow-y: auto;">
+                        {% comment %}
+                        Los permisos de Seguridad son exclusivos del perfil
+                        administrador: para los demás perfiles el bloque se
+                        esconde (y el servidor los rechaza igual).
+                        {% endcomment %}
+                        {% for etiqueta, permisos_modulo in permisos_por_modulo_sistema %}
+                            <div class="{% if permisos_modulo.0.es_exclusivo_del_administrador %}permiso-exclusivo{% endif %}">
+                            <p class="text-marca small fw-semibold text-uppercase mb-1 mt-2">
+                                <i class="bi bi-folder2-open me-1"></i>{{ etiqueta }}
+                                {% if permisos_modulo.0.es_exclusivo_del_administrador %}<span class="insignia insignia-marca ms-1">sólo administrador</span>{% endif %}
+                            </p>
+                            {% for perm in permisos_modulo %}
+                                <div class="form-check">
+                                    <input class="form-check-input chk-permiso-editar" type="checkbox"
+                                           name="permisos" value="{{ perm.id_permiso }}" id="edit_perm_{{ perm.id_permiso }}">
+                                    <label class="form-check-label" for="edit_perm_{{ perm.id_permiso }}">
+                                        <code class="text-marca">{{ perm.codigo }}</code>
+                                        <span class="text-secondary small">— {{ perm.nombre }}</span>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+<div class="modal fade" id="modalDetalle" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Detalle del perfil</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="ficha">
+                    <dt>ID</dt><dd id="det_id"></dd>
+
+                    <dt>Nombre</dt><dd id="det_nombre"></dd>
+
+                    <dt>Descripción</dt><dd id="det_descripcion"></dd>
+
+                    <dt>Permisos asignados</dt><dd id="det_permisos"></dd>
+
+                    <dt>Usuarios con este perfil</dt><dd id="det_usuarios"></dd>
+
+                    <dt>Última modificación</dt><dd id="det_modificado"></dd>
+
+                    <dt>Modificado por</dt><dd id="det_modificado_por"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endwith %}
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+    function abrir(id) { bootstrap.Modal.getOrCreateInstance(document.getElementById(id)).show(); }
+    function texto(id, valor) { document.getElementById(id).textContent = valor || '—'; }
+
+    // En la edición: los permisos de Seguridad sólo se muestran (y se
+    // mandan) para el perfil del sistema; el tope, sólo para los demás.
+    function ajustarAlTipo(esSistema) {
+        var tope = document.getElementById('bloque_tope');
+        if (tope) {
+            tope.classList.toggle('d-none', esSistema);
+            document.getElementById('edit_tope').disabled = esSistema;
+        }
+        document.querySelectorAll('#formEditar .permiso-exclusivo').forEach(function (bloque) {
+            bloque.classList.toggle('d-none', !esSistema);
+            bloque.querySelectorAll('input').forEach(function (i) { i.disabled = !esSistema; });
+        });
+    }
+
+    document.addEventListener('click', function (evento) {
+        var boton, t;
+        if ((boton = evento.target.closest('.btn-detalle'))) {
+            t = boton.closest('.tarjeta');
+            texto('det_id', t.dataset.id);
+            texto('det_nombre', t.dataset.nombre);
+            texto('det_descripcion', t.dataset.descripcion);
+            var destino = document.getElementById('det_permisos');
+            destino.textContent = '';
+            var codigos = (t.dataset.permisosTexto || '').split(', ').filter(Boolean);
+            if (t.dataset.sistema === '1') { codigos = ['acceso total']; }
+            if (!codigos.length) { destino.textContent = 'Sin permisos'; }
+            codigos.forEach(function (codigo) {
+                var chip = document.createElement('span');
+                chip.className = 'insignia ' + (t.dataset.sistema === '1' ? 'insignia-marca' : 'insignia-neutra') + ' me-1 mb-1';
+                chip.textContent = codigo;
+                destino.appendChild(chip);
+            });
+            texto('det_usuarios', t.dataset.usuarios);
+            texto('det_modificado', t.dataset.modificado);
+            texto('det_modificado_por', t.dataset.modificadoPor);
+            abrir('modalDetalle');
+        } else if ((boton = evento.target.closest('.btn-editar'))) {
+            t = boton.closest('.tarjeta');
+            var form = document.getElementById('formEditar');
+            form.action = boton.dataset.url;
+            document.getElementById('edit_nombre').value = t.dataset.nombre;
+            document.getElementById('edit_descripcion').value = t.dataset.descripcion;
+            var asignados = (t.dataset.permisos || '').split(',');
+            form.querySelectorAll('.chk-permiso-editar').forEach(function (casilla) {
+                casilla.checked = asignados.indexOf(casilla.value) !== -1;
+            });
+            document.getElementById('edit_tope').value = t.dataset.tope;
+            ajustarAlTipo(t.dataset.sistema === '1');
+            abrir('modalEditar');
+        }
+    });
+    if (document.getElementById('formEditar')) { ajustarAlTipo(false); }
+})();
+</script>
+{% endblock %}

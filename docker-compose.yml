@@ -1,5 +1,6 @@
-# docker-compose.yml
+# docker-compose.yml — DESARROLLO.
 # Orquesta tres contenedores: PostgreSQL, Adminer y la aplicacion Django.
+# Para el NAS del local se suma docker-compose.prod.yml (ver ese archivo).
 #
 # El contenedor "web" se construye con el Dockerfile de esta carpeta: las
 # dependencias quedan instaladas en la imagen y las migraciones se aplican
@@ -69,6 +70,8 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-solo-para-desarrollo}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      # En desarrollo los estáticos se sirven desde el código montado.
+      CAFETO_ESTATICOS_CON_HASH: "False"
     depends_on:
       db:
         condition: service_healthy

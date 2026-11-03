@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Cierre de caja{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-cash-stack me-1"></i>{{ turno.id_caja_registradora }}</span>
+        <h1 class="titulo-pantalla mb-0">{% if relevo %}Cambio de turno{% else %}Cierre de caja{% endif %}</h1>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="tarjeta">
+            <dl class="tarjeta-datos fs-6">
+                <dt>Contaste</dt><dd class="monto">{{ contado|pesos }}</dd>
+                <dt>Según el libro</dt><dd class="monto">{{ esperado|pesos }}</dd>
+            </dl>
+            <div class="pt-2 border-top">
+                {% if diferencia == 0 %}
+                <div class="aviso aviso-exito mb-0"><i class="bi bi-check-circle-fill"></i><span>La caja cierra justa.</span></div>
+                {% else %}
+                <div class="aviso {% if pide_supervisor %}aviso-error{% else %}aviso-aviso{% endif %} mb-0">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>{% if diferencia > 0 %}Sobran{% else %}Faltan{% endif %} <strong>{{ diferencia|pesos }}</strong>.
+                    {% if pide_supervisor %}Supera lo tolerado ({{ tolerancia|pesos }}): lo tiene que autorizar alguien que supervise.{% endif %}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <form method="post" class="tarjeta p-4" novalidate>
+            {% csrf_token %}
+            {{ form.token_operacion }}
+            {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+            {% if diferencia != 0 %}
+            <div class="mb-3">
+                <label class="form-label" for="{{ form.observacion.id_for_label }}">{{ form.observacion.label }}</label>
+                {{ form.observacion }}
+            </div>
+            {% endif %}
+            {% if pide_supervisor %}
+            <h2 class="subtitulo h6">Autoriza</h2>
+            <div class="row g-2 mb-3">
+                <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_usuario.id_for_label }}">{{ form.autoriza_usuario.label }}</label>{{ form.autoriza_usuario }}</div>
+                <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_clave.id_for_label }}">{{ form.autoriza_clave.label }}</label>{{ form.autoriza_clave }}</div>
+            </div>
+            {% endif %}
+            {% if relevo %}
+            <h2 class="subtitulo h6">Quién sigue con el cajón</h2>
+            <p class="small text-secondary">Lo que contaste pasa a ser su fondo inicial.</p>
+            <div class="row g-2 mb-3">
+                <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_usuario.id_for_label }}">{{ form.entrante_usuario.label }}</label>{{ form.entrante_usuario }}</div>
+                <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_clave.id_for_label }}">{{ form.entrante_clave.label }}</label>{{ form.entrante_clave }}</div>
+            </div>
+            {% endif %}
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1"></i>{% if relevo %}Hacer el relevo{% else %}Cerrar la caja{% endif %}</button>
+            </div>
+        </form>
+        <form method="post" action="{% url 'ventas:descartar_arqueo' %}" class="mt-2"
+              data-titulo="¿Volver sin cerrar?" data-aceptar="Sí, volver"
+              data-confirmar="La caja sigue abierta. Lo que declaraste queda registrado; para cerrar vas a tener que contar de nuevo.">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-link text-secondary p-0">Volver sin cerrar</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

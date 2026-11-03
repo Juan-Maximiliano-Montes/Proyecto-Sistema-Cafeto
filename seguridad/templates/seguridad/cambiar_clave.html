@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block titulo %}Cafeto · Cambio de clave{% endblock %}
+
+{% block contenido %}
+<div class="d-flex justify-content-center">
+    <div class="w-100" style="max-width: 460px;">
+        <div class="tarjeta p-4">
+            <span class="eyebrow"><i class="bi bi-key me-1"></i>Seguridad</span>
+            <h1 class="titulo-pantalla mb-2">{% if form.pide_actual %}Cambiar mi clave{% else %}Elegí tu clave{% endif %}</h1>
+            <p class="text-secondary small">
+                {% if form.pide_actual %}
+                Escribí tu clave actual y la nueva.
+                {% else %}
+                Estás usando una clave provisoria. Por seguridad, definí una clave nueva antes de seguir.
+                {% endif %}
+                Mínimo 8 caracteres, que no sea sólo números ni se parezca a tu nombre o tu DNI.
+            </p>
+            {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+            <form method="post" novalidate>
+                {% csrf_token %}
+                {% for campo in form %}{% if campo.name != 'clave_actual' or form.pide_actual %}
+                <div class="mb-3{% if campo.errors %} con-error{% endif %}">
+                    <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                    {{ campo }}
+                    {% for error in campo.errors %}<p class="error-campo"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ error }}</p>{% endfor %}
+                </div>
+                {% endif %}{% endfor %}
+                <button type="submit" class="btn btn-primary btn-xl w-100" data-requiere-red>
+                    <i class="bi bi-check-lg me-1"></i>Guardar clave nueva
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

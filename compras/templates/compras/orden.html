@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Orden N° {{ orden.pk }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url 'compras:ordenes' %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Órdenes de compra</a>
+        <h1 class="titulo-pantalla mb-0">Orden N° {{ orden.pk }}</h1>
+        <p class="bajada">{{ orden.id_proveedor }} · {{ orden.fecha_orden|date:"d/m/Y" }} · {{ orden.get_estado_orden_display }}</p>
+    </div>
+    <div class="acciones">
+        <a href="{% url 'compras:orden_pdf' orden.pk %}" target="_blank" rel="noopener" class="btn btn-secundario"><i class="bi bi-file-earmark-pdf me-1"></i>PDF para el proveedor</a>
+        {% if orden.estado_orden == 'PENDIENTE' %}
+        <form method="post" action="{% url 'compras:estado_orden' orden.pk %}" data-titulo="¿Marcar como enviada?" data-aceptar="Sí, ya la mandé" data-confirmar="Después de enviarla ya no se modifica: se recibe o se cancela.">
+            {% csrf_token %}<input type="hidden" name="accion" value="enviar">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>Marcar como enviada</button>
+        </form>
+        {% elif orden.estado_orden == 'EMITIDA' and 'registrar_compra' in permisos_usuario %}
+        <a href="{% url 'compras:recepcion' %}?orden={{ orden.pk }}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Llegó: recibir</a>
+        {% endif %}
+        {% if orden.estado_orden == 'PENDIENTE' or orden.estado_orden == 'EMITIDA' %}
+        <form method="post" action="{% url 'compras:estado_orden' orden.pk %}" data-titulo="¿Cancelar la orden?" data-aceptar="Sí, cancelar" data-peligro="1" data-confirmar="La orden queda cancelada y ya no se puede recibir.">
+            {% csrf_token %}<input type="hidden" name="accion" value="cancelar">
+            <button type="submit" class="btn btn-outline-danger">Cancelar</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <thead><tr><th>Producto</th><th class="table-numero">Cantidad</th><th class="table-numero">Precio</th><th class="table-numero">Subtotal</th></tr></thead>
+        <tbody>
+        {% for r in renglones %}<tr><td>{{ r.id_producto }}</td><td class="table-numero">{{ r.cantidad_pedida|cantidad }}</td><td class="table-numero">{{ r.precio_unitario|pesos }}</td><td class="table-numero">{{ r.subtotal|pesos }}</td></tr>{% endfor %}
+        </tbody>
+        <tfoot><tr><th colspan="3" class="table-numero">Total</th><th class="table-numero monto">{{ orden.total_orden|pesos }}</th></tr></tfoot>
+    </table>
+    </div>
+</div>
+{% endblock %}

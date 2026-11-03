@@ -1,25 +1,40 @@
 # Imagen del contenedor "web" (Django).
 #
-# Antes este servicio usaba la imagen oficial de Python SIN Dockerfile y las
-# librerias se instalaban A MANO entrando al contenedor. Con este Dockerfile
-# la instalacion queda registrada y reproducible: "docker compose up --build"
-# levanta el sistema completo sin pasos manuales.
+# La misma imagen sirve para desarrollo y para el NAS del local: lo que
+# cambia es DJANGO_DEBUG. Con DEBUG el arranque usa el servidor de
+# desarrollo; sin DEBUG, gunicorn (ver docker/arrancar.sh).
 FROM python:3.11-slim
 
-# No escribe los .pyc al disco montado y manda los logs sin buffer, para
-# que "docker compose logs web" muestre los mensajes en el momento.
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# WeasyPrint (los PDF: listados, etiquetas de oferta, órdenes de compra)
+# necesita Pango y HarfBuzz del sistema para componer el texto.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fontconfig \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/app
 
-# Las dependencias van en una capa propia: mientras requirements.txt no
-# cambie, Docker reutiliza la capa y el build es casi instantaneo.
+# Las dependencias en su propia capa: mientras requirements.txt no cambie,
+# Docker la reutiliza y el build es casi instantáneo.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
 COPY . .
 
-# Al arrancar: primero aplica las migraciones pendientes, despues levanta el
-# servidor de desarrollo escuchando en todas las interfaces del contenedor.
-CMD ["sh","-c","python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"]
+# Los estáticos (Bootstrap, íconos, fuentes, logos) se juntan y comprimen
+# en la imagen: en el NAS se sirven sin internet y sin un servidor aparte.
+RUN CAFETO_ESTATICOS_CON_HASH=True DJANGO_DEBUG=True \
+    python manage.py collectstatic --noinput --verbosity 0
+
+# Corre con un usuario sin privilegios: si alguien encontrara una falla en
+# la aplicación, no tendría root dentro del contenedor.
+RUN useradd --create-home --uid 1000 cafeto && chown -R cafeto /opt/app
+USER cafeto
+
+EXPOSE 8000
+CMD ["sh", "docker/arrancar.sh"]

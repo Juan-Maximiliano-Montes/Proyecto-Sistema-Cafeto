@@ -7,9 +7,13 @@ Quijano, Salta).
 Materia: Práctica Profesional II · 2.º Año · Tecnicatura Superior en Análisis
 de Sistemas · Instituto Superior Del Milagro N.º 8207.
 
+Arquitectura: **Alternativa II** del estudio previo — aplicación web en un NAS
+del local, a la que se entra desde las tablets y teléfonos del mostrador y,
+de manera segura, desde afuera.
+
 ---
 
-## Levantarlo en tres comandos
+## Levantarlo (desarrollo)
 
 ```bash
 cd Proyecto-Cafeto
@@ -20,11 +24,42 @@ docker compose up -d --build
 Listo: http://localhost:8000
 
 La imagen se construye sola, las dependencias quedan adentro y las migraciones
-se aplican al arrancar. No hay que entrar al contenedor a instalar nada.
+se aplican al arrancar.
 
-**Primer ingreso:** usuario `30000000` (el DNI del administrador inicial) con
-la clave por defecto que define `usuarios/migrations/0002_datos_iniciales_v2.py`.
-El sistema obliga a cambiarla antes de dejar entrar.
+**Primer ingreso:** usuario `30000000` (el DNI del administrador inicial, que es
+el **titular** del sistema) con la clave por defecto que define
+`seguridad/migrations/0003_datos_iniciales.py`. El sistema obliga a cambiarla
+antes de dejar entrar.
+
+> **Si venías de una versión anterior** (la que tenía las apps `usuarios`,
+> `maestros`, `proveedores` y `operaciones`), el esquema cambió de raíz:
+> corré **una sola vez** `docker compose down -v` y después
+> `docker compose up -d --build`. El `-v` borra la base de desarrollo; no lo
+> uses nunca en el NAS con datos reales.
+
+## Ponerlo en el NAS (producción)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Con `docker-compose.prod.yml`:
+
+* la base **no publica su puerto** y **Adminer no se levanta**;
+* el código no se monta: corre lo que quedó en la imagen, con **gunicorn**;
+* los estáticos (Bootstrap, íconos, fuentes y logos) van **dentro** de la
+  imagen, comprimidos: el sistema se ve igual sin internet;
+* un servicio **`respaldo`** hace un `pg_dump` diario a `./respaldos/` y
+  guarda los últimos 14 (`CAFETO_RESPALDOS_DIAS`). Cómo restaurar uno está en
+  `docker/respaldar.sh`.
+
+En el `.env` del NAS: `DJANGO_DEBUG=False`, una `DJANGO_SECRET_KEY` larga y
+aleatoria, `DJANGO_ALLOWED_HOSTS` con el nombre o la IP con que se entra, y
+`DJANGO_CSRF_TRUSTED_ORIGINS` con la dirección completa (`https://…`).
+
+**Acceso desde afuera del local:** por el proxy inverso del NAS con HTTPS
+(entonces `DJANGO_CONFIAR_EN_PROXY=True` y `DJANGO_HTTPS=True`) o por una VPN.
+Nunca abriendo el puerto 8000 directo a internet.
 
 ---
 
@@ -32,162 +67,89 @@ El sistema obliga a cambiarla antes de dejar entrar.
 
 | Componente | Versión | Para qué |
 |---|---|---|
-| Django | 4.2.16 | Framework web (patrón MVT) |
+| Python | 3.11-slim | Runtime (imagen propia, `Dockerfile`) |
+| Django | 5.2 | Framework web (patrón MVT) |
 | PostgreSQL | 16 | Base de datos |
-| Adminer | latest | Administrador web de la base |
-| Python | 3.11-slim | Runtime (imagen propia, con `Dockerfile`) |
-| Docker Compose | — | Orquesta los tres contenedores |
-| Bootstrap 5 · Bootstrap Icons · DataTables · SweetAlert2 | CDN | Front-end |
+| gunicorn · whitenoise | — | Servidor de producción y estáticos |
+| openpyxl · WeasyPrint | — | Excel (exportar e importar) y PDF |
+| Bootstrap 5.3 · Bootstrap Icons · Select2 | servidos por el sistema | Front-end, sin CDN |
+| Caveat · Lora · Inter | servidas por el sistema | Tipografías del manual de identidad |
 
-### Accesos
+Los gráficos (pandas, matplotlib) llegan en el **Hito 5**, junto con
+fidelización y clientes.
 
 | Qué | Dirección |
 |---|---|
 | Aplicación | http://localhost:8000 |
-| Adminer (base de datos) | http://localhost:9090 |
-| Panel /admin de Django | http://localhost:8000/admin/ |
-
-En Adminer: motor **PostgreSQL**, servidor `db`, y el usuario, la clave y la
-base que tengas en `.env`.
+| Adminer (sólo desarrollo) | http://localhost:9090 |
+| Panel /admin de Django (sólo con DEBUG) | http://localhost:8000/admin/ |
 
 ---
 
-## Quién es dueño de qué
+## Organización: una app por módulo del DER
 
-**Django controla todo: las tablas Y la lógica de negocio.** 
+Si algo falla en la caja, se busca en `ventas/`; si falla un conteo, en
+`stock/`. Cada app tiene sus modelos, sus **servicios** (las reglas
+transaccionales, en Python), sus pantallas y sus pruebas.
 
-| Dónde | Qué regla |
-|---|---|
-| `cafeto/reglas.py` | Los mixins de modelo: sello de modificación (DD-17), baja lógica (RN-8.1.1), libros de sólo agregado (DD-04), saldos derivados |
-| `cafeto/contexto.py` | Quién está operando, en un `ContextVar` que fija el middleware |
-| `operaciones/caja.py` | Apertura, movimientos, arqueo ciego y cierre |
-| `operaciones/ventas.py` | Registrar y anular un ticket; FEFO del stock |
-| `operaciones/puntos.py` | Acumular, canjear y revertir |
-| `operaciones/compras.py` | Órdenes y recepción de mercadería |
-| `operaciones/egresos.py` | Obligaciones, pagos y conciliación |
-| `manage.py pasar_a_historico` | Archivado: la única baja física del sistema |
-
-Cada regla se cubre por los **dos caminos** del ORM: el de la instancia
-(`save()` / `delete()`) y el del conjunto (`QuerySet.update()` /
-`.delete()`), que no pasa por los métodos de la instancia. Olvidar el
-segundo deja un agujero por el que se escapa un borrado masivo.
-
-**La única excepción** es `f_clave_normalizada()` y la extensión
-`unaccent`, que se crean con SQL embebido en una migración. No son lógica
-de negocio: son la definición de los índices únicos normalizados (DD-50),
-y un índice de expresión no puede llamar a código Python.
-
-
-## Módulos
-
-| Módulo | Dónde | Estado |
+| App | Tablas | Procesos y pantallas |
 |---|---|---|
-| Autenticación y sesiones (DFD 1) | `usuarios` | Implementado |
-| Usuarios, perfiles y permisos (DFD 8) | `usuarios` | Implementado |
-| Proveedores (DFD 10) | `proveedores` | Implementado |
-| **Mantener datos maestros (DFD 10)** | `maestros` + `proveedores` | **Implementado (Fase 4)** |
-| Caja, ventas, compras, stock, egresos, fidelización | `operaciones` | Tablas y lógica en la base; pantallas en los próximos sprints |
+| `nucleo` | — | Lo común: mixins de modelo, validaciones, CRUD genérico, búsqueda sin acentos, paginación, exportación a Excel/PDF, importación con vista previa, sistema de diseño (`static/cafeto/`) |
+| `seguridad` | USUARIOS · PERFILES · PERMISOS · SESIONES · LOG_AUDITORIA · INTENTOS_ACCESO | Login con bloqueo progresivo, sesiones del lado del servidor, usuarios, perfiles (con perfil temporal y titular), permisos, registro de actividad |
+| `geografia` | PROVINCIAS · LOCALIDADES | Catálogo geográfico |
+| `negocio` | PARAMETROS_NEGOCIO | Datos del local, reglas de operación, panel de inicio, reportes |
+| `stock` | RUBROS · MARCAS · PRODUCTOS · COMPOSICION · LOTES · MOVIMIENTOS_STOCK · AJUSTES · PRODUCCIONES | Productos (5 tipos), FEFO, rebaja por vencimiento, conteo ciego, mermas, traspasos, producción por tanda, alertas, etiquetas de oferta, aumento masivo de precios, importación |
+| `ventas` | MEDIOS_PAGO · CAJAS_REGISTRADORAS · TURNOS_CAJA · MOVIMIENTOS_CAJA · VENTAS · DETALLES · PAGOS · CAMBIOS | Puesto de caja, arqueo ciego en dos pasos, relevo, mostrador, pago mixto, cambios y devoluciones, consultas |
+| `compras` | PROVEEDORES · ORDENES · COMPRAS · DETALLES · TIPOS_EGRESO · EGRESOS | Recepción con lotes, órdenes de compra (con PDF), pagos, gastos de caja, conciliación, importación de proveedores |
+| `fidelizacion` | CATEGORIAS · BENEFICIOS · CLIENTES · PUNTOS | **Hito 5** (las tablas y los catálogos ya están) |
 
-### Pantallas de "Mantener datos maestros"
-
-Las diez comparten una sola implementación (`maestros/crud.py`): cada entidad
-aporta una configuración —modelo, formulario, columnas, filtros— y la máquina
-pone el resto. Una corrección de usabilidad vale para las diez.
-
-**El menú no se llama "Datos maestros".** Ése es el nombre del proceso N° 10
-del DFD y sirve para hablar entre quienes diseñan el sistema, no para quien lo
-usa. En la barra, las pantallas se agrupan por área de trabajo con el
-vocabulario del negocio: **Inventario y Menú**, **Club Cafeto**, **Ajustes
-del Local** y **Equipo y Permisos** (ver `usuarios/menu.py`). Cada ítem aparece sólo con su permiso
-`ver_*`, y un grupo sin ítems visibles no se dibuja.
-
-| Pantalla | URL | Permisos |
-|---|---|---|
-| Marcas | `/maestros/marcas/` | `ver_marcas` · `crear_marca` · `editar_marca` · `eliminar_marca` · `reactivar_marca` |
-| Rubros | `/maestros/rubros/` | `ver_rubros` · `crear_rubro` · `editar_rubro` · `eliminar_rubro` · `reactivar_rubro` |
-| Productos | `/maestros/productos/` | `ver_productos` · `crear_producto` · `editar_producto` · `eliminar_producto` · `reactivar_producto` |
-| Tipos de egreso | `/maestros/tipos_egreso/` | `ver_tipos_egreso` · `crear_tipo_egreso` · `editar_tipo_egreso` · `eliminar_tipo_egreso` · `reactivar_tipo_egreso` |
-| Medios de pago | `/maestros/medios_pago/` | `ver_medios_pago` · `crear_medio_pago` · `editar_medio_pago` · `eliminar_medio_pago` · `reactivar_medio_pago` |
-| Cajas registradoras | `/maestros/cajas_registradoras/` | `ver_cajas_registradoras` · `crear_caja_registradora` · `editar_caja_registradora` · `eliminar_caja_registradora` · `reactivar_caja_registradora` |
-| Categorías de fidelización | `/maestros/categorias/` | `ver_categorias` · `crear_categoria` · `editar_categoria` · `eliminar_categoria` · `reactivar_categoria` |
-| Beneficios | `/maestros/beneficios/` | `ver_beneficios` · `crear_beneficio` · `editar_beneficio` · `eliminar_beneficio` · `reactivar_beneficio` |
-| Provincias | `/proveedores/provincias/` | `ver_provincias` · `crear_provincia` · `editar_provincia` |
-| Localidades | `/proveedores/localidades/` | `ver_localidades` · `crear_localidad` · `editar_localidad` |
-
-Provincias y localidades **no tienen baja**: son un catálogo geográfico. Una
-provincia no deja de existir, y esconderla sólo dejaría sin leer las
-direcciones históricas que la usan.
-
-Los permisos se cargan por migración y se le asignan al **Administrador**. El
-**Operador** no recibe ninguno: lo que necesite se le tilda a mano desde la
-pantalla de Perfiles. Si un perfil no tiene ningún `ver_*` de un grupo, ese
-grupo del menú ni se dibuja.
+Dentro de cada app, las pantallas van en `views/` (un archivo por proceso:
+`ventas/views/caja.py`, `ventas/views/mostrador.py`…) y las reglas en los
+servicios (`ventas/caja.py`, `ventas/servicios.py`, `stock/servicios.py`…).
+Una vista nunca escribe una regla de negocio: pide, valida el formulario y
+llama al servicio.
 
 ---
 
-## Registro de Actividad
+## Reglas que conviene conocer
 
-`/actividad/` muestra `LOG_AUDITORIA` —quién hizo qué y cuándo— sin pasar por
-Adminer. Permiso `ver_auditoria`, del Administrador.
+**Dónde vive cada regla.** En tres capas que dicen lo mismo:
 
-Es **de sólo lectura, y a propósito**: hay dos vistas y las dos son GET. No
-existe ruta de alta, edición ni baja, porque el libro es append-only y el
-mixin `LibroInmutable` (`cafeto/reglas.py`) rechaza cualquier UPDATE o
-DELETE (RN-8.1.1), tanto por la instancia como por el QuerySet. Un botón de
-editar prometería algo imposible y rompería la única garantía que hace que
-una auditoría sirva.
+1. **Formulario**: el mensaje en rojo al lado del campo.
+2. **Modelo y servicios** (`clean()`, los mixins de `nucleo/reglas.py`, los
+   servicios de cada app): valen para cualquier camino de entrada — pantalla,
+   importación, shell. No hay triggers ni procedimientos almacenados.
+3. **Base** (CHECK, UNIQUE, FK, NOT NULL): la última barrera. Si la base
+   rechaza, se traduce a castellano; nunca se muestra el SQL.
 
-Filtros por usuario, módulo, rango de fechas y texto de la operación, todos
-por GET: la búsqueda queda en la URL y se puede compartir o volver con Atrás.
+**Sin duplicados disfrazados.** Los nombres se comparan sin mayúsculas, acentos
+ni puntuación (DD-50): "Coca-Cola", "COCA COLA" y "coca cola" son lo mismo. La
+búsqueda de todas las pantallas usa la misma regla.
 
-El modal del ojo traduce las dos fotos JSONB a castellano
-(`operaciones/auditoria.py`): la columna `id_marca` se muestra como "Marca",
-el `2` como "La Morenita" y el `false` como "No". Lo que cambió va primero y
-resaltado.
+**Nada se borra.** La baja es lógica (RN-8.1.1) y los libros (ventas,
+movimientos, auditoría) son de sólo agregado. Una venta no se anula: lo que
+vuelve se registra como un **cambio** que referencia el ticket.
 
----
+**Un doble toque no repite nada.** Cada formulario que mueve plata o
+mercadería lleva un token de un solo uso (`nucleo/idempotencia.py`); la venta,
+además, tiene su token UNIQUE en la base.
 
-## Cómo se valida un dato
+**Lo que no se ve, no se adivina.** El arqueo de caja y el conteo de stock son
+ciegos: quien cuenta declara lo que hay sin ver lo que el sistema espera. Lo
+declarado queda fijo y auditado antes de mostrar la diferencia.
 
-Cada regla se controla en **tres capas**, y las tres dicen lo mismo:
-
-1. **Formulario** (`maestros/forms.py`): mensaje claro al lado del campo.
-2. **Modelo** (`clean()`, los mixins de `cafeto/reglas.py` y los servicios de
-   `operaciones/`): vale para cualquier otro camino de entrada — shell,
-   `/admin`, importaciones. Acá vive TODA la lógica transaccional y de
-   validación del sistema: no hay triggers ni procedimientos almacenados.
-3. **Base** (CHECK, UNIQUE, FK, NOT NULL): la última barrera, declarada en el
-   `Meta` de cada modelo y creada por las migraciones. Si la base rechaza, la
-   vista lo traduce a castellano; nunca se muestra el SQL ni el nombre de una
-   restricción.
-
-Lo común a todos los campos está en `cafeto/validaciones.py`: limpieza de
-espacios, largos, caracteres admitidos, números con coma decimal, fechas
-`dd/mm/aaaa`, clave normalizada para los duplicados y dígitos verificadores
-(CUIT módulo 11, código de barras GS1).
-
-Tres reglas que conviene conocer porque sorprenden:
-
-* **Los duplicados se buscan sin distinguir mayúsculas, acentos ni espacios
-  repetidos** (DD-50). "Café", "CAFE" y "cafe " son el mismo rubro. Si el
-  duplicado está dado de baja, el sistema no crea una fila nueva: avisa que
-  hay que reactivar la que ya está.
-* **Un producto se identifica por marca + nombre + presentación**, no por un
-  nombre largo escrito a mano (DD-55). Por eso la marca es su propia tabla y
-  el contenido su propia columna: así "Café molido La Morenita 500 g" y
-  "Café molido La morenita" dejan de poder convivir como dos artículos.
-  Dos presentaciones del mismo producto (500 g y 250 g) sí son dos
-  productos, que es lo correcto.
-* **Nada se borra** (RN-8.1.1). La baja es lógica y la base rechaza cualquier
-  `DELETE` sobre las tablas con `borrado_logico`. Una baja se puede deshacer;
-  un borrado, no.
+**Permisos.** Cada pantalla y cada acción exige su permiso en el servidor. Los
+permisos de Seguridad son exclusivos del perfil administrador. Lo que excede
+el perfil de quien opera (un descuento sobre su tope, devolver plata, cerrar
+con diferencia) lo autoriza otra persona con su usuario y su clave en el
+mismo dispositivo, y queda escrito quién fue.
 
 ---
 
 ## Correr las pruebas
 
 ```bash
-docker compose exec web python manage.py test
+docker compose exec web python manage.py test --parallel 4
 ```
 
 Otras comprobaciones útiles:
@@ -196,60 +158,19 @@ Otras comprobaciones útiles:
 # ¿Los modelos y las migraciones están sincronizados?
 docker compose exec web python manage.py makemigrations --check --dry-run
 
+# ¿La configuración está lista para producción?
+docker compose exec -e DJANGO_DEBUG=False -e DJANGO_SECRET_KEY=x \
+  -e DJANGO_ALLOWED_HOSTS=cafeto.local web python manage.py check --deploy
+
 # ¿Quedó algún dato viejo que hoy el sistema ya no aceptaría?
 docker compose exec web python manage.py auditar_consistencia
-# ...y para darlo de baja (baja LÓGICA, se reactiva desde la pantalla):
-docker compose exec web python manage.py auditar_consistencia --dar-de-baja
 
-# Logs del arranque (migraciones aplicadas, sin error)
-docker compose logs web --tail 50
-```
+# Pasar a las tablas históricas lo que tiene más de dos años
+docker compose exec web python manage.py pasar_a_historico            # simula
+docker compose exec web python manage.py pasar_a_historico --ejecutar
 
----
-
-## Estructura del proyecto
-
-```
-Proyecto-Cafeto/
-├── Dockerfile              # Imagen del servicio web
-├── .dockerignore
-├── docker-compose.yml      # db · adminer · web
-├── .env.example            # Plantilla de variables (el .env NO se versiona)
-├── requirements.txt
-├── manage.py
-│
-├── cafeto/                 # Configuración del proyecto
-│   ├── settings.py
-│   ├── urls.py
-│   ├── restricciones.py    # CheckSQL / CheckEnBase / ClaveNormalizada
-│   ├── reglas.py           # Mixins de modelo: sello, baja lógica, libros
-│   ├── motivos.py          # Cómo se redacta un "no se puede dar de baja"
-│   ├── contexto.py         # Quién opera, visible desde cualquier modelo
-│   └── validaciones.py     # Reglas comunes a todos los CRUD (4.4.V)
-│
-├── templates/base.html     # Navbar, menú de Datos maestros, mensajes
-│
-├── usuarios/               # PERFILES · PERMISOS · PERFILES_PERMISOS · USUARIOS
-│   └── menu.py             # La barra de navegación, por área de trabajo
-├── proveedores/            # PROVINCIAS · LOCALIDADES · PROVEEDORES
-│
-├── maestros/               # RUBROS · MARCAS · PRODUCTOS · TIPOS_EGRESO
-│   ├── crud.py             #   MEDIOS_PAGO · CAJAS_REGISTRADORAS · CATEGORIAS
-│   │                       #   BENEFICIOS (+ receta)
-│   ├── views.py            # La configuración de cada entidad
-│   ├── forms.py
-│   ├── templates/maestros/lista.html     # Una pantalla para las diez
-│   ├── templates/maestros/_ficha.html    # El modal de sólo lectura (el ojo)
-│   ├── templates/maestros/_renglones.html # La receta de un beneficio
-│   └── management/commands/
-│       └── auditar_consistencia.py       # datos viejos que ya no pasarían
-│
-└── operaciones/            # Las 18 tablas operativas + sesiones y auditoría
-    ├── middleware.py       # Publica el usuario del pedido en el contexto
-    ├── servicios.py        # Sesiones de negocio y registrar_auditoria()
-    ├── caja.py · ventas.py · compras.py · egresos.py · puntos.py
-    │                       # Los servicios transaccionales, en Python
-    └── migrations/         # La ÚNICA fuente del esquema
+# Si el titular perdió su clave (sólo desde el servidor)
+docker compose exec web python manage.py recuperar_titular --dni 30000000
 ```
 
 ---
@@ -262,8 +183,5 @@ docker compose logs -f web    # ver qué pasa
 docker compose stop           # apagar sin borrar nada
 ```
 
-**`docker compose down` nunca con `-v`**: el `-v` borra el volumen `db_data`
-y con él toda la base.
-
-
-
+**`docker compose down` nunca con `-v` en el NAS**: el `-v` borra el volumen
+de la base y con él todos los datos.

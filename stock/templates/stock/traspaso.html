@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block titulo %}Cafeto · Traspaso{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <a href="{% url 'stock:ajustes' %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Conteos y mermas</a>
+        <h1 class="titulo-pantalla mb-0">Traspaso entre productos</h1>
+        <p class="bajada">Por ejemplo, la leche de la góndola que pasa a usarse en la cafetería: 1 sachet = 1 litro del insumo.</p>
+    </div>
+</div>
+{% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
+<form method="post" class="tarjeta" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="token_operacion" value="{{ token }}">
+    <div class="row g-2">
+        <div class="col-md-5">
+            <label class="form-label" for="motivo">Motivo</label>
+            <select name="motivo" id="motivo" class="form-select">
+                <option value="">Elegí el motivo…</option>
+                {% for v, e in motivos %}<option value="{{ v }}"{% if datos.motivo == v %} selected{% endif %}>{{ e }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-7">
+            <label class="form-label" for="detalle">Detalle</label>
+            <input type="text" name="detalle" id="detalle" value="{{ datos.detalle|default:'' }}" class="form-control" maxlength="120">
+        </div>
+    </div>
+    {% for fila in elegidos %}
+    <div class="border-top pt-2">
+        {% include 'stock/_renglon_salida.html' %}
+        <div class="row g-2 align-items-end mt-1">
+            <div class="col-md-5 offset-md-0">
+                <label class="form-label small" for="destino_{{ fila.indice }}"><i class="bi bi-arrow-return-right me-1"></i>Pasa a</label>
+                <select name="destino_{{ fila.indice }}" id="destino_{{ fila.indice }}" class="form-select js-catalogo" data-catalogo="{{ catalogo }}">
+                    <option value="">— Buscá el producto destino —</option>
+                    {% if fila.destino %}<option value="{{ fila.destino.pk }}" selected>{{ fila.destino }}</option>{% endif %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small" for="cantidad_destino_{{ fila.indice }}">Cantidad que entra</label>
+                <input type="text" inputmode="decimal" name="cantidad_destino_{{ fila.indice }}" id="cantidad_destino_{{ fila.indice }}" value="{{ fila.cantidad_destino }}" class="form-control">
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% if puede_aprobar %}
+    <div class="form-check"><input type="checkbox" class="form-check-input" name="aprobar_ya" value="1" id="aprobarYa"{% if datos.aprobar_ya %} checked{% endif %}><label class="form-check-label" for="aprobarYa">Aprobarlo ya (mueve el stock ahora)</label></div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-check2 me-1"></i>Cargar traspaso</button>
+</form>
+{% endblock %}

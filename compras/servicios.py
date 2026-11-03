@@ -1,0 +1,273 @@
+"""Compras: órdenes al proveedor y recepción de mercadería.
+
+Las reglas de ciclo de vida de la orden (T12) viven en
+``OrdenCompra.save()``, porque son invariantes de la fila; acá están los
+PROCESOS, que son otra cosa: una secuencia de pasos que tienen que pasar
+todos o ninguno.
+
+El ciclo de una orden (DD-44)::
+
+    PENDIENTE ──► EMITIDA ──► RECEPCIONADA
+        │             │
+        └──────► CANCELADA ◄──┘
+
+La recepción (``recepcionar``) es el ingreso de mercadería: registra la
+factura, da de alta los lotes —un renglón puede traer varios, con
+vencimientos distintos— y entra el stock, todo en una transacción. Si un
+renglón falla no queda media compra cargada ni stock sin su factura.
+"""
+from dataclasses import dataclass, field
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.db.models import F, Sum
+from django.utils import timezone
+
+from compras.models import (
+    Compra,
+    DetalleCompra,
+    DetalleOrdenCompra,
+    OrdenCompra,
+    TipoComprobante,
+)
+from stock.models import (
+    Lote,
+    MovimientoStock,
+    Producto,
+    TIPOS_CON_PROVEEDOR,
+    TipoMovimientoStock,
+)
+from stock.servicios import exigir_cantidad_valida
+
+CENTAVO = Decimal('0.01')
+
+
+# ===========================================================================
+#  LA ORDEN
+# ===========================================================================
+@transaction.atomic
+def emitir_orden(proveedor, usuario, items):
+    """Crea el borrador con sus renglones.
+
+    ``items``: ``[{'producto': <Producto>, 'cantidad': 10,
+    'precio_unitario': Decimal('500')}]``. Nace PENDIENTE.
+    """
+    if not items:
+        raise ValidationError('Una orden de compra sin renglones no se emite.')
+    if not proveedor.vende_mercaderia:
+        raise ValidationError(
+            f'"{proveedor}" es un proveedor de servicios: no se le piden '
+            'productos.')
+    orden = OrdenCompra.objects.create(
+        id_proveedor=proveedor, id_usuario=usuario, estado_orden='PENDIENTE')
+    for item in items:
+        DetalleOrdenCompra.objects.create(
+            id_orden_compra=orden, id_producto=item['producto'],
+            cantidad_pedida=exigir_cantidad_valida(item['producto'],
+                                                   item['cantidad']),
+            precio_unitario=item['precio_unitario'])
+    return recalcular_total_de_la_orden(orden)
+
+
+def recalcular_total_de_la_orden(orden):
+    """``total_orden`` = suma de los renglones; no se carga a mano."""
+    total = (DetalleOrdenCompra.objects.filter(id_orden_compra=orden)
+             .aggregate(t=Sum(F('cantidad_pedida') * F('precio_unitario')))
+             ['t'] or Decimal('0.00'))
+    orden.total_orden = Decimal(total).quantize(CENTAVO)
+    orden.save(update_fields=['total_orden'])
+    return orden
+
+
+@transaction.atomic
+def enviar_orden(orden):
+    """La manda al proveedor: PENDIENTE → EMITIDA."""
+    orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
+    if not DetalleOrdenCompra.objects.filter(id_orden_compra=orden).exists():
+        raise ValidationError(
+            f'La orden {orden.pk} no tiene renglones: no hay qué pedir.')
+    orden.estado_orden = 'EMITIDA'
+    orden.save(update_fields=['estado_orden'])
+    return orden
+
+
+@transaction.atomic
+def cancelar_orden(orden):
+    """PENDIENTE o EMITIDA → CANCELADA."""
+    orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
+    orden.estado_orden = 'CANCELADA'
+    orden.save(update_fields=['estado_orden'])
+    return orden
+
+
+# ===========================================================================
+#  LA RECEPCIÓN
+# ===========================================================================
+@dataclass
+class LoteRecibido:
+    fecha_vencimiento: object
+    cantidad: Decimal
+    numero_lote: str = None
+
+
+@dataclass
+class RenglonRecibido:
+    producto: Producto
+    cantidad: Decimal
+    costo_unitario: Decimal
+    lotes: list = field(default_factory=list)
+
+
+def _validar_renglon(renglon, fecha_compra):
+    producto = renglon.producto
+    if producto.borrado_logico:
+        raise ValidationError(f'"{producto}" está dado de baja.')
+    if producto.tipo_producto not in TIPOS_CON_PROVEEDOR:
+        raise ValidationError(
+            f'"{producto}" se elabora en el local: no se compra.')
+    cantidad = exigir_cantidad_valida(producto, renglon.cantidad,
+                                      'La cantidad recibida')
+    costo = Decimal(renglon.costo_unitario)
+    if costo < 0:
+        raise ValidationError(
+            f'El costo de "{producto}" no puede ser negativo.')
+    if producto.controla_vencimiento:
+        if not renglon.lotes:
+            raise ValidationError(
+                f'"{producto}" controla vencimiento: cargá el o los lotes '
+                'con su fecha.')
+        suma = sum((Decimal(l.cantidad) for l in renglon.lotes), Decimal('0'))
+        if suma != cantidad:
+            raise ValidationError(
+                f'Los lotes de "{producto}" suman '
+                f'{producto.cantidad_con_unidad(suma)} y se recibieron '
+                f'{producto.cantidad_con_unidad(cantidad)}.')
+        vencidos = [l for l in renglon.lotes
+                    if l.fecha_vencimiento and l.fecha_vencimiento < fecha_compra]
+        if vencidos:
+            raise ValidationError(
+                f'Un lote de "{producto}" vence el '
+                f'{vencidos[0].fecha_vencimiento:%d/%m/%Y}, antes de la fecha '
+                'de la compra: la mercadería no se recibe vencida.')
+        numeros = [(l.numero_lote or '').strip().lower()
+                   for l in renglon.lotes if l.numero_lote]
+        if len(numeros) != len(set(numeros)):
+            raise ValidationError(
+                f'"{producto}" tiene un número de lote repetido.')
+    elif renglon.lotes:
+        raise ValidationError(
+            f'"{producto}" no controla vencimiento: no lleva lotes.')
+    return cantidad, costo
+
+
+@transaction.atomic
+def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
+                numero_comprobante, renglones, fecha_compra=None,
+                importe_otros_conceptos=Decimal('0'), orden=None,
+                fecha_vencimiento_pago=None):
+    """Registra la factura, da de alta los lotes y entra el stock.
+
+    ``renglones`` es una lista de ``RenglonRecibido``. El total de la
+    compra es la suma de los renglones más los otros conceptos
+    (percepciones, flete): no se tipea, así no puede no cuadrar.
+    """
+    if proveedor.borrado_logico or not proveedor.vende_mercaderia:
+        raise ValidationError(
+            f'"{proveedor}" no está vigente como proveedor de mercadería.')
+    if not renglones:
+        raise ValidationError('La compra no tiene ningún renglón.')
+    if tipo_comprobante not in TipoComprobante.values:
+        raise ValidationError('Elegí el tipo de comprobante.')
+    if orden is not None:
+        orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
+        if (orden.estado_orden != 'EMITIDA'
+                or orden.id_proveedor_id != proveedor.pk):
+            raise ValidationError(
+                f'La orden {orden.pk} no está emitida o es de otro '
+                'proveedor (DD-44).')
+
+    hoy = timezone.localdate()
+    fecha = fecha_compra or hoy
+    if fecha > hoy:
+        raise ValidationError(
+            'La fecha de la compra no puede ser posterior a hoy.')
+
+    vistos = set()
+    validados = []
+    for renglon in renglones:
+        if renglon.producto.pk in vistos:
+            raise ValidationError(
+                f'"{renglon.producto}" está dos veces: sumá las cantidades '
+                'en un renglón (con sus lotes).')
+        vistos.add(renglon.producto.pk)
+        validados.append((renglon, *_validar_renglon(renglon, fecha)))
+
+    otros = Decimal(importe_otros_conceptos or 0).quantize(CENTAVO)
+    if otros < 0:
+        raise ValidationError('Los otros conceptos no pueden ser negativos.')
+    mercaderia = sum(((c * k).quantize(CENTAVO) for _, c, k in validados),
+                     Decimal('0'))
+    total = mercaderia + otros
+    if total <= 0:
+        raise ValidationError('El total de la compra tiene que ser mayor '
+                              'que cero.')
+
+    datos = dict(
+        id_proveedor=proveedor, id_orden_compra=orden, id_usuario=usuario,
+        tipo_comprobante=tipo_comprobante, punto_venta=int(punto_venta),
+        numero_comprobante=int(numero_comprobante),
+        importe_otros_conceptos=otros, total_compra=total,
+        fecha_vencimiento_pago=fecha_vencimiento_pago)
+    if fecha_compra is not None:
+        datos['fecha_compra'] = fecha_compra
+    compra = Compra(**datos)
+    compra.full_clean(exclude=['id_usuario'], validate_unique=False,
+                      validate_constraints=False)
+    if Compra.objects.filter(
+            id_proveedor=proveedor, tipo_comprobante=tipo_comprobante,
+            punto_venta=compra.punto_venta,
+            numero_comprobante=compra.numero_comprobante).exists():
+        raise ValidationError(
+            f'La {compra.get_tipo_comprobante_display()} '
+            f'{compra.numero_formateado} de {proveedor} ya está cargada.')
+    try:
+        with transaction.atomic():
+            compra.save()
+    except IntegrityError:
+        raise ValidationError(
+            f'La {compra.get_tipo_comprobante_display()} '
+            f'{compra.numero_formateado} de {proveedor} ya está cargada.')
+
+    documento = {'id_compra': compra}
+    for renglon, cantidad, costo in validados:
+        producto = renglon.producto
+        detalle = DetalleCompra.objects.create(
+            id_compra=compra, id_producto=producto,
+            cantidad_recibida=cantidad, precio_costo_unitario=costo)
+        if producto.controla_vencimiento:
+            for recibido in renglon.lotes:
+                lote = Lote(
+                    id_producto=producto, id_detalle_compra=detalle,
+                    numero_lote=(recibido.numero_lote or '').strip() or None,
+                    fecha_vencimiento=recibido.fecha_vencimiento,
+                    cantidad_inicial=Decimal(recibido.cantidad))
+                lote.full_clean(validate_constraints=False)
+                lote.save()
+                MovimientoStock.objects.create(
+                    id_producto=producto, id_usuario=usuario, id_lote=lote,
+                    tipo_movimiento=TipoMovimientoStock.COMPRA,
+                    cantidad=Decimal(recibido.cantidad), costo_unitario=costo,
+                    **documento)
+        else:
+            MovimientoStock.objects.create(
+                id_producto=producto, id_usuario=usuario,
+                tipo_movimiento=TipoMovimientoStock.COMPRA,
+                cantidad=cantidad, costo_unitario=costo, **documento)
+        # RN-4.2.4: el costo queda en el ÚLTIMO precio facturado.
+        Producto.objects.filter(pk=producto.pk).update(precio_costo=costo)
+
+    if orden is not None:
+        orden.estado_orden = 'RECEPCIONADA'
+        orden.save(update_fields=['estado_orden'])
+    return compra

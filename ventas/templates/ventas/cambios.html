@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Cambios y devoluciones{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-arrow-repeat me-1"></i>Mostrador</span>
+        <h1 class="titulo-pantalla mb-0">Cambios y devoluciones</h1>
+        <p class="bajada">Se parte siempre del ticket original: el cambio queda colgado de él. Si la venta no debió existir, abajo se pide su anulación.</p>
+    </div>
+</div>
+
+{% if not turno %}
+<div class="aviso aviso-aviso"><i class="bi bi-cash-stack"></i><span>La caja de este dispositivo no tiene un turno abierto: podés consultar, pero para registrar el cambio hay que <a href="{% url 'ventas:caja' %}">abrir la caja</a>.</span></div>
+{% endif %}
+
+<form method="get" class="herramientas" role="search">
+    <div class="buscador" style="max-width: 320px">
+        <i class="bi bi-receipt"></i>
+        <input type="search" name="venta" value="{{ numero }}" class="form-control" inputmode="numeric" placeholder="N° de venta (está en el ticket)" aria-label="Número de venta" autofocus>
+    </div>
+    <button type="submit" class="btn btn-secundario">Buscar</button>
+</form>
+
+{% if venta and venta.anulada %}
+<div class="aviso aviso-error" role="status"><i class="bi bi-x-octagon-fill"></i><span><strong>La venta N° {{ venta.pk }} está anulada</strong> ({{ motivo_anulacion }}): lo que se llevó ya volvió con la anulación, así que no admite cambios.</span></div>
+{% elif venta %}
+<form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="venta" value="{{ venta.pk }}">
+    <input type="hidden" name="token" value="{{ token }}">
+
+    {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
+
+    <div class="row g-3">
+        <div class="col-xl-7 d-flex flex-column gap-3">
+            <div class="tarjeta p-0 overflow-hidden">
+                <div class="px-3 pt-3">
+                    <h2 class="subtitulo h5 mb-0">Venta N° {{ venta.pk }}</h2>
+                    <p class="small text-secondary mb-2">{{ venta.fecha_venta|date:"d/m/Y" }} {{ venta.hora_venta|time:"H:i" }} · {{ venta.id_usuario }} · {{ venta.total_venta|pesos }}</p>
+                </div>
+                <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead><tr><th>Producto</th><th class="table-numero">Pagó c/u</th><th class="table-numero">Puede devolver</th><th style="width:7rem">Devuelve</th><th>¿Vuelve al stock?</th></tr></thead>
+                    <tbody>
+                    {% for r, queda, pedido, reingresa in renglones %}
+                        <tr>
+                            <td>{{ r.descripcion_item }}</td>
+                            <td class="table-numero">{{ r.precio_reintegrable|pesos }}</td>
+                            <td class="table-numero">{{ queda|cantidad }}</td>
+                            <td>{% if queda > 0 %}<input type="text" inputmode="decimal" name="devuelve_{{ r.pk }}" class="form-control form-control-sm" value="{{ pedido }}" aria-label="Cantidad que devuelve">{% else %}<span class="small text-tenue">Ya devuelto</span>{% endif %}</td>
+                            <td>{% if queda > 0 and r.id_producto.tiene_stock_propio %}
+                                <select name="reingresa_{{ r.pk }}" class="form-select form-select-sm" aria-label="¿Vuelve al stock?">
+                                    <option value="1">Sí, está en buen estado</option>
+                                    <option value="0"{% if reingresa == '0' %} selected{% endif %}>No (dañado o vencido)</option>
+                                </select>
+                                {% elif queda > 0 %}<span class="small text-tenue">Se prepara al momento</span>{% endif %}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+
+            <div class="tarjeta">
+                <h2 class="subtitulo h5 mb-0">Se lleva a cambio <span class="small text-tenue">(opcional)</span></h2>
+                {% for fila in filas_entrega %}
+                <div class="row g-2 align-items-center">
+                    <div class="col-8">
+                        <select name="entrega_producto_{{ fila.indice }}" class="form-select js-catalogo" data-catalogo="{{ catalogo }}" aria-label="Producto que se lleva">
+                            <option value="">— Buscá un producto —</option>
+                            {% if fila.producto %}<option value="{{ fila.producto.pk }}" selected>{{ fila.producto }}</option>{% endif %}
+                        </select>
+                    </div>
+                    <div class="col-4"><input type="text" inputmode="decimal" name="entrega_cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control" placeholder="Cantidad" aria-label="Cantidad que se lleva"></div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-xl-5">
+            <div class="tarjeta ticket">
+                <label class="form-label" for="motivo">Motivo</label>
+                <select name="motivo" id="motivo" class="form-select">
+                    <option value="">Elegí el motivo…</option>
+                    {% for valor, etiqueta in motivos %}<option value="{{ valor }}"{% if datos.motivo == valor %} selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+                </select>
+                <input type="text" name="detalle_motivo" value="{{ datos.detalle_motivo|default:'' }}" class="form-control" maxlength="120" placeholder="Detalle (obligatorio si es «Otro»)">
+
+                {% if calculado %}
+                <dl class="tarjeta-datos">
+                    <dt>Devuelve</dt><dd class="monto">{{ devuelto|pesos }}</dd>
+                    <dt>Se lleva</dt><dd class="monto">{{ entregado|pesos }}</dd>
+                </dl>
+                <div class="border-top pt-2">
+                    {% if a_cobrar %}<div class="aviso aviso-aviso mb-0"><i class="bi bi-cash"></i><span>El cliente paga <strong>{{ a_cobrar|pesos }}</strong>.</span></div>
+                    {% elif a_devolver %}<div class="aviso aviso-aviso mb-0"><i class="bi bi-cash"></i><span>Hay que devolverle <strong>{{ a_devolver|pesos }}</strong>. Lo autoriza alguien con permiso.</span></div>
+                    {% else %}<div class="aviso aviso-exito mb-0"><i class="bi bi-check-circle-fill"></i><span>Sin diferencia de dinero.</span></div>{% endif %}
+                </div>
+                {% if saldo %}
+                <label class="form-label" for="medio">{% if a_cobrar %}Cobrar con{% else %}Devolver con{% endif %}</label>
+                <select name="medio" id="medio" class="form-select">
+                    {% for m in medios %}<option value="{{ m.pk }}"{% if datos.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
+                </select>
+                {% endif %}
+                {% if a_devolver %}
+                <div class="row g-2">
+                    <div class="col-6"><input type="text" name="autoriza_usuario" class="form-control" placeholder="Usuario o DNI de quien autoriza" autocomplete="off" aria-label="Usuario de quien autoriza"></div>
+                    <div class="col-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Su clave" autocomplete="off" aria-label="Clave de quien autoriza"></div>
+                </div>
+                {% endif %}
+                {% endif %}
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="submit" name="accion" value="calcular" class="btn btn-secundario"><i class="bi bi-calculator me-1"></i>Calcular</button>
+                    {% if calculado and turno %}
+                    <button type="submit" name="accion" value="confirmar" class="btn btn-primary flex-grow-1" data-requiere-red><i class="bi bi-check2-circle me-1"></i>Confirmar el cambio</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<details class="tarjeta mt-3">
+    <summary class="fw-semibold text-danger"><i class="bi bi-x-octagon me-1"></i>¿La venta no debió existir? Pedir su anulación</summary>
+    {% if token_anulacion %}
+    {% include 'ventas/_form_anulacion.html' with desde='cambios' %}
+    {% else %}
+    <p class="small text-secondary mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>No se puede anular: {{ no_se_anula }}</p>
+    {% endif %}
+</details>
+{% endif %}
+{% endblock %}

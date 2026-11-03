@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block titulo %}Cafeto · Datos del local{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-sliders me-1"></i>Ajustes del local</span>
+        <h1 class="titulo-pantalla mb-0">Datos del local</h1>
+        <p class="bajada">Lo que sale en los tickets y en los PDF, y las reglas con las que se cobra y se cierra la caja.</p>
+    </div>
+</div>
+<form method="post" novalidate class="row g-3">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="col-12"><div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div></div>{% endif %}
+    <div class="col-xl-6">
+        <div class="tarjeta">
+            <h2 class="subtitulo h5 mb-0">El comercio</h2>
+            <div class="row g-2">
+                {% for campo in form %}{% if forloop.counter <= 8 %}
+                <div class="{% if campo.name == 'domicilio' or campo.name == 'razon_social' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}">
+                    <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                    {{ campo }}
+                    {% for e in campo.errors %}<p class="error-campo">{{ e }}</p>{% endfor %}
+                </div>
+                {% endif %}{% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="tarjeta">
+            <h2 class="subtitulo h5 mb-0">Cómo se opera</h2>
+            {% for campo in form %}{% if forloop.counter > 8 %}
+            <div class="{% if campo.errors %}con-error{% endif %}">
+                <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                {% if campo.name == 'tolerancia_arqueo' or campo.name == 'fondo_caja_sugerido' %}<div class="input-group"><span class="input-group-text">$</span>{{ campo }}</div>{% else %}{{ campo }}{% endif %}
+                {% if campo.help_text %}<p class="form-text mb-0">{{ campo.help_text }}</p>{% endif %}
+                {% for e in campo.errors %}<p class="error-campo">{{ e }}</p>{% endfor %}
+            </div>
+            {% endif %}{% endfor %}
+        </div>
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary btn-xl"><i class="bi bi-save me-1"></i>Guardar</button>
+        {% if parametros.fecha_modificacion %}<span class="small text-tenue ms-2">Último cambio: {{ parametros.fecha_modificacion|date:"d/m/Y H:i" }}{% if parametros.usuario_modificacion %} · {{ parametros.usuario_modificacion }}{% endif %}</span>{% endif %}
+    </div>
+</form>
+{% endblock %}

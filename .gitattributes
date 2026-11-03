@@ -1,0 +1,6 @@
+# Los scripts del contenedor se ejecutan en Linux: siempre con fin de línea LF,
+# aunque el repositorio se clone en Windows.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

@@ -1,0 +1,26 @@
+{% load club cafeto %}
+<div class="d-flex flex-wrap gap-3 align-items-start border-top pt-3 mt-2">
+    <div class="text-center">
+        {% qr_svg fila.qr_cliente 4 %}
+        <div class="small text-tenue">{{ fila.qr_cliente }}</div>
+    </div>
+    <dl class="ficha flex-grow-1 mb-0">
+        <dt>Categoría</dt><dd>{{ fila.id_categoria }}</dd>
+        <dt>Puntos disponibles</dt><dd>{{ fila.puntos_disponibles }}</dd>
+        <dt>Puntos acumulados</dt><dd>{{ fila.puntos_acumulados }}</dd>
+    </dl>
+</div>
+<h6 class="subtitulo mt-3">Últimos movimientos de puntos</h6>
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-2">
+    <thead><tr><th>Fecha</th><th>Movimiento</th><th>Venta</th><th class="table-numero">Puntos</th></tr></thead>
+    <tbody>
+    {% for m in fila.movimientos_puntos.all|slice:":10" %}
+        <tr><td>{{ m.fecha_movimiento|date:"d/m/Y H:i" }}</td><td>{{ m.get_tipo_movimiento_display }}{% if m.id_beneficio %} · {{ m.id_beneficio }}{% endif %}</td><td>{% if m.id_venta_id %}N° {{ m.id_venta_id }}{% endif %}</td><td class="table-numero">{{ m.puntos|stringformat:"+d" }}</td></tr>
+    {% empty %}
+        <tr><td colspan="4" class="text-tenue">Todavía no tiene movimientos.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+<a href="{% url 'fidelizacion:tarjeta' fila.pk %}" target="_blank" rel="noopener" class="btn btn-sm btn-secundario"><i class="bi bi-qr-code me-1"></i>Imprimir tarjeta</a>

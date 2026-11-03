@@ -1,0 +1,47 @@
+{% comment %}
+Pie de un listado: cuántos hay, cuántos por página y los números.
+
+Espera el contexto de nucleo.paginacion.paginar: pagina, total, por_pagina,
+tamanios, parametros, paginas. El selector de tamaño envía el formulario
+de búsqueda de la pantalla (form="herramientas") para no perder los filtros.
+{% endcomment %}
+{% if total %}
+<nav class="paginador" aria-label="Paginación">
+    <div class="d-flex align-items-center gap-2 text-secondary small">
+        <span>
+            {{ pagina.start_index }}–{{ pagina.end_index }} de <strong class="text-body">{{ total }}</strong>
+        </span>
+        <label class="d-flex align-items-center gap-2 ms-2">
+            <span>Ver</span>
+            <select name="por_pagina" form="herramientas" class="form-select form-select-sm w-auto" data-auto-enviar>
+                {% for n in tamanios %}
+                <option value="{{ n }}"{% if n == por_pagina %} selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+    {% if pagina.paginator.num_pages > 1 %}
+    <ul class="pagination pagination-sm mb-0">
+        <li class="page-item{% if not pagina.has_previous %} disabled{% endif %}">
+            <a class="page-link" href="?{% if parametros %}{{ parametros }}&amp;{% endif %}pagina={% if pagina.has_previous %}{{ pagina.previous_page_number }}{% else %}1{% endif %}" aria-label="Anterior">
+                <i class="bi bi-chevron-left"></i>
+            </a>
+        </li>
+        {% for n in paginas %}
+            {% if n is None %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% elif n == pagina.number %}
+            <li class="page-item active" aria-current="page"><span class="page-link">{{ n }}</span></li>
+            {% else %}
+            <li class="page-item"><a class="page-link" href="?{% if parametros %}{{ parametros }}&amp;{% endif %}pagina={{ n }}">{{ n }}</a></li>
+            {% endif %}
+        {% endfor %}
+        <li class="page-item{% if not pagina.has_next %} disabled{% endif %}">
+            <a class="page-link" href="?{% if parametros %}{{ parametros }}&amp;{% endif %}pagina={% if pagina.has_next %}{{ pagina.next_page_number }}{% else %}{{ pagina.number }}{% endif %}" aria-label="Siguiente">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </li>
+    </ul>
+    {% endif %}
+</nav>
+{% endif %}

@@ -22,3 +22,9 @@ rescate.py
 .idea/
 .DS_Store
 Thumbs.db
+
+# Estáticos recolectados por collectstatic (se arman en el contenedor)
+estaticos/
+
+# Respaldos de la base (docker-compose.prod.yml)
+respaldos/

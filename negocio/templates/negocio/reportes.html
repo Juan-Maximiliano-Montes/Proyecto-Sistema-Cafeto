@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Reportes{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-graph-up me-1"></i>Reportes</span>
+        <h1 class="titulo-pantalla mb-0">{{ reporte.titulo }}</h1>
+        <p class="bajada">{% if sin_periodo %}Al día de hoy.{% else %}Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}.{% endif %}</p>
+    </div>
+    <div class="acciones">
+        <div class="dropdown">
+            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Reportes">
+    {% for r in reportes %}
+    <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
+    {% endfor %}
+</nav>
+
+{% if not sin_periodo %}
+<form method="get" class="herramientas">
+    <input type="hidden" name="ver" value="{{ reporte.clave }}">
+    <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}" class="form-control"></label>
+    <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}" class="form-control"></label>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-arrow-repeat me-1"></i>Ver</button>
+</form>
+{% endif %}
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead><tr>{% for c in columnas %}<th{% if c.formato == 'numero' or c.formato == 'dinero' %} class="table-numero"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
+        <tbody>
+        {% for fila in filas %}
+            <tr>{% for valor in fila %}{% with c=columnas|index:forloop.counter0 %}
+                {% if c.formato == 'dinero' %}<td class="table-numero">{{ valor|pesos }}</td>
+                {% elif c.formato == 'numero' %}<td class="table-numero">{% if valor is None %}—{% else %}{{ valor|cantidad }}{% endif %}</td>
+                {% elif c.formato == 'fecha' %}<td>{{ valor|date:"D d/m" }}</td>
+                {% else %}<td>{{ valor|default:"—" }}</td>{% endif %}
+            {% endwith %}{% endfor %}</tr>
+        {% empty %}
+            <tr><td colspan="{{ columnas|length }}" class="vacio"><i class="bi bi-graph-up"></i>No hay movimientos en este período.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if totales and filas %}
+        <tfoot><tr class="fw-semibold">{% for valor in totales %}{% with c=columnas|index:forloop.counter0 %}
+            {% if c.formato == 'dinero' %}<td class="table-numero monto">{{ valor|pesos }}</td>
+            {% elif c.formato == 'numero' %}<td class="table-numero">{% if valor is not None %}{{ valor|cantidad }}{% endif %}</td>
+            {% else %}<td>{{ valor|default:"" }}</td>{% endif %}
+        {% endwith %}{% endfor %}</tr></tfoot>
+        {% endif %}
+    </table>
+    </div>
+</div>
+<p class="small text-tenue mt-2">Los importes salen de lo que quedó registrado en cada ticket (precio y costo de ese momento). Los cambios y devoluciones se ven en Ventas.</p>
+{% endblock %}

@@ -1,40 +1,38 @@
-"""
-URL configuration for cafeto project.
+"""Rutas del sistema Cafeto: una entrada por módulo del DER.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/4.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+    /                    inicio (según el perfil)
+    /perfil/             "Mi Perfil", la ficha personal
+    /login/, /usuarios/, /perfiles/, /permisos/, /actividad/   Seguridad
+    /geografia/          provincias y localidades
+    /stock/              productos, rubros, marcas, alertas, ajustes, producción
+    /ventas/             caja, mostrador, cambios, ventas y turnos
+    /compras/            proveedores, compras, órdenes, pagos y gastos
+    /negocio/            datos del local y reportes
+    /fidelizacion/       clientes del club, categorías y beneficios
+
+El /admin/ de Django sólo existe en desarrollo (DEBUG): en producción es
+una puerta trasera que saltea la auditoría y los permisos del sistema.
 """
-from django.contrib import admin
+from django.conf import settings
 from django.urls import include, path
 
-from usuarios import views as usuarios_views
+from negocio.views.inicio import inicio
+from seguridad import views as seguridad_views
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('usuarios/', include('usuarios.urls')),
-    path('proveedores/', include('proveedores.urls')),
-    path('maestros/', include('maestros.urls')),
-
-    # Registro de Actividad: la auditoría en modo lectura. Vive en
-    # /actividad/ y no en /operaciones/, porque es el nombre que usa
-    # quien entra, no el de la app que la implementa.
-    path('actividad/', include('operaciones.urls')),
-
-    # "Mi Perfil": ficha personal en modo lectura. Vive en la raíz (/perfil/)
-    # porque la usan los perfiles operativos que NO entran a /usuarios/.
-    path('perfil/', usuarios_views.mi_perfil, name='mi_perfil'),
-
-    # La raíz del sitio: 'home' decide si te manda al directorio o a tu ficha
-    # (el middleware manda al login si todavía no hay sesión).
-    path('', usuarios_views.home, name='home'),
+    path('', include('seguridad.urls')),
+    path('geografia/', include('geografia.urls')),
+    path('stock/', include('stock.urls')),
+    path('ventas/', include('ventas.urls')),
+    path('compras/', include('compras.urls')),
+    path('fidelizacion/', include('fidelizacion.urls')),
+    path('negocio/', include('negocio.urls')),
+    path('', include('nucleo.urls')),
+    path('perfil/', seguridad_views.mi_perfil, name='mi_perfil'),
+    path('', inicio, name='home'),
 ]
+
+if settings.DEBUG:
+    from django.contrib import admin
+
+    urlpatterns.insert(0, path('admin/', admin.site.urls))

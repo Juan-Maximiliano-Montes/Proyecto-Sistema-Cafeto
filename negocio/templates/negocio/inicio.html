@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Inicio{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow">{{ hoy|date:"l j \d\e F" }}</span>
+        <h1 class="titulo-pantalla mb-0">Hola, {{ request.usuario_actual.nombre }}</h1>
+        {% if request.usuario_actual.tiene_perfil_temporal_vigente %}
+        <p class="bajada">Hoy operás como <strong>{{ request.usuario_actual.perfil_efectivo }}</strong> hasta el {{ request.usuario_actual.temporal_hasta|date:"d/m H:i" }}.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% for tipo, icono, texto, url in avisos %}
+<a href="{{ url }}" class="aviso aviso-{{ tipo }} text-decoration-none"><i class="bi {{ icono }}"></i><span>{{ texto }}</span><i class="bi bi-chevron-right ms-auto"></i></a>
+{% endfor %}
+
+{% if acciones %}
+<div class="grilla grilla-compacta mb-4">
+    {% for titulo, icono, url, detalle in acciones %}
+    <a href="{{ url }}" class="tarjeta tarjeta-accion">
+        <i class="bi {{ icono }}"></i>
+        <strong>{{ titulo }}</strong>
+        <span class="small">{{ detalle }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if indicadores %}
+<div class="grilla">
+    {% for i in indicadores %}
+    <a href="{{ i.url }}" class="tarjeta kpi text-reset{% if i.destacado %} tarjeta-destacada{% endif %}">
+        <span class="eyebrow">{{ i.titulo }}</span>
+        {% if i.formato == 'pesos' %}<span class="valor">{{ i.valor|pesos }}</span>
+        {% elif i.formato == 'numero' %}<span class="valor">{{ i.valor }}</span>
+        {% else %}<span class="valor"><i class="bi bi-graph-up-arrow"></i></span>{% endif %}
+        <span class="detalle">{{ i.detalle }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not acciones and not indicadores %}
+<div class="vacio tarjeta"><i class="bi bi-cup-hot"></i>Tu perfil todavía no tiene tareas asignadas. Pedile al administrador que te habilite lo que necesites.</div>
+{% endif %}
+{% endblock %}

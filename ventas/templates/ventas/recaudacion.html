@@ -1,0 +1,56 @@
+{% load cafeto static %}<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recaudación del turno N° {{ turno.pk }}</title>
+<style>
+    @page { size: 80mm auto; margin: 4mm; }
+    body { font: 12px/1.35 'Courier New', monospace; color: #000; background: #fff; max-width: 76mm; margin: 0 auto; padding: 8px; }
+    h1 { font-size: 15px; text-align: center; margin: 0; }
+    h2 { font-size: 13px; text-align: center; margin: 4px 0; }
+    .centro { text-align: center; }
+    .linea { border-top: 1px dashed #000; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { vertical-align: top; padding: 1px 0; text-align: left; font-weight: normal; }
+    .der { text-align: right; white-space: nowrap; }
+    .total { font-size: 14px; font-weight: bold; }
+    .firma { margin-top: 28px; border-top: 1px solid #000; text-align: center; font-size: 10px; padding-top: 2px; }
+    .acciones { text-align: center; margin: 12px 0; }
+    .acciones a { margin-left: 8px; }
+    @media print { .acciones { display: none; } }
+</style>
+</head>
+<body>
+<h1>{{ negocio.nombre_fantasia }}</h1>
+<h2>Documento de recaudación</h2>
+<div class="linea"></div>
+<div>Turno N° {{ turno.pk }} · {{ turno.id_caja_registradora }}</div>
+<div>Abrió {{ turno.id_usuario_apertura.nombre }} · {{ turno.fecha_apertura|date:"d/m/Y H:i" }}</div>
+<div>Cerró {{ turno.id_usuario_cierre.nombre }} · {{ turno.fecha_cierre|date:"d/m/Y H:i" }}</div>
+<div>Cierre {{ turno.get_tipo_cierre_display|lower }}{% if turno.id_usuario_supervisor %} · supervisó {{ turno.id_usuario_supervisor.nombre }}{% endif %}</div>
+<div class="linea"></div>
+<table>
+    <tr><td>Fondo inicial</td><td class="der">{{ turno.monto_inicial|pesos }}</td></tr>
+    {% for etiqueta, monto in resumen %}<tr><td>&nbsp;&nbsp;{{ etiqueta }}</td><td class="der">{{ monto|pesos }}</td></tr>{% endfor %}
+    <tr><td>Efectivo esperado</td><td class="der">{{ turno.monto_esperado|pesos }}</td></tr>
+    <tr><td>Efectivo contado</td><td class="der">{{ turno.monto_final|pesos }}</td></tr>
+    <tr class="total"><td>Diferencia</td><td class="der">{{ turno.diferencia_caja|pesos }}</td></tr>
+</table>
+{% if turno.observacion_diferencia %}<div>Explicación: {{ turno.observacion_diferencia }}</div>{% endif %}
+<div class="linea"></div>
+<div class="centro">Recaudación por medio de pago</div>
+<table>
+    <tr><th>Medio</th><th class="der">Ventas</th><th class="der">Total</th></tr>
+    {% for f in filas %}
+    <tr><td>{{ f.medio }}</td><td class="der">{{ f.ventas }}</td><td class="der">{{ f.total|pesos }}</td></tr>
+    {% if f.cambios %}<tr><td colspan="2">&nbsp;&nbsp;incluye cambios</td><td class="der">{{ f.cambios|pesos }}</td></tr>{% endif %}
+    {% empty %}
+    <tr><td colspan="3">Sin cobros en el turno.</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="2">TOTAL</td><td class="der">{{ total|pesos }}</td></tr>
+</table>
+<div class="firma">Firma de quien cerró</div>
+<div class="acciones"><button onclick="window.print()">Imprimir</button><a href="{% url 'ventas:caja' %}">Volver a la caja</a></div>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{# Un renglón de merma o traspaso: producto, lote y cantidad. #}
+<div class="row g-2 align-items-end">
+    <div class="col-md-5">
+        <label class="form-label small" for="producto_{{ fila.indice }}">Producto</label>
+        <select name="producto_{{ fila.indice }}" id="producto_{{ fila.indice }}" class="form-select js-catalogo" data-catalogo="{{ catalogo }}"
+                data-lotes="#lote_{{ fila.indice }}" data-lotes-url="{% url 'stock:lotes_de_producto' %}" data-unidad="#unidad_{{ fila.indice }}">
+            <option value="">— Buscá un producto —</option>
+            {% if fila.producto %}<option value="{{ fila.producto.pk }}" selected>{{ fila.producto }}</option>{% endif %}
+        </select>
+    </div>
+    <div class="col-md-4 js-bloque-lote d-none">
+        <label class="form-label small" for="lote_{{ fila.indice }}">Lote</label>
+        <select name="lote_{{ fila.indice }}" id="lote_{{ fila.indice }}" class="form-select" data-elegido="{{ fila.lote }}"></select>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label small" for="cantidad_{{ fila.indice }}">Cantidad</label>
+        <div class="input-group"><input type="text" inputmode="decimal" name="cantidad_{{ fila.indice }}" id="cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control"><span class="input-group-text" id="unidad_{{ fila.indice }}">u.</span></div>
+    </div>
+</div>
