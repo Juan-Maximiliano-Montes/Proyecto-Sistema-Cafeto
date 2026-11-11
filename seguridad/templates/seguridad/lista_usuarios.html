@@ -200,8 +200,9 @@ se toquen por accidente; las que cambian el estado piden confirmación.
             </div>
             <div class="modal-body">
                 <p class="text-secondary small">
-                    El nombre de usuario se genera solo y la clave inicial es el DNI.
-                    El sistema le va a pedir que la cambie en el primer ingreso.
+                    El nombre de usuario se genera solo. Al guardar te mostramos una
+                    clave provisoria para dársela en persona: vence a las 24 horas y
+                    el sistema le pide que la cambie en el primer ingreso.
                 </p>
                 {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
                 <div class="mb-3{% if form.dni_usuario.errors %} con-error{% endif %}">

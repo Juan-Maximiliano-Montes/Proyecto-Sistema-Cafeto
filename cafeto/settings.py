@@ -289,3 +289,29 @@ MESSAGE_TAGS = {
 # "Restablecer clave"— quedaba en el navegador en base64, firmado pero
 # legible, hasta que se mostraba.
 MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
+
+# ---------------------------------------------------------------------------
+#  Correo: enlaces para elegir o recuperar la clave (seguridad/recuperacion.py)
+# ---------------------------------------------------------------------------
+# En desarrollo cada correo se guarda como archivo en .correos/ (no sale a
+# internet): se abre con cualquier editor para copiar el enlace. En el local
+# se usa un servidor SMTP real; los datos van en el .env (ver .env.example).
+if os.environ.get('DJANGO_CORREO_SERVIDOR'):
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ['DJANGO_CORREO_SERVIDOR']
+    EMAIL_PORT = int(os.environ.get('DJANGO_CORREO_PUERTO', '587'))
+    EMAIL_HOST_USER = os.environ.get('DJANGO_CORREO_USUARIO', '')
+    EMAIL_HOST_PASSWORD = os.environ.get('DJANGO_CORREO_CLAVE', '')
+    EMAIL_USE_TLS = _bool('DJANGO_CORREO_TLS', True)
+    EMAIL_TIMEOUT = 15
+elif DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
+    EMAIL_FILE_PATH = BASE_DIR / '.correos'
+else:
+    # Sin servidor configurado en producción: el envío falla y el sistema
+    # ofrece el camino en persona (clave provisoria en pantalla).
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'correo-no-configurado.invalid'
+    EMAIL_TIMEOUT = 5
+DEFAULT_FROM_EMAIL = os.environ.get(
+    'DJANGO_CORREO_REMITENTE', 'Sistema Cafeto <no-responder@cafeto.local>')

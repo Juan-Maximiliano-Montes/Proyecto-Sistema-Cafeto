@@ -46,10 +46,11 @@
 <table>
     {% if venta.monto_descuento %}<tr><td>{{ venta.id_beneficio }}</td><td class="der">−{{ venta.monto_descuento|pesos }}</td></tr>{% endif %}
     {% if venta.ajuste_redondeo %}<tr><td>Redondeo</td><td class="der">{{ venta.ajuste_redondeo|pesos }}</td></tr>{% endif %}
-    {% if venta.monto_recargo %}<tr><td>Recargo</td><td class="der">{{ venta.monto_recargo|pesos }}</td></tr>{% endif %}
+    {% if venta.monto_recargo %}<tr><td>Recargo por financiación</td><td class="der">{{ venta.monto_recargo|pesos }}</td></tr>{% endif %}
     <tr class="total"><td>TOTAL</td><td class="der">{{ venta.total_venta|pesos }}</td></tr>
     {% for p in pagos %}
     <tr><td>{{ p.id_medio_pago }}</td><td class="der">{{ p.monto|pesos }}</td></tr>
+    {% if p.id_medio_pago.cantidad_cuotas > 1 %}<tr><td>&nbsp;&nbsp;En {{ p.id_medio_pago.cantidad_cuotas }} cuotas{% if p.recargo_porcentaje %} · recargo {{ p.recargo_porcentaje|cantidad }} %{% endif %}</td><td class="der">{{ p.importe_cobrado|pesos }}</td></tr>{% endif %}
     {% if p.monto_recibido %}<tr><td>&nbsp;&nbsp;Recibido</td><td class="der">{{ p.monto_recibido|pesos }}</td></tr>
     <tr><td>&nbsp;&nbsp;Vuelto</td><td class="der">{{ p.monto_vuelto|pesos }}</td></tr>{% endif %}
     {% endfor %}

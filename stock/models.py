@@ -441,6 +441,22 @@ class Producto(ConSaldosDerivados, Maestra):
         return self.get_tipo_producto_display().split(' (')[0]
 
     @property
+    def precio_para_mostrar(self):
+        """El precio de venta, salvo en un insumo: no se vende, y un
+        "$ 0,00" en su tarjeta se leía como un precio olvidado."""
+        if not self.es_vendible:
+            return 'No se vende'
+        return self.precio_venta
+
+    @property
+    def stock_para_mostrar(self):
+        """El stock, salvo en lo que no lo tiene propio (elaborado, combo):
+        ahí sale de los componentes y un "0" parecía un faltante."""
+        if not self.tiene_stock_propio:
+            return 'Según componentes'
+        return self.stock_actual
+
+    @property
     def tiene_stock_propio(self):
         return self.tipo_producto in TIPOS_CON_STOCK
 
@@ -685,6 +701,20 @@ class Producto(ConSaldosDerivados, Maestra):
         lotes = Lote.objects.filter(id_producto=self, stock_lote__gt=0).count()
         if lotes:
             motivos.append(f'tiene {lotes} lote(s) con stock sin agotar')
+        ordenes = (self.renglones_orden.filter(
+            id_orden_compra__estado_orden__in=('PENDIENTE', 'EMITIDA', 'CON_DIFERENCIAS'))
+            .values('id_orden_compra').distinct().count())
+        if ordenes:
+            motivos.append(
+                f'está pedido en {ordenes} orden(es) de compra sin cerrar; '
+                'recibilas o cancelalas primero')
+        ajustes = (self.renglones_ajuste.filter(
+            id_ajuste__estado_ajuste__in=(EstadoAjuste.EN_CURSO, EstadoAjuste.PENDIENTE))
+            .values('id_ajuste').distinct().count())
+        if ajustes:
+            motivos.append(
+                f'está en {ajustes} ajuste(s) de stock sin resolver; '
+                'aprobalos o rechazalos primero')
         return motivos
 
     def motivos_que_impiden_reactivar(self):

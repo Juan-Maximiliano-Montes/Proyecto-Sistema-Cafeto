@@ -248,7 +248,7 @@ class ComposicionForm(forms.ModelForm):
         campo.widget.choices = campo.choices
         campo.empty_label = '— Buscá un producto —'
         self.fields['cantidad'].widget.attrs.update(
-            {'min': '0.001', 'step': '0.001'})
+            {'class': 'form-control', 'min': '0.001', 'step': '0.001'})
 
 
 ComposicionFormSet = forms.inlineformset_factory(

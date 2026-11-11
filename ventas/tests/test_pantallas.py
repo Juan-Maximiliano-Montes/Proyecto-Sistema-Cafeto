@@ -67,14 +67,34 @@ class PuestoDeCajaTest(Base):
         self.assertEqual(turno.monto_inicial, D('10000'))
         self.assertEqual(MovimientoCaja.objects.filter(id_turno_caja=turno).count(), 1)
 
-    def test_la_cajera_no_ve_el_saldo_la_encargada_si(self):
+    def test_el_puesto_no_muestra_lo_esperado_a_nadie(self):
+        """Arqueo ciego: la pantalla del puesto la usa quien va a contar, y
+        puede ser la encargada. Ni el saldo ni los importes que lo arman."""
         turno = f.abrir_turno(self.operador, self.cajon, fondo='5000')
-        self.entrar(self.operador)
-        self.assertNotIn('saldo', self.client.get(reverse('ventas:caja')).context)
-        self.client.logout()
+        caja.refuerzo(turno, self.encargada, D('1234'), 'Cambio')
+        for persona in (self.operador, self.encargada):
+            with self.subTest(perfil=str(persona.id_perfil)):
+                self.client.logout()
+                self.entrar(persona)
+                respuesta = self.client.get(reverse('ventas:caja'))
+                html = respuesta.content.decode()
+                self.assertNotIn('saldo', respuesta.context)
+                self.assertNotIn('Efectivo en el cajón', html)
+                self.assertNotIn('1.234', html)
+                self.assertNotIn('6.234', html)
+
+    def test_la_encargada_ve_lo_esperado_de_otro_cajon_no_del_suyo(self):
+        ajeno = f.abrir_turno(self.operador, self.cajon, fondo='5000')
         self.entrar(self.encargada)
-        self.assertEqual(self.client.get(reverse('ventas:caja')).context['saldo'],
-                         caja.saldo(turno))
+        html = self.client.get(reverse('ventas:ficha_turno', args=[ajeno.pk])).content.decode()
+        self.assertIn('5.000', html)
+        ajeno.refresh_from_db()
+        caja.cerrar(ajeno, self.operador, D('5000'))
+        propio = f.abrir_turno(self.encargada, self.cajon, fondo='7000')
+        caja.refuerzo(propio, self.encargada, D('1234'), 'Cambio')
+        html = self.client.get(reverse('ventas:ficha_turno', args=[propio.pk])).content.decode()
+        self.assertIn('arqueo ciego', html)
+        self.assertNotIn('1.234', html)
 
     def test_el_operador_no_puede_retirar_efectivo(self):
         f.abrir_turno(self.operador, self.cajon, fondo='5000')

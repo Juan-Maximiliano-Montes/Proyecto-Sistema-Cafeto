@@ -52,6 +52,8 @@ class Resultado:
     descripcion: str = ''
     errores: list = field(default_factory=list)
     preparado: object = None    # lo que necesita aplicar(); no se serializa
+    foto_anterior: dict = None  # la fila antes de aplicar (sólo en un CAMBIO)
+    foto_nueva: dict = None     # la fila después de aplicar
 
     @property
     def ok(self):
@@ -185,16 +187,28 @@ class Importador:
         resultados = self.revisar(filas)
         if any(not r.ok for r in resultados):
             raise ValidationError('La planilla tiene errores: no se importó nada.')
+        from seguridad.servicios import instantanea
+
         with transaction.atomic():
             for resultado in resultados:
                 if resultado.accion != 'SIN CAMBIOS':
+                    fila = self.instancia_de(resultado)
+                    if fila is not None and fila.pk is not None:
+                        resultado.foto_anterior = instantanea(
+                            type(fila).objects.get(pk=fila.pk))
                     try:
                         self.aplicar(resultado, usuario)
                     except ValidationError as error:
                         raise ValidationError(
                             f'Fila {resultado.numero}: {" ".join(error.messages)} '
                             'No se importó nada.')
+                    resultado.foto_nueva = instantanea(fila)
         return resultados
+
+    def instancia_de(self, resultado):
+        """La fila que ``aplicar`` va a guardar, para fotografiarla antes
+        y después (el Registro de Actividad muestra qué cambió)."""
+        return resultado.preparado
 
     # ------------------------------------------------------------------
     #  Planilla modelo

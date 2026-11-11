@@ -3,7 +3,7 @@
 Cada formulario refleja EXACTAMENTE una regla de negocio de la consigna:
 
     UsuarioAltaForm     -> en el alta sólo entran DNI, Apellido, Nombre,
-                           Correo y Perfil (la clave se autogenera con el DNI).
+                           Correo y Perfil (la clave es una provisoria al azar).
     UsuarioEdicionForm  -> en la modificación SÓLO se puede tocar el Correo.
     LoginForm           -> DNI **o** usuario + Clave para iniciar sesión.
     CambioClaveForm     -> clave actual + nueva + repetición.
@@ -24,6 +24,7 @@ from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 
+from nucleo.validaciones import nombre_de_persona
 from seguridad.models import (
     MODULOS_EXCLUSIVOS_DEL_ADMINISTRADOR,
     Perfil,
@@ -65,8 +66,8 @@ class UsuarioAltaForm(forms.ModelForm):
 
     class Meta:
         model = Usuario
-        # La clave no entra al formulario: se autogenera con el DNI en la
-        # vista y se guarda hasheada.
+        # La clave no entra al formulario: la vista genera una provisoria al
+        # azar y la guarda hasheada.
         fields = ['dni_usuario', 'apellido', 'nombre', 'correo', 'id_perfil']
         widgets = {
             'dni_usuario': forms.TextInput(attrs={
@@ -120,6 +121,12 @@ class UsuarioAltaForm(forms.ModelForm):
                     'para confirmar.'))
         return datos
 
+    def clean_apellido(self):
+        return nombre_de_persona(self.cleaned_data.get('apellido'), 'El apellido')
+
+    def clean_nombre(self):
+        return nombre_de_persona(self.cleaned_data.get('nombre'), 'El nombre')
+
 
 class UsuarioEdicionForm(forms.ModelForm):
     """Modificación. REGLA ESTRICTA: el único campo editable es 'correo'."""
@@ -153,6 +160,19 @@ class LoginForm(forms.Form):
             'placeholder': 'Clave', 'autocomplete': 'current-password',
         }),
     )
+
+
+class OlvideClaveForm(forms.Form):
+    identificador = forms.CharField(
+        label='Tu DNI o tu usuario', max_length=70,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control form-control-lg', 'autofocus': True,
+            'placeholder': 'DNI o Usuario', 'autocomplete': 'username',
+        }),
+    )
+
+    def clean_identificador(self):
+        return self.cleaned_data['identificador'].strip()
 
 
 class CambioClaveForm(forms.Form):

@@ -24,17 +24,17 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
 
     {# ------------------------------ CATÁLOGO ------------------------------ #}
     <section aria-label="Productos">
+        {% if turno.quedo_de_otro_dia %}<div class="aviso aviso-aviso mb-2"><i class="bi bi-exclamation-triangle-fill"></i><span>La caja quedó abierta desde el {{ turno.fecha_apertura|date:"d/m" }}. Podés seguir vendiendo, pero conviene <a href="{% url 'ventas:caja' %}">cerrarla y abrir un turno nuevo</a> para que lo de hoy no se mezcle con lo de ese día.</span></div>{% endif %}
         <div class="herramientas mb-2">
             <div class="buscador">
                 <i class="bi bi-search"></i>
                 <input type="search" id="buscar" class="form-control form-control-lg" placeholder="Buscar producto…" autocomplete="off" autofocus aria-label="Buscar producto">
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Rubros">
-            <button type="button" class="btn btn-sm btn-primary js-rubro" data-rubro="">Todos</button>
-            {% for r in rubros %}
-            <button type="button" class="btn btn-sm btn-secundario js-rubro" data-rubro="{{ r.pk }}">{{ r.nombre_rubro }}</button>
-            {% endfor %}
+        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Qué mostrar">
+            <button type="button" class="btn btn-sm btn-primary js-sector" data-sector="mas_vendidos" aria-pressed="true"><i class="bi bi-star me-1"></i>Más vendidos</button>
+            <button type="button" class="btn btn-sm btn-secundario js-sector" data-sector="cafeteria" aria-pressed="false"><i class="bi bi-cup-hot me-1"></i>Cafetería</button>
+            <button type="button" class="btn btn-sm btn-secundario js-sector" data-sector="minisuper" aria-pressed="false"><i class="bi bi-basket me-1"></i>Minisuper</button>
         </div>
         <div class="catalogo" id="catalogo" aria-live="polite"></div>
         <div class="text-center mt-3">
@@ -108,8 +108,8 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             <div id="autorizacion" class="d-none border-top pt-2">
                 <span class="eyebrow text-marca"><i class="bi bi-shield-check me-1"></i>Autoriza el descuento</span>
                 <div class="row g-2 mt-1">
-                    <div class="col-6"><input type="text" class="form-control" id="autorizaUsuario" placeholder="Usuario o DNI" autocomplete="off"></div>
-                    <div class="col-6"><input type="password" class="form-control" id="autorizaClave" placeholder="Clave" autocomplete="off"></div>
+                    <div class="col-6"><input type="text" class="form-control" id="autorizaUsuario" placeholder="Usuario o DNI" autocomplete="off" data-lpignore="true" data-1p-ignore></div>
+                    <div class="col-6"><input type="password" class="form-control" id="autorizaClave" placeholder="Clave" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore></div>
                 </div>
             </div>
 
@@ -250,7 +250,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
     // ------------------------------------------------------------------
     //  Catálogo
     // ------------------------------------------------------------------
-    var filtro = {q: '', rubro: '', pagina: 1};
+    var filtro = {q: '', sector: 'mas_vendidos', pagina: 1};
     var pedidoCatalogo = null;
     function cargarCatalogo(agregar) {
         if (pedidoCatalogo) { pedidoCatalogo.abort(); }
@@ -297,7 +297,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         clearTimeout(esperaBusqueda);
         var q = $('buscar').value.trim();
         if (!q) { return; }
-        fetch(raiz.dataset.catalogo + '?' + new URLSearchParams({q: q, rubro: '', pagina: 1}).toString(),
+        fetch(raiz.dataset.catalogo + '?' + new URLSearchParams({q: q, sector: '', pagina: 1}).toString(),
               {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
             .then(function (r) { return r.json(); })
             .then(function (datos) {
@@ -312,11 +312,14 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 filtro.q = elegido ? '' : q; filtro.pagina = 1; cargarCatalogo(false);
             });
     });
-    document.querySelectorAll('.js-rubro').forEach(function (b) {
+    document.querySelectorAll('.js-sector').forEach(function (b) {
         b.addEventListener('click', function () {
-            document.querySelectorAll('.js-rubro').forEach(function (o) { o.classList.replace('btn-primary', 'btn-secundario'); });
-            b.classList.replace('btn-secundario', 'btn-primary');
-            filtro.rubro = b.dataset.rubro; filtro.pagina = 1; cargarCatalogo(false);
+            document.querySelectorAll('.js-sector').forEach(function (o) {
+                o.classList.replace('btn-primary', 'btn-secundario'); o.setAttribute('aria-pressed', 'false');
+            });
+            b.classList.replace('btn-secundario', 'btn-primary'); b.setAttribute('aria-pressed', 'true');
+            $('buscar').value = ''; filtro.q = '';
+            filtro.sector = b.dataset.sector; filtro.pagina = 1; cargarCatalogo(false);
         });
     });
     $('masProductos').addEventListener('click', function () { filtro.pagina += 1; cargarCatalogo(true); });
@@ -660,6 +663,8 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                     (p.ascendio ? ' ¡Subió a ' + p.categoria + '!' : '');
             }
             bootstrap.Modal.getOrCreateInstance($('modalCobrado')).show();
+            // Lo vendido ya bajó el stock: la grilla tiene que mostrarlo.
+            cargarCatalogo(false);
         }).catch(function () {
             // Puede haberse cobrado y perdido la respuesta: el MISMO token
             // hace que reintentar devuelva la misma venta, no una nueva.
@@ -676,6 +681,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         persistir(); ultima = null; mostrarError('');
         dibujarRenglones(); dibujarPagos(); pintarTotales(null); pintarCliente();
         $('buscar').value = ''; $('buscar').focus();
+        filtro.q = ''; filtro.pagina = 1; cargarCatalogo(false);
     }
     $('nuevaVenta').addEventListener('click', function () { bootstrap.Modal.getInstance($('modalCobrado')).hide(); nuevaVenta(); });
     $('vaciar').addEventListener('click', function () {
@@ -686,6 +692,15 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
     $('autorizaClave').addEventListener('change', cotizarPronto);
 
     cargarCatalogo(false);
+    // Lo que vende otra caja u otro dispositivo también mueve el stock: la
+    // grilla se refresca sola cada 45 s y al volver a la pestaña. Sólo con
+    // la primera página a la vista, para no desarmar lo que se está
+    // recorriendo con «Ver más».
+    function refrescarCatalogo() {
+        if (document.visibilityState === 'visible' && filtro.pagina === 1) { cargarCatalogo(false); }
+    }
+    setInterval(refrescarCatalogo, 45000);
+    document.addEventListener('visibilitychange', refrescarCatalogo);
     dibujarRenglones(); dibujarPagos(); pintarCliente();
     if (estado.items.length) { cotizar(); }
 })();

@@ -37,6 +37,12 @@ def nuevo_precio(precio, porcentaje, paso):
     return max(redondeado, paso).quantize(Decimal('0.01'))
 
 
+def quedan_bajo_costo(productos, porcentaje, paso):
+    """Los productos cuyo precio nuevo queda por debajo de lo que costaron."""
+    return [p for p, _antes, despues in calcular(productos, porcentaje, paso)
+            if p.precio_costo is not None and despues < p.precio_costo]
+
+
 def calcular(productos, porcentaje, paso):
     if porcentaje is None or porcentaje == 0:
         raise ValidationError('Indicá el porcentaje de aumento (o de rebaja, con signo menos).')

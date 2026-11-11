@@ -146,6 +146,10 @@ def contexto_anulacion(request, venta):
         # La encargada que vendió: tiene el permiso, pero no para esta venta.
         'venta_propia': (venta.id_usuario_id == request.usuario_actual.pk
                          and request.usuario_actual.puede(anulacion.PERMISO)),
+        # El titular sí puede, confirmando con su clave (DD-69).
+        'titular_propia': (anulacion.es_titular_sobre_su_venta(
+            request.usuario_actual, venta)
+            and request.usuario_actual.puede(anulacion.PERMISO)),
     }
 
 
@@ -174,10 +178,13 @@ def anular_venta(request, pk):
         autorizante = None
         if not anulacion.puede_autorizar(solicitante, venta):
             # Si la clave no va, el rechazo lo asienta autorizar_con_clave.
+            # El titular sobre su propia venta se confirma a sí mismo con
+            # su clave (DD-69); cualquier otro necesita a otra persona.
+            titular = anulacion.es_titular_sobre_su_venta(solicitante, venta)
             autorizante = autorizar_con_clave(
                 request, request.POST.get('autoriza_usuario'),
                 request.POST.get('autoriza_clave'), anulacion.PERMISO,
-                distinto_de=solicitante,
+                distinto_de=None if titular else solicitante,
                 para=f'anular la venta N° {venta.pk}')
         resultado = anulacion.anular(
             venta, solicitante, request.POST.get('motivo'),
@@ -207,6 +214,9 @@ def anular_venta(request, pk):
                f'{venta.id_usuario_anulacion}.')
     if resultado.resumen:
         detalle += f' Se revirtió: {resultado.resumen}.'
+    if anulacion.es_titular_sobre_su_venta(venta.id_usuario_anulacion, venta):
+        detalle += (' El titular autorizó la anulación de su propia venta, '
+                    'confirmando con su clave (DD-69).')
     registrar_auditoria(
         request, 'ANULACION', 'VENTA', instancia=venta, anterior=antes,
         nuevo=instantanea(venta), detalle=detalle)

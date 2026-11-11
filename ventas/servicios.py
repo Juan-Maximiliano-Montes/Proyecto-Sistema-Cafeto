@@ -45,6 +45,7 @@ from ventas.models import (
     TurnoCaja,
     Venta,
 )
+from nucleo.templatetags.cafeto import pesos
 
 CERO = Decimal('0')
 CENTAVO = Decimal('0.01')
@@ -482,8 +483,8 @@ def _repartir_pagos(cotizacion, pagos):
                 f'El importe con "{medio}" tiene que ser mayor que cero.')
         if monto > restante:
             raise ValidationError(
-                f'Con "{medio}" se cubren $ {monto} y sólo faltan '
-                f'$ {restante}.')
+                f'Con "{medio}" se cubren {pesos(monto)} y sólo faltan '
+                f'{pesos(restante)}.')
         restante -= monto
         porcentaje = medio.recargo_porcentaje or CERO
         recargo = redondear_importe(monto * porcentaje / 100, Decimal('1'))
@@ -494,8 +495,8 @@ def _repartir_pagos(cotizacion, pagos):
                         else monto + recargo)
             if recibido < monto + recargo:
                 raise ValidationError(
-                    f'El efectivo recibido ($ {recibido}) no alcanza para '
-                    f'cubrir $ {monto + recargo}.')
+                    f'El efectivo recibido ({pesos(recibido)}) no alcanza para '
+                    f'cubrir {pesos(monto + recargo)}.')
         elif pago.recibido not in (None, ''):
             raise ValidationError(
                 f'"{medio}" no entra al cajón: no lleva monto recibido ni '
@@ -504,7 +505,7 @@ def _repartir_pagos(cotizacion, pagos):
                                        recibido))
     if restante != 0:
         raise ValidationError(
-            f'Falta cubrir $ {restante} del total: agregá otro medio o '
+            f'Falta cubrir {pesos(restante)} del total: agregá otro medio o '
             'ajustá los importes.')
     cotizacion.recargo = sum((c.recargo for c in cotizacion.cobros), CERO)
 

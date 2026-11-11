@@ -37,6 +37,19 @@ antes de dejar entrar.
 > `docker compose up -d --build`. El `-v` borra la base de desarrollo; no lo
 > uses nunca en el NAS con datos reales.
 
+**Datos de demostración** (sólo desarrollo): con las cajas cerradas,
+
+```bash
+docker compose exec web python manage.py cargar_datos_demo
+```
+
+carga dos semanas de operación de un local (ventas, cierres con diferencia,
+devoluciones, anulaciones, compras con faltante, pagos vencidos, mermas, lotes
+por vencer), entre 7 y 20 casos por tabla, pasando por las pantallas del
+sistema. Al final lista los usuarios de la demo y su clave, y cualquier
+operación que el sistema haya rechazado. No corre con `DJANGO_DEBUG=False` ni
+dos veces sobre la misma base.
+
 ## Ponerlo en el NAS (producción)
 
 ```bash
@@ -51,7 +64,10 @@ Con `docker-compose.prod.yml`:
   imagen, comprimidos: el sistema se ve igual sin internet;
 * un servicio **`respaldo`** hace un `pg_dump` diario a `./respaldos/` y
   guarda los últimos 14 (`CAFETO_RESPALDOS_DIAS`). Cómo restaurar uno está en
-  `docker/respaldar.sh`.
+  `docker/respaldar.sh`;
+* un servicio **`historico`** pasa a las tablas históricas lo viejo el día 1
+  de cada mes a las 03:30 (`docker/pasar_a_historico.sh`). Lo que hizo se ve
+  con `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs historico`.
 
 En el `.env` del NAS: `DJANGO_DEBUG=False`, una `DJANGO_SECRET_KEY` larga y
 aleatoria, `DJANGO_ALLOWED_HOSTS` con el nombre o la IP con que se entra, y
@@ -72,11 +88,15 @@ Nunca abriendo el puerto 8000 directo a internet.
 | PostgreSQL | 16 | Base de datos |
 | gunicorn · whitenoise | — | Servidor de producción y estáticos |
 | openpyxl · WeasyPrint | — | Excel (exportar e importar) y PDF |
+| pandas · numpy · matplotlib | 3.1 · 2.4 · 3.11 | Gráficos de los reportes, en SVG (DD-72, DD-74) |
 | Bootstrap 5.3 · Bootstrap Icons · Select2 | servidos por el sistema | Front-end, sin CDN |
 | Caveat · Lora · Inter | servidas por el sistema | Tipografías del manual de identidad |
 
-Los gráficos (pandas, matplotlib) llegan en el **Hito 5**, junto con
-fidelización y clientes.
+Cada reporte trae su gráfico arriba de la tabla (y en el PDF). El tipo sale de
+la pregunta que contesta: evolución en el tiempo, partes de un total (con la
+opción de verlo en torta), ranking o diferencias de signo. Los límites —10
+barras, 6 porciones, sin torta con negativos— están en `negocio/graficos.py`
+y su fundamento en DD-74.
 
 | Qué | Dirección |
 |---|---|
@@ -151,6 +171,21 @@ mismo dispositivo, y queda escrito quién fue.
 ```bash
 docker compose exec web python manage.py test --parallel 4
 ```
+
+**Prueba en un navegador real.** Las pruebas de arriba no abren un navegador:
+no corren el JavaScript ni las ventanas. `nucleo/tests/test_navegador.py` sí:
+entra con cada perfil, recorre todas las pantallas, toca cada botón que abre
+una ventana y manda los formularios vacíos o con datos inválidos; falla ante
+un error de JavaScript, una respuesta 500 o una pantalla trabada. Necesita
+Playwright, que no va en la imagen; se corre fuera del contenedor, con la base
+de desarrollo levantada (sin Playwright, la prueba se saltea sola):
+
+```bash
+pip install playwright==1.56.0 && playwright install chromium
+python manage.py test nucleo.tests.test_navegador
+```
+
+Conviene correrla antes de cada commit que toque pantallas o JavaScript.
 
 Otras comprobaciones útiles:
 

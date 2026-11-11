@@ -307,10 +307,13 @@ code, .codigo { color: var(--c-marca); background: transparent; }
 .lateral-grupo + .lateral-grupo { border-top: 1px solid var(--c-divisor); }
 .lateral-titulo { padding: .6rem .6rem .35rem; }
 .lateral-link {
-    display: flex; align-items: center; gap: .7rem; padding: .55rem .7rem; border-radius: .6rem;
+    display: flex; align-items: center; gap: 1rem; padding: .55rem .75rem; border-radius: .6rem;
     color: var(--c-texto-2); font-weight: 500; font-size: .94rem;
 }
-.lateral-link i { font-size: 1.05rem; width: 1.2rem; text-align: center; }
+/* El ícono en una columna fija (todos los nombres arrancan a la misma
+   altura) y con aire a la derecha: pegado al texto se leía como una letra
+   más. */
+.lateral-link i { font-size: 1.05rem; width: 1.35rem; flex: 0 0 1.35rem; text-align: center; }
 .lateral-link:hover { background: var(--c-superficie-activa); color: var(--c-texto); }
 .lateral-link.activo { background: var(--c-marca-suave); color: var(--c-marca); }
 .lateral-link .contador { margin-left: auto; }
@@ -399,6 +402,7 @@ main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
 .kpi { padding: 1.1rem 1.2rem; }
 .kpi .valor { font-family: 'Lora', Georgia, serif; font-weight: 600; font-size: 1.9rem; line-height: 1.1; color: var(--c-titulo); }
 .kpi .detalle { color: var(--c-texto-2); font-size: .85rem; }
+.kpi .valor.valor-texto { font-size: 1.15rem; line-height: 1.3; }
 
 /* Estado vacío */
 .vacio { text-align: center; padding: 3rem 1rem; color: var(--c-texto-2); }
@@ -486,4 +490,51 @@ main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
 @media print {
     .lateral, .barra, .no-imprimir, .sin-conexion { display: none !important; }
     body, .contenido, main.pagina { background: #fff !important; color: #000 !important; padding: 0 !important; }
+}
+
+/* Alta rápida (DD-70): dentro del panel chico, un campo por renglón. */
+.alta-rapida .row > .col-md-6 { flex: 0 0 100%; max-width: 100%; }
+.aviso-parecidos .btn { white-space: normal; text-align: left; }
+
+/* Gráficos de los reportes (Hito 5): el SVG ocupa el ancho de la tarjeta y
+   toma el color del texto del tema (currentColor). */
+.grafico-reporte { color: var(--c-texto-2); }
+.grafico-reporte svg { width: 100%; height: auto; display: block; }
+.grafico-cabecera {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: .5rem; margin-bottom: .5rem;
+}
+.grafico-vacio {
+    display: flex; flex-direction: column; align-items: center; gap: .35rem;
+    padding: 1.75rem 1rem; text-align: center; color: var(--c-texto-2);
+}
+.grafico-vacio > .bi { font-size: 1.75rem; opacity: .5; }
+
+/* Panel lateral por áreas desplegables (<details>). */
+.lateral-desplegable > summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; gap: .9rem;
+    border-radius: .5rem; font-size: .72rem; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--c-texto-2);
+    padding: .55rem .6rem; user-select: none;
+}
+.lateral-desplegable > summary::-webkit-details-marker { display: none; }
+.lateral-desplegable > summary:hover { background: var(--c-superficie-activa); color: var(--c-texto); }
+.lateral-desplegable > summary:focus-visible { outline: 2px solid var(--c-marca); outline-offset: 1px; }
+.lateral-desplegable > summary > .bi:first-child { font-size: 1rem; width: 1.35rem; flex: 0 0 1.35rem; text-align: center; }
+.lateral-flecha { margin-left: auto; transition: transform .15s ease; font-size: .8rem; }
+.lateral-desplegable[open] > summary .lateral-flecha { transform: rotate(180deg); }
+.lateral-desplegable[data-actual] > summary { color: var(--c-marca); }
+.lateral-desplegable > .lateral-link { margin-left: .6rem; }
+
+/* Ingreso: "¿Te olvidaste la clave?" */
+.olvido-clave { color: var(--c-texto-2); font-size: .9rem; text-underline-offset: 3px; }
+.olvido-clave:hover { color: var(--c-texto); }
+
+/* Clave provisoria: grande, monoespaciada y en grupos, para dictarla. */
+.clave-provisoria {
+    display: flex; justify-content: center; gap: .75rem; flex-wrap: wrap;
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 2rem; font-weight: 600;
+    letter-spacing: .12em; color: var(--c-titulo);
+    background: var(--c-superficie-activa); border-radius: .75rem; padding: .9rem 1rem;
+    user-select: all;
 }

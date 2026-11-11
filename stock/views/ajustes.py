@@ -19,7 +19,7 @@ from nucleo import idempotencia
 from nucleo.formularios import leer_numero
 from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_alguno, requiere_permiso
-from seguridad.servicios import registrar_auditoria
+from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock import servicios
 from stock.models import (
     MOTIVOS_POR_TIPO,
@@ -120,6 +120,8 @@ def ajuste(request, pk):
         'ajuste': ajuste, 'renglones': renglones,
         've_diferencias': ve_diferencias,
         'puede_resolver': puede_resolver and ajuste.estado_ajuste == EstadoAjuste.PENDIENTE,
+        'puede_aprobar': (ajuste.id_usuario_id != usuario.pk
+                          or servicios.puede_aprobar_lo_propio(usuario)),
         'importe': sum((r.importe or 0 for r in renglones), 0) if ve_diferencias else None,
         'token': idempotencia.emitir(request),
     })
@@ -129,6 +131,7 @@ def ajuste(request, pk):
 @requiere_permiso('autorizar_ajustes', redirigir_a='stock:ajustes')
 def resolver(request, pk):
     ajuste = get_object_or_404(AjusteStock, pk=pk)
+    antes = instantanea(ajuste)
     if not idempotencia.consumir(request, request.POST.get('token_operacion')):
         messages.info(request, 'Esa resolución ya se había procesado.')
         return redirect('stock:ajuste', pk=pk)
@@ -144,9 +147,13 @@ def resolver(request, pk):
     registrar_auditoria(
         request, 'APROBACION' if ajuste.estado_ajuste == EstadoAjuste.APROBADO else 'RECHAZO',
         'AJUSTE DE STOCK', instancia=ajuste,
+        anterior=antes, nuevo=foto(ajuste, renglones=ajuste.detalles.all()),
         detalle=f'{ajuste}. {observacion}'.strip())
+    resolucion = ajuste.get_estado_ajuste_display().lower()
+    if ajuste.tipo_ajuste == TipoAjuste.MERMA:          # la merma: aprobada
+        resolucion = resolucion[:-1] + 'a'
     messages.success(request, f'{ajuste.get_tipo_ajuste_display()} N° {ajuste.pk} '
-                              f'{ajuste.get_estado_ajuste_display().lower()}.')
+                              f'{resolucion}.')
     return redirect('stock:ajustes')
 
 
@@ -163,6 +170,7 @@ def conteo(request):
                 abierto = servicios.iniciar_conteo(
                     request.usuario_actual, request.POST.get('motivo') or MotivoAjuste.DIFERENCIA_CONTEO)
                 registrar_auditoria(request, 'INICIO', 'CONTEO', instancia=abierto,
+                                    nuevo=instantanea(abierto),
                                     detalle=f'Empezó {abierto}.')
             elif abierto is None:
                 raise ValidationError('No hay ningún conteo en curso.')
@@ -188,8 +196,11 @@ def conteo(request):
                                         nuevo_lote=nuevo_lote)
                 messages.success(request, f'Anotado: {producto.cantidad_con_unidad(contada)} de {producto}.')
             elif accion == 'enviar':
+                antes = instantanea(abierto)
                 abierto = servicios.enviar_conteo(abierto)
                 registrar_auditoria(request, 'ENVIO', 'CONTEO', instancia=abierto,
+                                    anterior=antes,
+                                    nuevo=foto(abierto, renglones=abierto.detalles.all()),
                                     detalle=f'Envió a revisión {abierto}.')
                 messages.success(request, 'Conteo enviado. Ahora lo revisa quien autoriza los ajustes.')
                 return redirect('stock:ajustes')
@@ -213,7 +224,8 @@ def conteo(request):
 def merma(request):
     contexto = {'motivos': _motivos(TipoAjuste.MERMA), 'filas': range(FILAS),
                 'catalogo': _catalogo(), 'datos': request.POST,
-                'puede_aprobar': request.usuario_actual.puede('autorizar_ajustes')}
+                'puede_aprobar': (request.usuario_actual.puede('autorizar_ajustes')
+                                  and servicios.puede_aprobar_lo_propio(request.usuario_actual))}
     if request.method == 'POST':
         token = request.POST.get('token_operacion')
         try:
@@ -238,6 +250,7 @@ def merma(request):
             contexto['error'] = _texto(error)
         else:
             registrar_auditoria(request, 'ALTA', 'MERMA', instancia=ajuste,
+                                nuevo=foto(ajuste, renglones=ajuste.detalles.all()),
                                 detalle=f'Cargó {ajuste}.')
             messages.success(request, f'Merma N° {ajuste.pk} cargada'
                              + (' y aprobada.' if aprobar_ya else '. Espera autorización.'))
@@ -252,7 +265,8 @@ def traspaso(request):
     filas = 3
     contexto = {'motivos': _motivos(TipoAjuste.TRASPASO), 'catalogo': _catalogo(),
                 'datos': request.POST,
-                'puede_aprobar': request.usuario_actual.puede('autorizar_ajustes')}
+                'puede_aprobar': (request.usuario_actual.puede('autorizar_ajustes')
+                                  and servicios.puede_aprobar_lo_propio(request.usuario_actual))}
     if request.method == 'POST':
         token = request.POST.get('token_operacion')
         try:
@@ -282,6 +296,7 @@ def traspaso(request):
             contexto['error'] = _texto(error)
         else:
             registrar_auditoria(request, 'ALTA', 'TRASPASO', instancia=ajuste,
+                                nuevo=foto(ajuste, renglones=ajuste.detalles.all()),
                                 detalle=f'Cargó {ajuste}.')
             messages.success(request, f'Traspaso N° {ajuste.pk} cargado'
                              + (' y aprobado.' if aprobar_ya else '. Espera autorización.'))

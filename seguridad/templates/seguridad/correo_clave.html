@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<body style="margin:0;padding:24px;background:#f4f2ee;font-family:Arial,Helvetica,sans-serif;color:#1d1b2e">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:12px;padding:28px" cellpadding="0" cellspacing="0">
+<tr><td>
+<p style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#6e7899;margin:0 0 8px">Sistema Cafeto</p>
+<h1 style="font-size:22px;margin:0 0 16px">{% if proposito == 'activar' %}¡Bienvenido, {{ persona.nombre }}!{% else %}Recuperar tu clave{% endif %}</h1>
+<p style="font-size:15px;line-height:1.5;margin:0 0 16px">
+{% if proposito == 'activar' %}Tenés una cuenta en el sistema de {{ negocio.nombre_fantasia|default:"Cafeto Las Lomitas" }}. Tu usuario es <strong>{{ persona.nombre_usuario }}</strong> (también podés entrar con tu DNI). Elegí tu clave con este botón:{% else %}Alguien (seguramente vos) pidió recuperar la clave de la cuenta <strong>{{ persona.nombre_usuario }}</strong>. Elegí una nueva con este botón:{% endif %}
+</p>
+<p style="margin:0 0 20px"><a href="{{ enlace }}" style="display:inline-block;background:#fab41f;color:#1d1b2e;font-weight:bold;text-decoration:none;padding:12px 22px;border-radius:8px">Elegir mi clave</a></p>
+<p style="font-size:13px;line-height:1.5;color:#55536a;margin:0 0 8px">El enlace sirve una sola vez y vence en {% if proposito == 'activar' %}48 horas{% else %}30 minutos{% endif %}.</p>
+<p style="font-size:13px;line-height:1.5;color:#55536a;margin:0 0 8px">{% if proposito == 'activar' %}Si no esperabas este correo, avisale a quien administra el sistema.{% else %}Si no fuiste vos, ignorá este correo: tu clave sigue siendo la misma.{% endif %} Nadie del local te va a pedir tu clave, ni por teléfono ni por mensaje.</p>
+<p style="font-size:12px;color:#8a889a;margin:16px 0 0;word-break:break-all">Si el botón no funciona, copiá esta dirección en el navegador:<br>{{ enlace }}</p>
+</td></tr></table>
+</td></tr></table>
+</body>
+</html>

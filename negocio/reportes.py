@@ -6,8 +6,9 @@ columnas. Todo sale de lo CONGELADO en los documentos (el precio y el
 costo de cada renglón de venta, el costo de cada movimiento de stock):
 cambiar hoy un precio no reescribe los márgenes de ayer.
 
-Los gráficos llegan en el Hito 5, con pandas y matplotlib. Los tres
-reportes del club (DFD 9 bloque E) ya están acá como tablas.
+Cada reporte se muestra también como gráfico (``negocio.graficos``, Hito 5:
+pandas y matplotlib), armado con estas mismas filas. Los tres reportes del
+club (DFD 9 bloque E) también están acá.
 """
 from dataclasses import dataclass
 from decimal import Decimal

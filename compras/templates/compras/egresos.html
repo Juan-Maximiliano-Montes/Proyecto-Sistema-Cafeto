@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load cafeto %}
+{% load cafeto crud_extras %}
 {% block titulo %}Cafeto · Pagos y gastos{% endblock %}
 
 {% block contenido %}
@@ -19,7 +19,7 @@
             </ul>
         </div>
         {% if puede_caja %}<button class="btn btn-secundario" data-bs-toggle="modal" data-bs-target="#modalCaja"><i class="bi bi-cash me-1"></i>Gasto de caja</button>{% endif %}
-        {% if puede_registrar %}<button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEgreso"{% if compra_elegida %} data-modal-auto{% endif %}><i class="bi bi-plus-lg me-1"></i>Nuevo pago</button>{% endif %}
+        {% if puede_registrar %}<button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEgreso"><i class="bi bi-plus-lg me-1"></i>Nuevo pago</button>{% endif %}
     </div>
 </div>
 
@@ -67,7 +67,9 @@
             {% if e.referencia_bancaria %}<dt>Operación</dt><dd>{{ e.referencia_bancaria }}</dd>{% endif %}
         </dl>
         {% if e.estado_pago == 'PENDIENTE_PAGO' and puede_registrar %}
-        <form method="post" action="{% url 'compras:pagar_egreso' e.pk %}" class="tarjeta-pie">
+        <form method="post" action="{% url 'compras:pagar_egreso' e.pk %}" class="tarjeta-pie"
+              data-titulo="¿Pagamos {{ e.monto|pesos }}?" data-aceptar="Sí, pagar"
+              data-confirmar="{{ e.concepto }}. Si elegiste efectivo, la plata sale del cajón. Un pago registrado no se borra.">
             {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}">
             <select name="medio" class="form-select form-select-sm w-auto" aria-label="Medio de pago">{% for m in medios %}<option value="{{ m.pk }}">{{ m }}</option>{% endfor %}</select>
             <button type="submit" class="btn btn-sm btn-primary ms-auto">Pagar</button>
@@ -77,8 +79,12 @@
             {% csrf_token %}
             <input type="text" name="referencia" class="form-control form-control-sm" placeholder="N° de operación" aria-label="Número de operación" style="max-width: 11rem">
             <input type="date" name="fecha" value="{{ hoy|date:'Y-m-d' }}" class="form-control form-control-sm w-auto" aria-label="Fecha de acreditación">
-            <button type="submit" name="resultado" value="rechazado" class="btn btn-sm btn-outline-danger">Rechazado</button>
-            <button type="submit" name="resultado" value="acreditado" class="btn btn-sm btn-primary">Acreditado</button>
+            <button type="submit" name="resultado" value="rechazado" class="btn btn-sm btn-outline-danger"
+                    data-titulo="¿El banco lo rechazó?" data-aceptar="Sí, fue rechazado" data-peligro="1"
+                    data-confirmar="El pago de {{ e.monto|pesos }} queda como rechazado y no se puede volver atrás. Para pagarlo de nuevo vas a tener que cargarlo otra vez.">Rechazado</button>
+            <button type="submit" name="resultado" value="acreditado" class="btn btn-sm btn-primary"
+                    data-titulo="¿Ya se acreditó?" data-aceptar="Sí, se acreditó"
+                    data-confirmar="El pago de {{ e.monto|pesos }} queda cerrado con la fecha que pusiste. Después no se puede cambiar.">Acreditado</button>
         </form>
         {% endif %}
     </article>
@@ -93,7 +99,7 @@
 {% if puede_registrar %}
 <div class="modal fade" id="modalEgreso" tabindex="-1" aria-hidden="true"{% if compra_elegida %} data-modal-auto{% endif %}>
     <div class="modal-dialog modal-dialog-centered modal-lg">
-        <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate>
+        <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate{% if not compra_elegida %} data-acreedor{% endif %}>
             {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}">
             {% if compra_elegida %}<input type="hidden" name="compra" value="{{ compra_elegida.pk }}">{% endif %}
             <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>{% if compra_elegida %}Pagar {{ compra_elegida.get_tipo_comprobante_display }} {{ compra_elegida.numero_formateado }}{% else %}Nuevo pago{% endif %}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
@@ -105,11 +111,11 @@
                             <input type="radio" class="btn-check" name="modo" id="modoAnotar" value="anotar"><label class="btn btn-secundario" for="modoAnotar">Anotar para pagar después</label>
                         </div>
                     </div>
-                    <div class="col-md-6"><label class="form-label" for="eTipo">Tipo</label><select name="tipo" id="eTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk }}"{% if compra_elegida and t.nombre_tipo_egreso == 'Proveedores' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+                    <div class="col-md-6"><label class="form-label" for="eTipo">Tipo</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="tipo" id="eTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk }}"{% if compra_elegida and t.nombre_tipo_egreso == 'Proveedores' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'tipos_egreso' 'eTipo' %}</div>{% panel_alta_rapida 'eTipo' %}</div>
                     <div class="col-md-6"><label class="form-label" for="eMonto">Monto</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="monto" id="eMonto" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.saldo_pendiente|stringformat:'s'|cut:'.00' }}{% endif %}"></div></div>
                     <div class="col-12"><label class="form-label" for="eConcepto">Concepto</label><input type="text" name="concepto" id="eConcepto" maxlength="100" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.get_tipo_comprobante_display }} {{ compra_elegida.numero_formateado }}{% endif %}" placeholder="Luz de octubre"></div>
                     {% if not compra_elegida %}
-                    <div class="col-md-6"><label class="form-label" for="eProveedor">Proveedor</label><select name="proveedor" id="eProveedor" class="form-select"><option value="">— Ninguno —</option>{% for p in proveedores %}<option value="{{ p.pk }}">{{ p }}</option>{% endfor %}</select></div>
+                    <div class="col-md-6"><label class="form-label" for="eProveedor">Proveedor</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="proveedor" id="eProveedor" class="form-select"><option value="">— Ninguno —</option>{% for p in proveedores %}<option value="{{ p.pk }}">{{ p }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'proveedores' 'eProveedor' %}</div>{% panel_alta_rapida 'eProveedor' %}</div>
                     <div class="col-md-6"><label class="form-label" for="eDestinatario">O a quién</label><input type="text" name="destinatario" id="eDestinatario" maxlength="60" class="form-control" placeholder="EDESA, el plomero…"></div>
                     {% endif %}
                     <div class="col-md-6" data-visible-si="modo=ahora"><label class="form-label" for="eMedio">Medio de pago</label><select name="medio" id="eMedio" class="form-select">{% for m in medios %}<option value="{{ m.pk }}">{{ m }}</option>{% endfor %}</select>{% if not turno %}<p class="form-text">En efectivo sale del cajón: esta caja no tiene turno abierto.</p>{% endif %}</div>
@@ -127,7 +133,7 @@
 {% if puede_caja %}
 <div class="modal fade" id="modalCaja" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate>
+        <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate data-acreedor>
             {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}"><input type="hidden" name="modo" value="caja">
             <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cash me-2"></i>Gasto de caja</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
             <div class="modal-body">

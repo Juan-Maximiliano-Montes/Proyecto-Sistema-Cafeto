@@ -43,6 +43,7 @@ from ventas.forms import (
     MovimientoEfectivoForm,
 )
 from ventas.models import CajaRegistradora, MovimientoCaja, TurnoCaja
+from nucleo.templatetags.cafeto import pesos
 
 PERMISOS_DEL_PUESTO = ('vender', 'abrir_caja', 'cerrar_caja',
                        'mover_efectivo', 'ver_caja')
@@ -103,17 +104,18 @@ def puesto_de_caja(request):
     contexto.update(paginar(request, movimientos, TAMANIOS_TABLA))
     ventas = turno.ventas.filter(estado_venta='COMPLETADA').aggregate(
         cantidad=Count('pk'), total=Sum('total_venta'))
+    # Arqueo ciego (RN del cierre): esta es la pantalla del puesto, la que
+    # usa quien va a contar el cajón, sea quien sea (el que abrió, el que lo
+    # releva o el encargado que cierra). Mientras el turno está abierto no
+    # muestra lo esperado a NADIE: ni el saldo, ni el resumen por tipo, ni
+    # el importe de cada movimiento (sumándolos se reconstruye el saldo).
+    # Quien supervisa lo ve en "Turnos de caja".
     contexto.update({
         'cantidad_ventas': ventas['cantidad'] or 0,
-        've_saldo': usuario.puede('ver_caja'),
         'form_movimiento': _con_token(MovimientoEfectivoForm, request),
         'form_arqueo': _con_token(ArqueoForm, request),
         'arqueo': _arqueo_pendiente(request, turno),
     })
-    if contexto['ve_saldo']:
-        contexto['saldo'] = servicio_caja.saldo(turno)
-        contexto['total_ventas'] = ventas['total'] or Decimal('0')
-        contexto['resumen'] = [(e, m) for e, m in servicio_caja.resumen(turno) if m]
     return render(request, 'ventas/caja.html', contexto)
 
 
@@ -163,7 +165,7 @@ def abrir_turno(request):
     registrar_auditoria(
         request, 'APERTURA', 'TURNO DE CAJA', instancia=turno,
         nuevo=instantanea(turno),
-        detalle=f'Abrió {caja} con $ {turno.monto_inicial} de fondo.')
+        detalle=f'Abrió {caja} con {pesos(turno.monto_inicial)} de fondo.')
     messages.success(request, f'{caja} abierta. ¡Buen turno!')
     return redirect('ventas:caja')
 
@@ -229,7 +231,10 @@ def declarar_arqueo(request):
     # Lo declarado queda escrito ANTES de ver la diferencia.
     registrar_auditoria(
         request, 'ARQUEO', 'TURNO DE CAJA', instancia=turno,
-        detalle=f'Declaró $ {contado} contados en {turno.id_caja_registradora}.')
+        anterior=instantanea(turno),
+        nuevo={**instantanea(turno), 'arqueo_declarado': {
+            'monto_contado': str(contado), 'relevo': form.cleaned_data['relevo']}},
+        detalle=f'Declaró {pesos(contado)} contados en {turno.id_caja_registradora}.')
     return redirect('ventas:cierre')
 
 
@@ -258,6 +263,7 @@ def cierre(request):
         if not idempotencia.consumir(request, token):
             messages.info(request, 'Ese cierre ya se había procesado.')
             return redirect('ventas:caja')
+        antes = instantanea(turno)
         try:
             supervisor = None
             if pide_supervisor:
@@ -287,7 +293,9 @@ def cierre(request):
             request.session.pop(CLAVE_ARQUEO, None)
             registrar_auditoria(
                 request, 'CIERRE', 'TURNO DE CAJA', instancia=cerrado,
-                nuevo=instantanea(cerrado),
+                anterior=antes,
+                nuevo={**instantanea(cerrado),
+                       **({'turno_siguiente': instantanea(nuevo)} if nuevo else {})},
                 detalle=(f'Cerró {cerrado.id_caja_registradora}: contado $ '
                          f'{cerrado.monto_final}, esperado $ '
                          f'{cerrado.monto_esperado}, diferencia $ '
@@ -321,9 +329,13 @@ def descartar_arqueo(request):
     """
     turno = puesto.turno_de(request)
     if _arqueo_pendiente(request, turno):
-        request.session.pop(CLAVE_ARQUEO, None)
+        declarado = request.session.pop(CLAVE_ARQUEO, None) or {}
         registrar_auditoria(
             request, 'ARQUEO DESCARTADO', 'TURNO DE CAJA', instancia=turno,
+            anterior={**instantanea(turno), 'arqueo_declarado': {
+                'monto_contado': declarado.get('contado'),
+                'relevo': declarado.get('relevo')}},
+            nuevo=instantanea(turno),
             detalle='Volvió atrás del cierre sin cerrar el turno.')
     return redirect('ventas:caja')
 
@@ -374,16 +386,22 @@ def ficha_turno(request, pk):
         TurnoCaja.objects.select_related(
             'id_caja_registradora', 'id_usuario_apertura', 'id_usuario_cierre',
             'id_usuario_supervisor'), pk=pk)
+    # Quien supervisa ve lo esperado de los cajones de OTROS. El de su
+    # propio turno abierto, no: lo va a contar él, y el arqueo es ciego.
+    propio_abierto = (turno.abierto
+                      and turno.id_usuario_apertura_id == request.usuario_actual.pk)
     return render(request, 'ventas/_ficha_turno.html', {
         'turno': turno,
-        'resumen': [(e, m) for e, m in servicio_caja.resumen(turno) if m],
+        'propio_abierto': propio_abierto,
+        'resumen': ([] if propio_abierto
+                    else [(e, m) for e, m in servicio_caja.resumen(turno) if m]),
         'movimientos': turno.movimientos.select_related('id_usuario')
                        .order_by('fecha_hora', 'pk')[:200],
         'ventas': turno.ventas.aggregate(
             cantidad=Count('pk', filter=Q(estado_venta='COMPLETADA')),
             total=Sum('total_venta', filter=Q(estado_venta='COMPLETADA')),
             anuladas=Count('pk', filter=Q(estado_venta='ANULADA'))),
-        'recaudacion': servicio_caja.recaudacion(turno),
+        'recaudacion': [] if propio_abierto else servicio_caja.recaudacion(turno),
     })
 
 

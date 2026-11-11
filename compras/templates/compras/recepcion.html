@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static cafeto crud_extras %}
 {% block titulo %}Cafeto · Recibir mercadería{% endblock %}
 
 {% block contenido %}
@@ -12,7 +12,9 @@
 </div>
 {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
 
-<form method="post" novalidate class="row g-3">
+<form method="post" novalidate class="row g-3"
+      data-titulo="¿Guardamos la compra?" data-aceptar="Sí, guardar"
+      data-confirmar="Entra el stock con estas cantidades y queda anotada la factura. Fijate bien el número, las cantidades y los costos: una compra guardada no se edita.">
     {% csrf_token %}
     <input type="hidden" name="token_operacion" value="{{ token }}">
     <input type="hidden" name="renglones" id="renglones" value="{{ renglones_json }}">
@@ -23,10 +25,12 @@
             <h2 class="subtitulo h5 mb-0">La factura</h2>
             <div>
                 <label class="form-label" for="proveedor">Proveedor</label>
+                <div class="d-flex gap-2"><div class="flex-grow-1">
                 <select name="proveedor" id="proveedor" class="form-select"{% if orden %} disabled{% endif %}>
                     <option value="">Elegí el proveedor…</option>
                     {% for p in proveedores %}<option value="{{ p.pk }}"{% if datos.proveedor == p.pk|stringformat:'s' or orden.id_proveedor_id == p.pk %} selected{% endif %}>{{ p }}</option>{% endfor %}
-                </select>
+                </select></div>{% if not orden %}{% boton_alta_rapida 'proveedores' 'proveedor' %}{% endif %}</div>
+                {% if not orden %}{% panel_alta_rapida 'proveedor' %}{% endif %}
                 {% if orden %}<input type="hidden" name="proveedor" value="{{ orden.id_proveedor_id }}">{% endif %}
             </div>
             <div class="row g-2">
@@ -57,6 +61,16 @@
             </select>
             <div class="js-lista"></div>
         </div>
+        {% if costos_raros %}
+        <div class="aviso aviso-aviso mt-3"><i class="bi bi-exclamation-triangle-fill"></i>
+            <span>Estos costos cambiaron mucho respecto de la última vez. Fijate que no haya un cero de más o de menos:
+            <ul class="mb-0">{% for r in costos_raros %}<li><strong>{{ r.producto }}</strong>: venías pagando {{ r.anterior|pesos }} y ahora cargaste {{ r.nuevo|pesos }}.</li>{% endfor %}</ul></span>
+        </div>
+        <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="confirmo_costos" value="1" id="confirmoCostos">
+            <label class="form-check-label" for="confirmoCostos">Sí, esos costos están bien</label>
+        </div>
+        {% endif %}
         <button type="submit" class="btn btn-primary btn-xl w-100 mt-3" data-requiere-red><i class="bi bi-box-arrow-in-down me-1"></i>Guardar la compra y entrar el stock</button>
     </div>
 </form>

@@ -235,6 +235,9 @@ class SelectorConBusqueda(forms.Select):
 # ===========================================================================
 #  IMPORTES Y CANTIDADES COMO LOS ESCRIBE UNA PERSONA
 # ===========================================================================
+DIGITOS_EN_BASE = 12
+
+
 def leer_numero(texto, decimales):
     """'1.234,50', '1234,5', '1234.50' y '1,234.50' -> Decimal.
 
@@ -272,9 +275,26 @@ def leer_numero(texto, decimales):
         elif len(partes) > 2:
             return None
     try:
-        return Decimal(texto)
+        numero = Decimal(texto)
     except InvalidOperation:
         return None
+    # Ni infinito ni NaN, y no más decimales que los que guarda la base:
+    # 0,0005 kg se guardaba como 0,001 con el subtotal de 0,0005, la base
+    # lo rechazaba por inconsistente y la pantalla se caía con un error 500.
+    if not numero.is_finite() or numero.as_tuple().exponent < -decimales:
+        return None
+    # Ni notación científica ("1e3") ni un número que no entra en la base
+    # (12 dígitos en total): un "recibido" de 25 cifras daba error 500.
+    if 'e' in texto.lower() or abs(numero) >= Decimal(10) ** (DIGITOS_EN_BASE - decimales):
+        return None
+    return numero
+
+
+def sobran_decimales(texto, decimales):
+    """True si ``texto`` es un número válido pero con más decimales de los
+    que se aceptan: para decir eso en vez de un genérico "no es válido"."""
+    return (leer_numero(texto, decimales) is None
+            and leer_numero(texto, 12) is not None)
 
 
 class CampoNumero(forms.DecimalField):

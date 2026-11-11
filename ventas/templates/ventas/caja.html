@@ -11,6 +11,7 @@
         <h1 class="titulo-pantalla mb-0">{% if caja %}{{ caja }}{% else %}¿En qué caja estás?{% endif %}</h1>
         {% if turno %}
         <p class="bajada">Turno abierto por {{ turno.id_usuario_apertura.nombre }} el {{ turno.fecha_apertura|date:"d/m" }} a las {{ turno.fecha_apertura|time:"H:i" }}.</p>
+        {% if turno.quedo_de_otro_dia %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>Este turno quedó abierto desde el {{ turno.fecha_apertura|date:"d/m" }}. Lo sano es cerrar la caja al terminar cada día: contá el cajón y cerrala antes de seguir.</span></div>{% endif %}
         {% elif caja %}
         <p class="bajada">La caja está cerrada.</p>
         {% else %}
@@ -98,15 +99,13 @@
     <div class="tarjeta kpi">
         <span class="eyebrow">Ventas del turno</span>
         <span class="valor">{{ cantidad_ventas }}</span>
-        {% if ve_saldo %}<span class="detalle">{{ total_ventas|pesos }} en total</span>{% endif %}
+        <span class="detalle">cobradas en este turno</span>
     </div>
-    {% if ve_saldo %}
-    <div class="tarjeta kpi tarjeta-destacada">
-        <span class="eyebrow">Efectivo en el cajón</span>
-        <span class="valor">{{ saldo|pesos }}</span>
-        <span class="detalle">según el libro de caja</span>
+    <div class="tarjeta kpi">
+        <span class="eyebrow">Arqueo ciego</span>
+        <span class="valor valor-texto"><i class="bi bi-eye-slash me-1"></i>Se cuenta sin mirar</span>
+        <span class="detalle">Lo que debería haber se ve recién después de declarar lo contado.</span>
     </div>
-    {% endif %}
     <div class="tarjeta kpi">
         <span class="eyebrow">Fondo inicial</span>
         <span class="valor">{{ turno.monto_inicial|pesos }}</span>
@@ -122,7 +121,7 @@
             </div>
             <div class="table-responsive">
             <table class="table align-middle mb-0">
-                <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th><th class="table-numero">Monto</th></tr></thead>
+                <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th></tr></thead>
                 <tbody>
                 {% for m in filas %}
                     <tr>
@@ -130,7 +129,6 @@
                         <td><span class="insignia {% if m.monto < 0 %}insignia-peligro{% else %}insignia-exito{% endif %}">{{ m.get_tipo_movimiento_display }}</span></td>
                         <td>{{ m.concepto }}</td>
                         <td class="small text-secondary">{{ m.id_usuario.nombre }}</td>
-                        <td class="table-numero monto">{{ m.monto|pesos }}</td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -139,14 +137,6 @@
         </div>
         <form id="herramientas" method="get"></form>
         {% include 'parciales/_paginador.html' %}
-        {% if resumen %}
-        <div class="tarjeta mt-3">
-            <span class="eyebrow">Resumen por tipo</span>
-            <dl class="tarjeta-datos">
-                {% for etiqueta, monto in resumen %}<dt>{{ etiqueta }}</dt><dd class="monto">{{ monto|pesos }}</dd>{% endfor %}
-            </dl>
-        </div>
-        {% endif %}
     </div>
 
     <div class="col-xl-4 d-flex flex-column gap-3">

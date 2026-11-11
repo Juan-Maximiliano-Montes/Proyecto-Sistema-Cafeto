@@ -21,10 +21,12 @@ from nucleo.busqueda import filtrar_por_texto
 from nucleo.exportar import ColumnaExportable, exportar
 from nucleo.motivos import redactar
 from nucleo.paginacion import paginar
+from seguridad import recuperacion
 from seguridad.forms import (
     CambioClaveForm,
     CambioPerfilForm,
     LoginForm,
+    OlvideClaveForm,
     PerfilForm,
     PerfilTemporalForm,
     TitularidadForm,
@@ -111,7 +113,13 @@ def login_view(request):
                 request, identificador, usuario, 'CLAVE_INCORRECTA')
             quedan = intentos_antes_del_bloqueo(identificador, usuario, ip)
             aviso = 'DNI/usuario o clave incorrectos.'
-            if 0 < quedan <= 2:
+            espera = espera_por_bloqueo(identificador, usuario, ip)
+            if espera is not None:
+                # Este intento fue el que activó el bloqueo: decirlo ya, no
+                # recién en el próximo.
+                aviso += (' Por seguridad, el ingreso queda bloqueado: probá de '
+                          f'nuevo en {describir_espera(espera)}.')
+            elif 0 < quedan <= 2:
                 plural = quedan > 1
                 aviso += (f' Te queda{"n" if plural else ""} {quedan} '
                           f'intento{"s" if plural else ""} antes de un '
@@ -123,6 +131,14 @@ def login_view(request):
                 'El usuario está dado de baja. Consultá con el administrador.')
             registrar_intento_fallido(
                 request, identificador, usuario, 'USUARIO_INACTIVO')
+        elif usuario.clave_provisoria_vencida:
+            # La clave es correcta, pero era provisoria y pasaron más de 24
+            # horas: ya no abre la cuenta. No se anota como intento fallido
+            # (no lo es) ni suma al bloqueo.
+            messages.error(
+                request,
+                'Esa clave provisoria venció (dura 24 horas). Pedile al '
+                'administrador que te la restablezca.')
         else:
             # Llave de sesión nueva ANTES de guardar nada (fijación de
             # sesión, OWASP).
@@ -135,6 +151,7 @@ def login_view(request):
             vincular_sesion(request.session, usuario, sesion)
             registrar_auditoria(
                 request, 'INICIO', 'SESION', instancia=sesion,
+                nuevo=instantanea(sesion),
                 modulo='SEGURIDAD', detalle=f'Ingresó desde {ip}.')
 
             if usuario.debe_cambiar_clave:
@@ -160,6 +177,60 @@ def logout_view(request):
     request.session.flush()
     messages.success(request, 'Cerraste la sesión.')
     return redirect('seguridad:login')
+
+
+def olvide_clave(request):
+    """"¿Te olvidaste la clave?": pide el DNI o el usuario y manda el enlace.
+
+    La respuesta es SIEMPRE la misma, exista o no la cuenta, tenga o no
+    correo: así el formulario no sirve para averiguar quién trabaja en el
+    local (OWASP, Forgot Password Cheat Sheet).
+    """
+    form = OlvideClaveForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        identificador = form.cleaned_data['identificador']
+        usuario = Usuario.objects.filter(
+            Q(dni_usuario=identificador) | Q(nombre_usuario__iexact=identificador),
+            activo=True).first()
+        if (usuario is not None and not usuario.es_titular and usuario.correo
+                and recuperacion.solicitudes_recientes(usuario)
+                < recuperacion.SOLICITUDES_POR_HORA):
+            enviado = recuperacion.enviar(request, usuario, 'recuperar')
+            registrar_auditoria(
+                request, 'SOLICITUD', 'RECUPERACION DE CLAVE', instancia=usuario,
+                modulo='SEGURIDAD',
+                detalle=(f'Pidió recuperar la clave desde {ip_del_request(request)}. '
+                         + ('Enlace enviado a ' + recuperacion.ofuscar(usuario.correo)
+                            if enviado else 'El correo no se pudo enviar.')))
+        return render(request, 'seguridad/olvide_clave.html', {'enviado': True})
+    return render(request, 'seguridad/olvide_clave.html', {'form': form})
+
+
+def elegir_clave(request, proposito, token):
+    """La pantalla del enlace del correo: la persona elige su clave."""
+    usuario = recuperacion.leer(token, proposito) if proposito in recuperacion.VIGENCIA else None
+    if usuario is None:
+        return render(request, 'seguridad/elegir_clave.html', {'invalido': True}, status=400)
+
+    usuario.debe_cambiar_clave = True        # no pide la clave actual
+    form = CambioClaveForm(request.POST or None, usuario=usuario)
+    if request.method == 'POST' and form.is_valid():
+        anterior = instantanea(usuario)
+        usuario.set_clave(form.cleaned_data['clave_nueva'])
+        usuario.save()
+        # Si alguien tenía la cuenta abierta con la clave vieja, queda afuera.
+        for sesion in usuario.sesiones.filter(activa=True):
+            cerrar_sesion(sesion.pk, motivo='REVOCACION')
+        registrar_auditoria(
+            request, 'ACTIVACION' if proposito == 'activar' else 'RECUPERACION',
+            'CLAVE POR CORREO', instancia=usuario, modulo='SEGURIDAD',
+            anterior=anterior, nuevo=instantanea(usuario),
+            detalle=(f'{usuario.nombre_usuario} eligió su clave con el enlace del '
+                     f'correo, desde {ip_del_request(request)}.'))
+        messages.success(request, 'Listo: tu clave quedó guardada. Ya podés entrar.')
+        return redirect('seguridad:login')
+    return render(request, 'seguridad/elegir_clave.html', {
+        'form': form, 'persona': usuario, 'proposito': proposito})
 
 
 def cambiar_clave_view(request):
@@ -287,9 +358,13 @@ def lista_usuarios(request):
 def crear_usuario(request):
     """Alta (modal +). Sólo DNI, Apellido, Nombre, Correo y Perfil.
 
-    La clave inicial se autogenera con el DNI (hasheada) y el usuario queda
-    obligado a cambiarla en el primer inicio de sesión. Si el perfil
-    elegido es el de administrador, se pide la clave de quien lo da.
+    La clave inicial es una clave PROVISORIA al azar, que se muestra una
+    sola vez a quien da el alta, vence a las 24 horas y obliga a elegir una
+    propia al entrar. Antes era el DNI: como con el DNI también se entra,
+    cualquiera que lo conociera podía estrenar la cuenta antes que su dueño
+    (NIST SP 800-63B, 5.1.1.2: nada de secretos que se deducen del nombre
+    de usuario). Si el perfil elegido es el de administrador, se pide la
+    clave de quien lo da.
     """
     if request.method != 'POST':
         return redirect('seguridad:lista')
@@ -297,20 +372,26 @@ def crear_usuario(request):
     form = UsuarioAltaForm(request.POST, operador=request.usuario_actual)
     if form.is_valid():
         usuario = form.save(commit=False)
-        # 1) La clave inicial es el DNI, guardada SIEMPRE hasheada.
-        usuario.clave = make_password(form.cleaned_data['dni_usuario'])
-        usuario.debe_cambiar_clave = True    # 2) la primera vez la cambia
-        usuario.activo = True                # 3) nace vigente
-        usuario.save()                       # 4) genera 'nombre_usuario'
+        # Una clave al azar que nadie ve: la persona elige la suya con el
+        # enlace del correo. Si el correo no sale, esta misma se muestra
+        # para dársela en persona.
+        provisoria = usuario.generar_clave_provisoria()
+        usuario.activo = True                # nace vigente
+        usuario.save()                       # genera 'nombre_usuario'
+        enviado = recuperacion.enviar(request, usuario, 'activar')
         registrar_auditoria(
             request, 'ALTA', 'USUARIO', instancia=usuario,
             nuevo=instantanea(usuario),
-            detalle=f'Alta de {usuario} con perfil "{usuario.id_perfil}".')
-        messages.success(
-            request,
-            f'Usuario "{usuario.nombre_usuario}" creado. '
-            f'Ya puede iniciar sesión con su DNI.')
-        return redirect('seguridad:lista')
+            detalle=f'Alta de {usuario} con perfil "{usuario.id_perfil}". '
+                    + (f'Enlace para elegir la clave enviado a {recuperacion.ofuscar(usuario.correo)}.'
+                       if enviado else 'El correo no salió: clave provisoria entregada en persona.'))
+        if enviado:
+            messages.success(request, (
+                f'Usuario "{usuario.nombre_usuario}" creado. Le mandamos a '
+                f'{recuperacion.ofuscar(usuario.correo)} un enlace para que elija su '
+                'clave: vence en 48 horas.'))
+            return redirect('seguridad:lista')
+        return _mostrar_provisoria(request, usuario, provisoria, alta=True)
 
     messages.error(request, 'No se pudo crear el usuario. Revisá los datos.')
     return _volver_al_listado(request, {'form': form,
@@ -393,28 +474,53 @@ def reactivar_usuario(request, id_usuario):
 
 @requiere_permiso('restablecer_clave', redirigir_a='seguridad:lista')
 def restablecer_clave_usuario(request, id_usuario):
-    """Genera una clave provisoria nueva, la hashea y obliga a cambiarla.
-
-    La clave provisoria SÓLO se ve en este mensaje. No queda guardada en
-    texto plano en ningún lado, así que si no se la anota ahora, hay que
-    volver a restablecer. La del titular no se restablece desde acá.
+    """Invalida la clave actual y le manda a la persona un enlace para
+    elegir otra. Si el correo no sale, muestra una clave provisoria para
+    dársela en persona. La del titular no se restablece desde acá.
     """
     usuario = get_object_or_404(Usuario, pk=id_usuario)
     if request.method == 'POST':
+        anterior = instantanea(usuario)
         try:
+            # La clave vieja deja de servir en el acto (por si la cuenta
+            # estaba comprometida); la nueva la elige la persona.
             clave_generada = usuario.restablecer_clave()
         except ValidationError as error:
             messages.error(request, '; '.join(error.messages))
             return redirect('seguridad:lista')
+        enviado = recuperacion.enviar(request, usuario, 'activar')
         registrar_auditoria(
             request, 'RESTABLECIMIENTO DE CLAVE', 'USUARIO',
-            instancia=usuario,
-            detalle=f'Clave provisoria generada para {usuario}.')
-        messages.success(
-            request,
-            f'Clave restablecida con éxito. La nueva clave provisoria es: '
-            f'{clave_generada}')
+            instancia=usuario, anterior=anterior,
+            nuevo=instantanea(Usuario.objects.get(pk=usuario.pk)),
+            detalle=(f'Enlace para elegir una clave nueva enviado a '
+                     f'{recuperacion.ofuscar(usuario.correo)}.' if enviado else
+                     f'El correo no salió: clave provisoria para {usuario}, en persona.'))
+        if enviado:
+            messages.success(request, (
+                f'Clave restablecida. Le mandamos a {recuperacion.ofuscar(usuario.correo)} '
+                'un enlace para que elija una nueva (vence en 48 horas). La anterior '
+                'ya no sirve.'))
+            return redirect('seguridad:lista')
+        return _mostrar_provisoria(request, usuario, clave_generada, alta=False)
     return redirect('seguridad:lista')
+
+
+def _mostrar_provisoria(request, usuario, provisoria, alta):
+    """El respaldo cuando el correo no sale: la clave provisoria, en una
+    pantalla propia y una sola vez, para dársela en persona.
+
+    Se arma en la misma respuesta, sin guardarla en ningún lado, y se le
+    pide al navegador que no la guarde (``no-store``): volver atrás no la
+    muestra.
+    """
+    respuesta = render(request, 'seguridad/clave_provisoria.html', {
+        'persona': usuario, 'alta': alta, 'correo': recuperacion.ofuscar(usuario.correo),
+        'grupos': [provisoria[i:i + 5] for i in range(0, len(provisoria), 5)],
+        'vence': timezone.localtime(usuario.vence_clave_provisoria),
+    })
+    respuesta['Cache-Control'] = 'no-store'
+    return respuesta
 
 
 @requiere_permiso('cambiar_perfil_usuario', redirigir_a='seguridad:lista')
@@ -537,6 +643,9 @@ def transferir_titularidad(request):
     form = TitularidadForm(request.POST, operador=operador)
     if form.is_valid():
         nuevo = form.cleaned_data['nuevo_titular']
+        campos = ('id_usuario', 'nombre_usuario', 'es_titular')
+        anterior = {'saliente': instantanea(operador, campos),
+                    'entrante': instantanea(nuevo, campos)}
         try:
             operador.transferir_titularidad(nuevo)
         except ValidationError as error:
@@ -544,7 +653,9 @@ def transferir_titularidad(request):
         else:
             registrar_auditoria(
                 request, 'TRANSFERENCIA DE TITULARIDAD', 'USUARIO',
-                instancia=nuevo,
+                instancia=nuevo, anterior=anterior,
+                nuevo={'saliente': instantanea(operador, campos),
+                       'entrante': instantanea(nuevo, campos)},
                 detalle=f'La titularidad pasa de {operador} a {nuevo}.')
             messages.success(
                 request,

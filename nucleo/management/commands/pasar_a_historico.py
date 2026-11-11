@@ -36,7 +36,7 @@ Uso::
     manage.py pasar_a_historico --ejecutar --meses-operativo 36
 """
 from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from nucleo import contexto
 
@@ -412,8 +412,19 @@ class Command(BaseCommand):
         # de este bloque, SinBajaFisica y LibroInmutable lo rechazan.
         with contexto.pasaje_historico(), transaction.atomic():
             with connection.cursor() as cursor:
-                for familia in FAMILIAS:
-                    total += self._archivar(cursor, familia, cortes)
+                # El trigger de los libros (DD-68) sólo deja borrar mientras
+                # dure el archivado. SET LOCAL ya se deshace al terminar la
+                # transacción; se apaga igual a mano por si este comando
+                # corre dentro de otra transacción.
+                cursor.execute("SET LOCAL cafeto.pasaje_historico = 'on'")
+                try:
+                    for familia in FAMILIAS:
+                        total += self._archivar(cursor, familia, cortes)
+                finally:
+                    try:
+                        cursor.execute("SET LOCAL cafeto.pasaje_historico = 'off'")
+                    except DatabaseError:
+                        pass   # transacción abortada: el rollback ya la apaga
 
             if not opciones['ejecutar']:
                 transaction.set_rollback(True)

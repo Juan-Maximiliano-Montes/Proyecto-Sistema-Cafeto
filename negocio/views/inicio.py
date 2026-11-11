@@ -97,6 +97,15 @@ def inicio(request):
             avisos.append(('aviso', 'bi-clipboard-check', f'{pendientes} ajuste(s) de stock esperan tu autorización.',
                            reverse('stock:ajustes')))
 
+    if puede('gestionar_ordenes'):
+        from compras.models import OrdenCompra
+        con_diferencias = OrdenCompra.objects.filter(estado_orden='CON_DIFERENCIAS').count()
+        if con_diferencias:
+            # El reporte de diferencias de recepción, a quien lo resuelve (DD-64).
+            avisos.append(('aviso', 'bi-box-seam', f'{con_diferencias} orden(es) de compra llegaron '
+                           'con diferencias: revisalas con el proveedor.',
+                           f"{reverse('compras:ordenes')}?estado=CON_DIFERENCIAS"))
+
     if puede('ver_egresos'):
         from compras import egresos
         proximos = egresos.vencimientos_proximos(hoy + timedelta(days=7))

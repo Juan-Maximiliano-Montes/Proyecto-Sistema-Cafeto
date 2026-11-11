@@ -25,6 +25,7 @@ def _tipos_de_proveedor():
 
 PROVEEDORES = registrar(ConfiguracionCRUD(
     clave='proveedores',
+    a_pedido=True,
     modelo=Proveedor,
     formulario=forms.ProveedorForm,
     singular='proveedor', plural='proveedores', articulo='el',

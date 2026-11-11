@@ -140,7 +140,7 @@ class PermisosGranularesTest(TestCase):
         self.assertEqual(r.status_code, 200)
 
     def test_sin_los_botones_de_accion(self):
-        r = self.client.get(reverse('compras:proveedores_lista'))
+        r = self.client.get(reverse('compras:proveedores_lista') + '?todos=1')
         self.assertContains(r, 'boton-ver')         # el ojo sí
         self.assertNotContains(r, 'Nuevo proveedor')
         self.assertNotContains(r, 'btn btn-sm btn-outline-primary btn-editar')

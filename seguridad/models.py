@@ -164,13 +164,15 @@ class Perfil(SinBajaFisica, models.Model):
     # ------------------------------------------------------------------
     def motivos_que_impiden_la_baja(self):
         """Por qué este perfil no se puede dar de baja todavía (V-G10)."""
-        motivos = []
         if self.es_sistema:
-            motivos.append(MotivoCompleto(
+            # La razón de fondo alcanza: sumarle "tiene N usuarios" armaba
+            # un mensaje con dos motivos donde uno ya decide.
+            return [MotivoCompleto(
                 f'El perfil "{self.nombre}" es el perfil administrador del '
                 'sistema y no puede ser eliminado ni deshabilitado: sin él '
                 'nadie podría volver a dar de alta usuarios ni asignar '
-                'permisos.'))
+                'permisos.')]
+        motivos = []
         activos = self.usuarios.filter(activo=True).count()
         if activos:
             motivos.append(
@@ -562,6 +564,13 @@ class Usuario(SinBajaFisica, models.Model):
         if self.es_titular and not self.id_perfil.es_sistema:
             raise ValidationError(
                 'El titular del sistema conserva el perfil administrador.')
+        # El correo recibe el enlace para elegir la clave: si dos personas
+        # lo compartieran, una podría elegir la clave de la otra.
+        if self.correo and Usuario.objects.exclude(pk=self.pk).filter(
+                correo__iexact=self.correo.strip()).exists():
+            raise ValidationError({'correo': (
+                'Ese correo ya es de otra persona del sistema. Cada usuario '
+                'necesita el suyo: ahí le llega el enlace para elegir la clave.')})
 
     def save(self, *args, **kwargs):
         # Capitalización automática: "juan carlos" -> "Juan Carlos".
@@ -572,6 +581,11 @@ class Usuario(SinBajaFisica, models.Model):
             self.nombre = self.nombre.strip().title()
         if self.dni_usuario:
             self.dni_usuario = str(self.dni_usuario).strip()
+            from nucleo.validaciones import exigir_dni_creible
+            try:
+                exigir_dni_creible(self.dni_usuario)
+            except ValidationError as error:
+                raise ValidationError({'dni_usuario': error.messages})
         if self.correo:
             self.correo = self.correo.strip().lower()
 
@@ -734,23 +748,56 @@ class Usuario(SinBajaFisica, models.Model):
 
         return check_password(clave_plana, self.clave, setter=regrabar)
 
+    # Clave provisoria (alta y restablecimiento). Se le dicta o se le
+    # muestra a la persona EN EL LOCAL, así que no lleva letras que se
+    # confunden (l/1, o/0). 10 caracteres de 31 son ~49 bits: alcanza para
+    # un secreto de un solo uso, que vence y con el ingreso limitado por
+    # reintentos (NIST SP 800-63B, 5.1.1 y 6.1.2.3).
+    ALFABETO_PROVISORIA = 'abcdefghjkmnpqrstuvwxyz23456789'
+    VIGENCIA_PROVISORIA = timedelta(hours=24)
+
+    def generar_clave_provisoria(self):
+        """Pone una clave provisoria al azar y devuelve su texto UNA vez.
+
+        No guarda: quien llama decide cuándo (en el alta, el save de la
+        vista; en el restablecimiento, ``restablecer_clave``).
+        """
+        from django.utils.crypto import get_random_string
+
+        nueva = get_random_string(10, self.ALFABETO_PROVISORIA)
+        self.clave = make_password(nueva)
+        self.debe_cambiar_clave = True
+        self.fecha_cambio_clave = timezone.now()
+        return nueva
+
+    @property
+    def vence_clave_provisoria(self):
+        if not self.debe_cambiar_clave or self.es_titular:
+            return None
+        return self.fecha_cambio_clave + self.VIGENCIA_PROVISORIA
+
+    @property
+    def clave_provisoria_vencida(self):
+        """Una clave provisoria que nadie usó en 24 h ya no abre la cuenta.
+
+        El titular queda afuera de la regla: su clave inicial es la de la
+        instalación, y si la pierde se recupera en el servidor.
+        """
+        vence = self.vence_clave_provisoria
+        return vence is not None and timezone.now() > vence
+
     def restablecer_clave(self):
         """Genera una clave nueva al azar, la hashea y obliga a cambiarla.
 
         Devuelve la clave en texto plano UNA sola vez para poder
         comunicársela al usuario; después ya no se puede recuperar.
         """
-        from django.utils.crypto import get_random_string
-
         if self.es_titular:
             raise ValidationError(
                 'La clave del titular del sistema no se restablece desde la '
                 'aplicación: se recupera en el servidor con el comando '
                 '"manage.py recuperar_titular".')
-        nueva = get_random_string(10)
-        self.clave = make_password(nueva)
-        self.debe_cambiar_clave = True
-        self.fecha_cambio_clave = timezone.now()
+        nueva = self.generar_clave_provisoria()
         self.save(update_fields=['clave', 'debe_cambiar_clave',
                                  'fecha_cambio_clave',
                                  'fecha_ultima_modificacion'])
@@ -770,6 +817,12 @@ class Usuario(SinBajaFisica, models.Model):
         if self.es_ultimo_administrador:
             raise ValidationError(
                 'El sistema debe tener al menos un administrador activo.')
+        abierto = self.turnos_abiertos.filter(estado_turno='ABIERTA').first()
+        if abierto is not None:
+            raise ValidationError(
+                f'{self} abrió la caja "{abierto.id_caja_registradora}" y el '
+                'turno sigue abierto. Cerrá la caja o hacé el relevo antes de '
+                'darle de baja: la plata del cajón está a su nombre.')
         self.activo = False
         self.fecha_baja = timezone.now()
         self.save(update_fields=['activo', 'fecha_baja',

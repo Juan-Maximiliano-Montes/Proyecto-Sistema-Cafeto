@@ -35,11 +35,13 @@ from ventas.models import (
     Cambio,
     DetalleCambio,
     DetalleVenta,
+    MedioPago,
     MotivoCambio,
     TipoMovimientoCaja,
     TurnoCaja,
     Venta,
 )
+from nucleo.templatetags.cafeto import pesos
 
 CERO = Decimal('0')
 CENTAVO = Decimal('0.01')
@@ -86,6 +88,40 @@ def balance(venta, devueltos, entregados):
     saldo = redondear_importe(valor_entregado - valor_devuelto, paso)
     return (valor_devuelto.quantize(CENTAVO),
             valor_entregado.quantize(CENTAVO), saldo)
+
+
+def medios_de_reintegro(venta):
+    """Por dónde se le puede devolver al cliente: por los mismos medios
+    con que pagó (DD-66). Lo que se pagó con tarjeta se anula en el posnet;
+    sólo lo que se pagó en efectivo sale del cajón."""
+    ids = venta.pagos.values_list('id_medio_pago', flat=True)
+    return MedioPago.objects.filter(pk__in=ids).order_by('nombre_medio_pago')
+
+
+def reintegro(venta, medio_pago, importe):
+    """Cuánto se devuelve por ``medio_pago``: lo devuelto más su parte del
+    recargo, si ese medio era un plan en cuotas (DD-66).
+
+    Nunca más de lo que entró por ese medio, menos lo que ya se devolvió
+    por él en cambios anteriores.
+    """
+    pagos = list(venta.pagos.filter(id_medio_pago=medio_pago))
+    if not pagos:
+        raise ValidationError(
+            f'La venta N° {venta.pk} no se pagó con "{medio_pago}": se '
+            'devuelve por el mismo medio con que se pagó.')
+    porcentaje = pagos[0].recargo_porcentaje or CERO
+    recargo = (importe * porcentaje / Decimal('100')).quantize(CENTAVO)
+    total = (importe + recargo).quantize(CENTAVO)
+    cobrado = sum((p.importe_cobrado for p in pagos), CERO)
+    ya = (Cambio.objects.filter(id_venta=venta, id_medio_pago=medio_pago)
+          .aggregate(t=Sum('importe_devuelto'))['t'] or CERO)
+    if total > cobrado - ya:
+        raise ValidationError(
+            f'Con "{medio_pago}" se cobraron {pesos(cobrado)}'
+            + (f' y ya se devolvieron {pesos(ya)}' if ya else '')
+            + f': por ese medio se pueden devolver hasta {pesos(cobrado - ya)}.')
+    return total
 
 
 def registrar(turno, usuario, venta, motivo, devueltos, entregados=(),
@@ -174,13 +210,20 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
     importe_devuelto = -saldo if saldo < 0 else CERO
     if saldo and medio_pago is None:
         raise ValidationError(
-            f'Hay una diferencia de $ {abs(saldo)}: indicá con qué medio '
+            f'Hay una diferencia de {pesos(abs(saldo))}: indicá con qué medio '
             f'se {"cobra" if saldo > 0 else "devuelve"}.')
     if not saldo:
         medio_pago = None
+    if importe_devuelto:
+        # Por el mismo medio y por todo lo cobrado, recargo incluido (DD-66).
+        importe_devuelto = reintegro(venta, medio_pago, importe_devuelto)
+    if importe_cobrado and medio_pago.cantidad_cuotas > 1:
+        raise ValidationError(
+            'La diferencia de un cambio se cobra en un solo pago: elegí un '
+            'medio sin cuotas.')
     if importe_devuelto and autorizante is None:
         raise ValidationError(
-            f'Devolver $ {importe_devuelto} al cliente lo tiene que '
+            f'Devolver {pesos(importe_devuelto)} al cliente lo tiene que '
             'autorizar alguien con permiso.')
 
     cambio = Cambio.objects.create(

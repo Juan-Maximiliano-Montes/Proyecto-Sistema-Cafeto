@@ -488,6 +488,29 @@ def instantanea(objeto, campos=None):
     return datos
 
 
+def foto(objeto, **hijos):
+    """La foto de una operación con renglones: la cabecera y sus hijos.
+
+    Una venta no es sólo su fila de VENTAS: son también sus renglones y sus
+    pagos. ``foto(venta, renglones=venta.detalles.all(),
+    pagos=venta.pagos.all())`` guarda las tres cosas en el mismo asiento,
+    para que el Registro de Actividad muestre la operación completa.
+    """
+    datos = instantanea(objeto)
+    if datos is None:
+        return None
+    for nombre, filas in hijos.items():
+        datos[nombre] = [instantanea(fila) for fila in filas]
+    return datos
+
+
+def fotos(filas, campos=None):
+    """La foto de varias filas a la vez (un aumento de precios, una
+    importación): una lista, en el orden en que vienen. ``campos`` acota
+    cada foto a lo que la operación toca."""
+    return [instantanea(fila, campos) for fila in filas]
+
+
 def registrar_auditoria(request, operacion, entidad, anterior=None,
                         nuevo=None, detalle='', modulo=None, instancia=None,
                         resultado=None):

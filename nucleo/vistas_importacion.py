@@ -83,6 +83,8 @@ def confirmar(request, clave):
     cambios = sum(1 for r in resultados if r.accion == 'CAMBIO')
     registrar_auditoria(
         request, 'IMPORTACION', importador.titulo.upper(), modulo=importador.modulo,
+        anterior=[r.foto_anterior for r in resultados if r.foto_anterior],
+        nuevo=[r.foto_nueva for r in resultados if r.foto_nueva],
         detalle=f'Importó «{pendiente["archivo"]}»: {altas} alta(s) y {cambios} cambio(s).')
     messages.success(request, f'Listo: {altas} alta(s) y {cambios} cambio(s).')
     return redirect('importar', clave=clave)

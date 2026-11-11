@@ -15,7 +15,8 @@ MEDIOS_PAGO = registrar(ConfiguracionCRUD(
     permiso_singular='medio_pago',
     columnas=(
         Columna('Medio de pago', 'nombre_medio_pago'),
-        Columna('Recargo', 'recargo_porcentaje', 'numero'),
+        Columna('Cuotas', 'cuotas_para_mostrar'),
+        Columna('Recargo', 'recargo_para_mostrar'),
         Columna('Entra al cajón', 'afecta_caja', 'si_no'),
     ),
     campos_busqueda=('nombre_medio_pago',),

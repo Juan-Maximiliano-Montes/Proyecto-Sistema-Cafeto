@@ -36,6 +36,26 @@ SIMBOLOS_PROHIBIDOS = '<>{}[]\\|^`'
 NOMBRE_VALIDO = re.compile(r"^[^\W_]|[\w .,\-'()/&%+ºª°]+$", re.UNICODE)
 
 
+# El nombre o el apellido de una PERSONA: letras (con acentos, ñ, ü),
+# espacios, apóstrofo y guion ("D'Angelo", "Pérez-Gómez"). Un nombre
+# comercial sí lleva números ("7Up", "Café 1890"); una persona, no: un
+# "Pérez2000" es un error de carga.
+NOMBRE_DE_PERSONA = re.compile(r"^[^\W\d_]+(?:[ '\-][^\W\d_]+)*$", re.UNICODE)
+
+
+def nombre_de_persona(valor, etiqueta='El nombre', minimo=2, maximo=50):
+    texto = exigir_texto(valor, etiqueta)
+    texto = texto.replace('’', "'")
+    if not minimo <= len(texto) <= maximo:
+        raise ValidationError(
+            f'{etiqueta} tiene que tener entre {minimo} y {maximo} letras.')
+    if not NOMBRE_DE_PERSONA.match(texto):
+        raise ValidationError(
+            f'{etiqueta} sólo lleva letras, espacios, apóstrofo o guion '
+            '(sin números ni símbolos).')
+    return texto
+
+
 def limpiar_texto(valor):
     """Recorta y colapsa los espacios internos. Vacío -> ``None`` (V-G1).
 
@@ -390,7 +410,29 @@ def validar_telefono(valor):
         raise ValidationError(
             'El teléfono debe tener entre 7 y 15 dígitos; el que escribiste '
             f'quedó en {len(digitos)}.')
+    if len(set(digitos)) == 1:
+        raise ValidationError(
+            f'El teléfono {digitos} no parece un número real: son todos '
+            'dígitos iguales. Si no lo sabés, dejalo vacío.')
     return digitos
+
+
+DNI_MINIMO = 1_000_000
+
+
+def exigir_dni_creible(dni, etiqueta='El DNI'):
+    """Un DNI de relleno (00000000, 11111111) no identifica a nadie.
+
+    El formato lo controla ``VALIDADOR_DNI``; esto mira el número: que no
+    sean todos dígitos iguales y que no sea menor que un millón.
+    """
+    digitos = re.sub(r'\D', '', str(dni or ''))
+    if not digitos:
+        return
+    if len(set(digitos)) == 1 or int(digitos) < DNI_MINIMO:
+        raise ValidationError(
+            f'{etiqueta} {digitos} no parece real. Revisalo; si no lo sabés, '
+            'no inventes uno.')
 
 
 # ---------------------------------------------------------------------------
@@ -576,8 +618,14 @@ def exigir_que_no_este_dado_de_baja(modelo, instancia, filtros,
     if duplicado is None:
         return None
     if getattr(duplicado, 'borrado_logico', False):
-        raise ValidationError(
+        mensaje = (
             f'{etiqueta} fue dado de baja. Presione el botón Reactivar en la '
             f'lista: así se recupera «{duplicado}» con su historial, en vez '
             'de crear un registro nuevo.')
-    raise ValidationError(f'{etiqueta} ya existe: «{duplicado}».')
+    else:
+        mensaje = f'{etiqueta} ya existe: «{duplicado}».'
+    # Atado al campo: así el formulario no suma, encima, el aviso genérico
+    # de Django ("Ya existe un/a Cliente con este/a DNI").
+    if len(filtros) == 1:
+        raise ValidationError({next(iter(filtros)): mensaje})
+    raise ValidationError(mensaje)

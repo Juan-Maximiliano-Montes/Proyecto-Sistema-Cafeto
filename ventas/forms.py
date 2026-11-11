@@ -5,32 +5,56 @@ from django import forms
 from nucleo.formularios import CampoImporte, FormularioMaestro
 from ventas.models import CajaRegistradora, MedioPago
 
+# La clave de OTRA persona (quien autoriza o recibe la caja). Chrome ignora
+# autocomplete="off" en un campo de clave: al verlo, llenaba con el usuario
+# guardado del equipo el primer campo de texto que encontraba (en el
+# mostrador, el del Club Cafeto). "one-time-code" no lo autocompleta; los
+# data-* son para los gestores de claves (LastPass, 1Password).
+CLAVE_DE_OTRA_PERSONA = {'class': 'form-control', 'autocomplete': 'one-time-code',
+                         'data-lpignore': 'true', 'data-1p-ignore': ''}
+USUARIO_DE_OTRA_PERSONA = {'class': 'form-control', 'autocomplete': 'off',
+                           'data-lpignore': 'true', 'data-1p-ignore': ''}
+
 
 class MedioPagoForm(FormularioMaestro):
     class Meta:
         model = MedioPago
-        fields = ['nombre_medio_pago', 'recargo_porcentaje', 'afecta_caja']
+        fields = ['nombre_medio_pago', 'afecta_caja', 'es_tarjeta_credito',
+                  'cantidad_cuotas', 'recargo_porcentaje']
         widgets = {
             'nombre_medio_pago': forms.TextInput(
                 attrs={'placeholder': 'Tarjeta de crédito',
                        'autofocus': 'autofocus'}),
         }
         help_texts = {
-            'recargo_porcentaje': 'Porcentaje que se suma al total cuando se '
-                                  'cobra con este medio. 0 si no tiene.',
+            'recargo_porcentaje': 'Sólo para un plan en cuotas: el costo de '
+                                  'financiación que se le traslada al '
+                                  'cliente (se informa en el ticket). En un '
+                                  'solo pago va 0: la Ley 25.065 no permite '
+                                  'cobrar distinto con tarjeta.',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Cuotas y recargo, sólo para la tarjeta de crédito (DD-65).
+        self.fields['cantidad_cuotas'].visible_si = 'es_tarjeta_credito=si'
+        self.fields['recargo_porcentaje'].visible_si = 'es_tarjeta_credito=si'
+        self.fields['cantidad_cuotas'].widget.attrs.update({'min': 1, 'max': 36})
+        self.fields['cantidad_cuotas'].required = False   # vacío = 1 pago
         # El efectivo es el dato inicial protegido: ni el nombre ni el
         # recargo se tocan, porque el vuelto y el arqueo dependen de él.
         if self.instance and self.instance.pk and self.instance.es_efectivo:
             self.fields['nombre_medio_pago'].disabled = True
             self.fields['recargo_porcentaje'].disabled = True
             self.fields['afecta_caja'].disabled = True
+            self.fields['es_tarjeta_credito'].disabled = True
+            self.fields['cantidad_cuotas'].disabled = True
             self.fields['nombre_medio_pago'].help_text = (
                 'El medio de pago en efectivo no se renombra ni lleva '
                 'recargo: el vuelto y el arqueo de caja se calculan sobre él.')
+
+    def clean_cantidad_cuotas(self):
+        return self.cleaned_data.get('cantidad_cuotas') or 1
 
 
 # ===========================================================================
@@ -68,12 +92,10 @@ class AutorizacionForm(forms.Form):
     """Usuario y clave de quien autoriza, en el mismo dispositivo."""
     autoriza_usuario = forms.CharField(
         label='Usuario o DNI de quien autoriza', required=False, max_length=35,
-        widget=forms.TextInput(attrs={'class': 'form-control',
-                                      'autocomplete': 'off'}))
+        widget=forms.TextInput(attrs=USUARIO_DE_OTRA_PERSONA))
     autoriza_clave = forms.CharField(
         label='Su clave', required=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control',
-                                          'autocomplete': 'off'}))
+        widget=forms.PasswordInput(attrs=CLAVE_DE_OTRA_PERSONA))
 
 
 class AperturaForm(ConToken):
@@ -116,9 +138,7 @@ class ConfirmacionCierreForm(ConToken, AutorizacionForm):
         widget=forms.TextInput(attrs={'class': 'form-control'}))
     entrante_usuario = forms.CharField(
         label='Usuario o DNI de quien sigue', required=False, max_length=35,
-        widget=forms.TextInput(attrs={'class': 'form-control',
-                                      'autocomplete': 'off'}))
+        widget=forms.TextInput(attrs=USUARIO_DE_OTRA_PERSONA))
     entrante_clave = forms.CharField(
         label='Su clave', required=False,
-        widget=forms.PasswordInput(attrs={'class': 'form-control',
-                                          'autocomplete': 'off'}))
+        widget=forms.PasswordInput(attrs=CLAVE_DE_OTRA_PERSONA))

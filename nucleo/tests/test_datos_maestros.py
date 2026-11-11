@@ -293,9 +293,18 @@ class NumerosTest(BaseMaestros):
             .recargo_porcentaje, Decimal('0'))
 
     def test_pasa_recargo_cien(self):
-        self.crear('medios_pago', {'nombre_medio_pago': 'Cheque',
+        # El recargo es el de un plan en cuotas (DD-65, Ley 25.065).
+        self.crear('medios_pago', {'nombre_medio_pago': 'Crédito 12 cuotas',
+                                   'es_tarjeta_credito': 'on',
+                                   'cantidad_cuotas': '12',
                                    'recargo_porcentaje': '100'})
         self.assertTrue(
+            MedioPago.objects.filter(nombre_medio_pago='Crédito 12 cuotas').exists())
+
+    def test_un_solo_pago_no_lleva_recargo(self):
+        self.crear('medios_pago', {'nombre_medio_pago': 'Cheque',
+                                   'recargo_porcentaje': '10'})
+        self.assertFalse(
             MedioPago.objects.filter(nombre_medio_pago='Cheque').exists())
 
     def test_falla_recargo_cien_coma_cero_uno(self):

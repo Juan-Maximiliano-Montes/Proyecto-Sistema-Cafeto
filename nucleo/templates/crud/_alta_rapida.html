@@ -1,0 +1,18 @@
+{% comment %}
+El alta de una tabla desplegada dentro de otro formulario (DD-70).
+
+No es un <form>: está adentro del formulario de afuera y HTML no admite un
+formulario dentro de otro. Sus campos llevan el prefijo "rapido" y el
+atributo form="" apuntando a un formulario que no existe, así no viajan
+con el de afuera; los junta y los manda cafeto.js.
+{% endcomment %}
+<div class="alta-rapida card mt-2" role="group" aria-label="{{ cfg.nuevo }}">
+    <div class="card-body">
+        <p class="fw-semibold mb-2"><i class="bi {{ cfg.icono }} me-1"></i>{{ cfg.nuevo }}</p>
+        {% include 'crud/_campos.html' with form=form formset=None %}
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-secundario js-alta-rapida-cancelar">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-primary js-alta-rapida-guardar">Guardar {{ cfg.singular }}</button>
+        </div>
+    </div>
+</div>

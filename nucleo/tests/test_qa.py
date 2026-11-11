@@ -428,7 +428,8 @@ class RedaccionDeMensajesTest(TestCase):
             nombre_medio_pago='Efectivo',
             defaults={'recargo_porcentaje': Decimal('0')})
         MedioPago.objects.create(
-            nombre_medio_pago='Tarjeta QA', recargo_porcentaje=Decimal('5'))
+            nombre_medio_pago='Tarjeta QA', es_tarjeta_credito=True,
+            cantidad_cuotas=3, recargo_porcentaje=Decimal('5'))
 
         texto = redactar('No se puede dar de baja "Efectivo"',
                          efectivo.motivos_que_impiden_la_baja())

@@ -19,6 +19,7 @@ from ventas import cambios, caja
 from ventas import servicios as ventas
 from ventas.models import (
     DetalleVenta,
+    MedioPago,
     MovimientoCaja,
     PagoVenta,
     TurnoCaja,
@@ -153,9 +154,10 @@ class VentaTest(Base):
         self.assertEqual(venta.ajuste_redondeo, D('-0.33'))
 
     def test_pago_mixto_con_recargo_solo_en_la_tarjeta(self):
-        credito = f.medio('Tarjeta de crédito')
-        credito.recargo_porcentaje = D('10')
-        credito.save()
+        # El recargo es el de un plan en cuotas (DD-65, Ley 25.065).
+        credito = MedioPago.objects.create(
+            nombre_medio_pago='Crédito 3 cuotas', es_tarjeta_credito=True,
+            cantidad_cuotas=3, recargo_porcentaje=D('10'))
         venta, _ = self.vender(
             (self.gaseosa, 4),                           # 5000
             pagos=[Pago(f.efectivo(), D('3000')), Pago(credito)])

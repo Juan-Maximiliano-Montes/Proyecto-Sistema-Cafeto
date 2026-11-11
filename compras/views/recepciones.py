@@ -12,6 +12,7 @@ lo que hace que nadie quiera cargar las compras.
 """
 import json
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -27,8 +28,9 @@ from nucleo.exportar import ColumnaExportable, exportar
 from nucleo.formularios import leer_numero
 from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_alguno, requiere_permiso
-from seguridad.servicios import registrar_auditoria
+from seguridad.servicios import foto, registrar_auditoria
 from stock.models import Producto
+from nucleo.templatetags.cafeto import pesos
 
 MAXIMO_DE_RENGLONES = 120
 
@@ -86,14 +88,62 @@ def _leer_renglones(texto):
     return renglones
 
 
+def _aviso_de_diferencias(orden):
+    partes = []
+    for fila in orden.diferencias():
+        producto, dif = fila['producto'], fila['diferencia']
+        if dif < 0:
+            partes.append(f'faltan {producto.cantidad_con_unidad(-dif)} de {producto}')
+        elif dif > 0:
+            partes.append(f'sobran {producto.cantidad_con_unidad(dif)} de {producto}')
+    return (f'Lo recibido no coincide con la orden N° {orden.pk}: '
+            + '; '.join(partes) + '. La orden queda con diferencias hasta que '
+            'llegue el resto o se cierre con lo acordado con el proveedor.')
+
+
 def _renglones_de_la_orden(orden):
-    return [{
-        'producto': d.id_producto_id, 'nombre': str(d.id_producto),
-        'controla': d.id_producto.controla_vencimiento,
-        'fraccionable': not d.id_producto.exige_cantidad_entera,
-        'cantidad': str(d.cantidad_pedida.normalize()), 'costo': str(d.precio_unitario),
-        'lotes': [],
-    } for d in orden.detalles.select_related('id_producto')]
+    """La planilla de control: lo pedido. Si la orden ya tuvo una entrega
+    parcial, sólo lo que falta (DD-64)."""
+    faltan = None
+    if orden.estado_orden == 'CON_DIFERENCIAS':
+        faltan = {f['producto'].pk: -f['diferencia'] for f in orden.diferencias()
+                  if f['diferencia'] < 0}
+    renglones = []
+    for d in orden.detalles.select_related('id_producto'):
+        cantidad = d.cantidad_pedida if faltan is None else faltan.get(d.id_producto_id)
+        if not cantidad:
+            continue
+        renglones.append({
+            'producto': d.id_producto_id, 'nombre': str(d.id_producto),
+            'controla': d.id_producto.controla_vencimiento,
+            'fraccionable': not d.id_producto.exige_cantidad_entera,
+            'cantidad': str(cantidad.normalize()), 'costo': str(d.precio_unitario),
+            'lotes': [],
+        })
+    return renglones
+
+
+SALTO_DE_COSTO = 3
+
+
+def _costos_que_llaman_la_atencion(renglones):
+    """Renglones cuyo costo es más del triple, o menos de un tercio, del anterior.
+
+    Casi siempre es un cero de más o de menos al tipear. No se prohíbe (los
+    precios cambian): se pide que quien carga lo mire y lo confirme.
+    """
+    raros = []
+    for renglon in renglones:
+        anterior = renglon.producto.precio_costo
+        try:
+            nuevo = Decimal(renglon.costo_unitario)
+        except (InvalidOperation, TypeError):
+            continue
+        if not anterior or anterior <= 0 or nuevo <= 0:
+            continue
+        if nuevo > anterior * SALTO_DE_COSTO or nuevo * SALTO_DE_COSTO < anterior:
+            raros.append({'producto': renglon.producto, 'anterior': anterior, 'nuevo': nuevo})
+    return raros
 
 
 @requiere_permiso('registrar_compra', redirigir_a='home')
@@ -102,8 +152,9 @@ def recepcion(request):
         tipo_proveedor='SERVICIOS').order_by('nombre_proveedor')
     orden = None
     if request.GET.get('orden', '').isdigit():
-        orden = OrdenCompra.objects.filter(pk=request.GET['orden'],
-                                           estado_orden='EMITIDA').first()
+        orden = OrdenCompra.objects.filter(
+            pk=request.GET['orden'],
+            estado_orden__in=('EMITIDA', 'CON_DIFERENCIAS')).first()
     datos = request.POST if request.method == 'POST' else {}
     contexto = {
         'proveedores': proveedores, 'tipos': TipoComprobante.choices,
@@ -129,6 +180,12 @@ def recepcion(request):
             otros = leer_numero(request.POST.get('otros') or '0', 2)
             if otros is None:
                 raise ValidationError('Los otros conceptos no son un número.')
+            raros = _costos_que_llaman_la_atencion(renglones)
+            if raros and not request.POST.get('confirmo_costos'):
+                contexto['costos_raros'] = raros
+                raise ValidationError(
+                    'Hay costos muy distintos de los que venías pagando. Miralos '
+                    'abajo: si están bien, tildá la confirmación y guardá de nuevo.')
             if not idempotencia.consumir(request, token):
                 messages.info(request, 'Esa compra ya se había cargado.')
                 return redirect('compras:compras')
@@ -144,9 +201,15 @@ def recepcion(request):
         else:
             registrar_auditoria(
                 request, 'ALTA', 'COMPRA', instancia=compra,
+                nuevo=foto(compra, renglones=compra.detalles.all()),
                 detalle=f'{compra.get_tipo_comprobante_display()} {compra.numero_formateado} '
-                        f'de {proveedor}: $ {compra.total_compra}, {len(renglones)} renglón(es).')
+                        f'de {proveedor}: {pesos(compra.total_compra)}, {len(renglones)} renglón(es).')
             messages.success(request, f'Compra cargada: entró la mercadería de {proveedor}.')
+            if orden is not None:
+                orden.refresh_from_db()
+                if orden.estado_orden == 'CON_DIFERENCIAS':
+                    messages.warning(request, _aviso_de_diferencias(orden))
+                    return redirect('compras:orden', pk=orden.pk)
             return redirect('compras:compras')
 
     contexto['token'] = request.POST.get('token_operacion') or idempotencia.emitir(request)
@@ -181,7 +244,9 @@ def compras(request):
         'filtro': request.GET, 'estados': Compra.ESTADOS,
         'proveedores': Proveedor.objects.filter(compras__isnull=False).distinct()
                                          .order_by('nombre_proveedor'),
-        'total': consulta.aggregate(t=Sum('total_compra'))['t'],
+        # 'total' es del paginador (cuántas filas): con la suma en pesos el
+        # pie decía "1–13 de 1.144.560,40".
+        'total_comprado': consulta.aggregate(t=Sum('total_compra'))['t'],
     })
     return render(request, 'compras/compras.html', contexto)
 

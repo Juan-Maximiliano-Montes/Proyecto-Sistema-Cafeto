@@ -14,7 +14,7 @@ from fidelizacion.models import (
 )
 from geografia.models import Localidad
 from nucleo.formularios import FormularioMaestro, SelectorConBusqueda
-from nucleo.validaciones import normalizar_telefono, texto_de_catalogo
+from nucleo.validaciones import nombre_de_persona, normalizar_telefono, texto_de_catalogo
 from stock.models import Producto
 
 
@@ -180,12 +180,10 @@ class ClienteForm(FormularioMaestro):
             self.fields[campo].widget.attrs.pop('maxlength', None)
 
     def clean_apellido_cliente(self):
-        return texto_de_catalogo(
-            self.cleaned_data.get('apellido_cliente'), 2, 50, 'El apellido')
+        return nombre_de_persona(self.cleaned_data.get('apellido_cliente'), 'El apellido')
 
     def clean_nombre_cliente(self):
-        return texto_de_catalogo(
-            self.cleaned_data.get('nombre_cliente'), 2, 50, 'El nombre')
+        return nombre_de_persona(self.cleaned_data.get('nombre_cliente'), 'El nombre')
 
     def clean_dni_cliente(self):
         """DD-48: "40.125.874" o "40125874" se guardan como 40125874."""

@@ -14,7 +14,7 @@
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
                 <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
-                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;grafico={{ estilo }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
             </ul>
         </div>
     </div>
@@ -22,18 +22,40 @@
 
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Reportes">
     {% for r in reportes %}
-    <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
+    <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;grafico={{ estilo }}" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
     {% endfor %}
 </nav>
 
 {% if not sin_periodo %}
 <form method="get" class="herramientas">
     <input type="hidden" name="ver" value="{{ reporte.clave }}">
+    <input type="hidden" name="grafico" value="{{ estilo }}">
     <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}" class="form-control"></label>
     <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}" class="form-control"></label>
     <button type="submit" class="btn btn-secundario"><i class="bi bi-arrow-repeat me-1"></i>Ver</button>
 </form>
 {% endif %}
+
+<figure class="tarjeta grafico-reporte mb-3">
+    <div class="grafico-cabecera">
+        <figcaption class="small text-secondary"><i class="bi {% if estilo == 'torta' and not torta_no_aplica and grafico %}bi-pie-chart{% else %}bi-bar-chart-line{% endif %} me-1"></i>{% if sin_periodo %}Al día de hoy{% else %}Del {{ desde|date:"d/m" }} al {{ hasta|date:"d/m/Y" }}{% endif %} · el mismo dato de la tabla de abajo</figcaption>
+        {% if estilos and grafico %}
+        <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de gráfico">
+            {% for o in estilos %}<a href="{{ o.url }}" class="btn {% if o.activo %}btn-primary{% else %}btn-secundario{% endif %}"{% if o.activo %} aria-current="true"{% endif %}><i class="bi {{ o.icono }} me-1"></i>{{ o.etiqueta }}</a>{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% if grafico %}
+        {{ grafico|safe }}
+        {% if torta_no_aplica %}<p class="small text-tenue mb-0 mt-1"><i class="bi bi-info-circle me-1"></i>Va en barras: una torta necesita al menos dos partes con valor (con una sola sería un círculo al 100 %).</p>{% endif %}
+    {% else %}
+        <div class="grafico-vacio">
+            <i class="bi bi-bar-chart" aria-hidden="true"></i>
+            <p class="mb-1">{% if sin_periodo %}No hay productos con stock para graficar.{% else %}No hay movimientos del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }} para graficar.{% endif %}</p>
+            {% if not sin_periodo %}<a class="btn btn-sm btn-secundario" href="?ver={{ reporte.clave }}&amp;desde={{ ultimos_30.0|date:'Y-m-d' }}&amp;hasta={{ ultimos_30.1|date:'Y-m-d' }}&amp;grafico={{ estilo }}"><i class="bi bi-calendar-range me-1"></i>Ver los últimos 30 días</a>{% endif %}
+        </div>
+    {% endif %}
+</figure>
 
 <div class="tarjeta p-0 overflow-hidden">
     <div class="table-responsive">

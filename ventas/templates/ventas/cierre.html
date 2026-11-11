@@ -31,7 +31,9 @@
         </div>
     </div>
     <div class="col-lg-7">
-        <form method="post" class="tarjeta p-4" novalidate>
+        <form method="post" class="tarjeta p-4" novalidate
+              data-titulo="{% if relevo %}¿Hacemos el relevo?{% else %}¿Cerramos la caja?{% endif %}" data-aceptar="{% if relevo %}Sí, hacer el relevo{% else %}Sí, cerrar{% endif %}"
+              data-confirmar="{% if relevo %}Tu turno se cierra con lo que contaste y el cajón pasa a la otra persona.{% else %}El turno se cierra con lo que contaste. Un turno cerrado no se vuelve a abrir.{% endif %}">
             {% csrf_token %}
             {{ form.token_operacion }}
             {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}

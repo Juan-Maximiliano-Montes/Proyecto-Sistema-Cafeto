@@ -208,11 +208,24 @@ def exigir_disponible(producto, cantidad):
             f'se pueden armar {tope}.')
 
 
+CANTIDAD_MAXIMA = Decimal('999999')
+
+
 def exigir_cantidad_valida(producto, cantidad, etiqueta='La cantidad'):
     cantidad = Decimal(cantidad)
     if cantidad <= 0:
         raise ValidationError(
             f'{etiqueta} de "{producto}" tiene que ser mayor que cero.')
+    # Tope de cordura: nadie mueve un millón de unidades de algo en un local,
+    # y un número más grande desbordaba el campo de la base (error 500).
+    if cantidad > CANTIDAD_MAXIMA:
+        raise ValidationError(
+            f'{etiqueta} de "{producto}" es demasiado grande: revisá el número.')
+    # La base guarda las cantidades con 3 decimales (un gramo). Una con más
+    # se redondeaba al guardar y dejaba de coincidir con su subtotal.
+    if cantidad.as_tuple().exponent < -3:
+        raise ValidationError(
+            f'{etiqueta} de "{producto}" admite hasta 3 decimales (un gramo).')
     if producto.exige_cantidad_entera and not es_entero(cantidad):
         raise ValidationError(
             f'"{producto}" se vende por unidad: {etiqueta.lower()} tiene que '
@@ -334,6 +347,11 @@ def registrar_produccion(producto, cantidad, usuario, fecha_vencimiento=None,
             'tanda.')
     if fecha_vencimiento and fecha_vencimiento < timezone.localdate():
         raise ValidationError('La fecha de vencimiento ya pasó.')
+    if (producto.controla_vencimiento and fecha_vencimiento
+            and (fecha_vencimiento - timezone.localdate()).days > 730):
+        raise ValidationError(
+            f'¿La tanda vence el {fecha_vencimiento:%d/%m/%Y}? Es dentro de más '
+            'de dos años para algo hecho en el local: revisá el año.')
 
     # Lo que es de reventa no puede quedar en negativo: se avisa antes.
     for item in receta:
@@ -477,6 +495,7 @@ def registrar_merma(usuario, motivo, renglones, detalle=None,
     filas = []
     for producto, cantidad, lote in renglones:
         cantidad = exigir_cantidad_valida(producto, cantidad)
+        exigir_existencia(producto, cantidad, lote)
         filas.append(DetalleAjuste(id_producto=producto, id_lote=lote,
                                    cantidad=cantidad))
     ajuste = _crear_ajuste(TipoAjuste.MERMA, usuario, motivo, detalle, filas)
@@ -497,6 +516,7 @@ def registrar_traspaso(usuario, motivo, renglones, detalle=None,
     filas = []
     for origen, cantidad, destino, cantidad_destino, lote in renglones:
         cantidad = exigir_cantidad_valida(origen, cantidad)
+        exigir_existencia(origen, cantidad, lote)
         cantidad_destino = exigir_cantidad_valida(destino, cantidad_destino,
                                                   'La cantidad que entra')
         if destino.controla_vencimiento:
@@ -513,6 +533,53 @@ def registrar_traspaso(usuario, motivo, renglones, detalle=None,
     return ajuste
 
 
+def exigir_existencia(producto, cantidad, lote=None):
+    """Una merma o un traspaso no pueden sacar más de lo que hay.
+
+    Es la misma cuenta que hace el movimiento de stock al aprobar
+    (``MovimientoStock.save``), pero al CARGAR: antes, una merma de 500
+    botellas con 12 en la góndola se cargaba igual, quedaba pendiente y
+    reventaba recién cuando alguien la quería aprobar. A diferencia de la
+    venta, acá sí cuentan los lotes vencidos: tirarlos es el caso típico.
+    """
+    cantidad = Decimal(cantidad)
+    # Se lee de la base: el objeto que llega puede haberse cargado antes de
+    # la última venta o compra.
+    if lote is not None:
+        if lote.id_producto_id != producto.pk:
+            raise ValidationError(f'El lote indicado no es de "{producto}".')
+        en_lote = Lote.objects.values_list('stock_lote', flat=True).get(pk=lote.pk)
+        if cantidad > en_lote:
+            raise ValidationError(
+                f'En el lote {lote} de "{producto}" hay '
+                f'{producto.cantidad_con_unidad(en_lote)}: no pueden '
+                f'salir {producto.cantidad_con_unidad(cantidad)}.')
+        return
+    hay = Producto.objects.values_list('stock_actual', flat=True).get(pk=producto.pk)
+    if not producto.admite_negativo and cantidad > hay:
+        raise ValidationError(
+            f'De "{producto}" hay {producto.cantidad_con_unidad(hay)}: '
+            f'no pueden salir {producto.cantidad_con_unidad(cantidad)}.')
+
+
+def puede_aprobar_lo_propio(usuario):
+    """La Administradora (la dueña) aprueba lo que ella misma cargó; el
+    Encargado y el Operador, no (DD-67)."""
+    return usuario is not None and usuario.es_administrador
+
+
+def exigir_otra_persona(ajuste, autorizante):
+    """Control por oposición: quien carga un ajuste no lo aprueba, salvo
+    la Administradora (DD-67). Es la misma idea que la anulación de una
+    venta (DD-61): el que pide no es el que autoriza."""
+    if (ajuste.id_usuario_id == getattr(autorizante, 'pk', None)
+            and not puede_aprobar_lo_propio(autorizante)):
+        raise ValidationError(
+            f'Este ajuste ({ajuste.get_tipo_ajuste_display().lower()} '
+            f'N° {ajuste.pk}) lo cargaste vos: lo tiene que aprobar otra '
+            'persona con permiso para autorizar ajustes.')
+
+
 @transaction.atomic
 def aprobar(ajuste, autorizante, observacion=None):
     """Aprueba y RECIÉN AHÍ mueve el stock.
@@ -525,6 +592,7 @@ def aprobar(ajuste, autorizante, observacion=None):
     """
     ajuste = AjusteStock.objects.select_for_update().get(pk=ajuste.pk)
     _exigir_estado(ajuste, EstadoAjuste.PENDIENTE)
+    exigir_otra_persona(ajuste, autorizante)
     documento = {'id_ajuste': ajuste}
 
     for renglon in ajuste.detalles.select_related(

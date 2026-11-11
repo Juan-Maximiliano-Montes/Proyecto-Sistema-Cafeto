@@ -7,7 +7,8 @@
 #   * Adminer no se levanta (es una puerta de entrada a la base);
 #   * el código NO se monta: corre lo que quedó en la imagen;
 #   * gunicorn en lugar del servidor de desarrollo (DJANGO_DEBUG=False);
-#   * un servicio de respaldo diario de la base, a la carpeta ./respaldos.
+#   * un servicio de respaldo diario de la base, a la carpeta ./respaldos;
+#   * un servicio que pasa a histórico lo viejo el día 1 de cada mes (RPH).
 #
 # El acceso desde afuera del local (la dueña desde su casa) va por el
 # proxy inverso del NAS con HTTPS o por una VPN; nunca exponiendo el
@@ -46,3 +47,29 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # Pase a histórico (RPH, DD-68): el día 1 de cada mes, de madrugada. Usa
+  # la misma imagen que la aplicación porque el pase es un comando de Django
+  # (pasar_a_historico): familias, cortes y verificación, en una sola
+  # transacción.
+  historico:
+    image: proyecto-cafeto-web
+    container_name: cafeto_historico
+    restart: unless-stopped
+    working_dir: /opt/app
+    environment:
+      TZ: America/Argentina/Salta
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 5432
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+    entrypoint: ["sh", "docker/pasar_a_historico.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started

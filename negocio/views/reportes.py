@@ -1,13 +1,21 @@
 """Reportes: elegir el período y mirar, o bajarlo a Excel/PDF."""
-from datetime import date
+import logging
+from datetime import date, timedelta
 
 from django.shortcuts import render
 from django.utils import timezone
 
+from negocio.graficos import estilo_pedido, estilos_de, opciones_de_estilo
+from negocio.graficos import grafico as armar_grafico
 from negocio.reportes import CONSULTAS, REPORTES
 from nucleo.exportar import exportar
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
+
+logger = logging.getLogger(__name__)
+
+
+PERIODO_MAXIMO_DIAS = 5 * 366
 
 
 def _periodo(request):
@@ -22,6 +30,12 @@ def _periodo(request):
         hasta = hoy
     if desde > hasta:
         desde, hasta = hasta, desde
+    # Nada posterior a hoy ni un período de siglos (año 0001 a 9999 dejaba
+    # al gráfico sin poder dibujarse): como mucho, cinco años.
+    hasta = min(hasta, hoy)
+    desde = min(desde, hasta)
+    if (hasta - desde).days > PERIODO_MAXIMO_DIAS:
+        desde = hasta - timedelta(days=PERIODO_MAXIMO_DIAS)
     return desde, hasta
 
 
@@ -30,15 +44,38 @@ def _reporte(request):
     return next((r for r in REPORTES if r.clave == clave), REPORTES[0])
 
 
+def _grafico(reporte, columnas, filas, desde, hasta, estilo):
+    """El SVG, o None. Un gráfico que no se puede dibujar no tumba el
+    reporte: la tabla se sigue viendo y el error queda en el log."""
+    try:
+        return armar_grafico(reporte.clave, columnas, filas, desde, hasta, estilo)
+    except Exception:                                   # pragma: no cover
+        logger.exception('No se pudo dibujar el gráfico de %s', reporte.clave)
+        return None
+
+
 @requiere_permiso('ver_reportes', redirigir_a='home')
 def reportes(request):
     reporte = _reporte(request)
     desde, hasta = _periodo(request)
     columnas, filas, totales = CONSULTAS[reporte.clave](desde, hasta)
+    filas = list(filas)
+    permitidos = estilos_de(reporte.clave)
+    estilo = estilo_pedido(request, permitidos)
+    # El gráfico es otra vista de las MISMAS filas (pandas + matplotlib).
+    grafico = _grafico(reporte, columnas, filas, desde, hasta, estilo)
+    hoy = timezone.localdate()
     return render(request, 'negocio/reportes.html', {
         'reportes': REPORTES, 'reporte': reporte, 'desde': desde, 'hasta': hasta,
         'columnas': columnas, 'filas': filas, 'totales': totales,
         'sin_periodo': reporte.clave == 'stock',
+        'grafico': grafico, 'estilo': estilo,
+        'estilos': opciones_de_estilo(request, permitidos),
+        # Pidió torta y los datos no la admiten (una sola parte, o nada
+        # positivo): se dibuja en barras y se dice por qué.
+        'torta_no_aplica': bool(grafico) and estilo == 'torta'
+                           and 'data-estilo="torta"' not in grafico,
+        'ultimos_30': (hoy - timedelta(days=29), hoy),
     })
 
 
@@ -47,10 +84,14 @@ def exportar_reporte(request):
     reporte = _reporte(request)
     desde, hasta = _periodo(request)
     columnas, filas, totales = CONSULTAS[reporte.clave](desde, hasta)
-    if totales:
-        filas = list(filas) + [totales]
-    periodo = '' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
+    filas = list(filas)
     formato = request.GET.get('formato')
+    estilo = estilo_pedido(request, estilos_de(reporte.clave))
+    grafico = (_grafico(reporte, columnas, filas, desde, hasta, estilo)
+               if formato == 'pdf' else None)
+    if totales:
+        filas = filas + [totales]
+    periodo = '' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
     registrar_auditoria(request, 'EXPORTACION', 'REPORTE', modulo='NEGOCIO',
                         detalle=f'Exportó «{reporte.titulo}» {periodo}.'.strip())
-    return exportar(formato, reporte.titulo, columnas, filas, periodo)
+    return exportar(formato, reporte.titulo, columnas, filas, periodo, grafico=grafico)

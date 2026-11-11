@@ -138,7 +138,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                     <i class="bi bi-pencil"></i><span class="ms-1">Editar</span>
                 </button>
                 {% endif %}
-                {% if cfg.tiene_baja and puede_baja %}
+                {% if cfg.tiene_baja and puede_baja and not fila.no_se_da_de_baja %}
                 <form method="post" action="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_eliminar' fila.pk %}"
                       class="ms-auto form-confirmar" data-titulo="Dar de baja"
                       data-confirmar="¿Dar de baja «{{ fila }}»? Queda guardado y se puede reactivar cuando quieras."
@@ -165,10 +165,13 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
 </div>
 {% else %}
 <div class="vacio tarjeta">
-    <i class="bi {% if busqueda or request.GET %}bi-search{% else %}{{ cfg.icono }}{% endif %}"></i>
-    {% if busqueda or request.GET %}
+    <i class="bi {% if esperando or busqueda or request.GET %}bi-search{% else %}{{ cfg.icono }}{% endif %}"></i>
+    {% if esperando %}
+    <p class="mb-2">Escribí en el buscador para encontrar {{ cfg.plural }}, o elegí un filtro.</p>
+    <a href="{{ url_lista }}?todos=1" class="btn btn-secundario btn-sm"><i class="bi bi-list-ul me-1"></i>Ver todos</a>
+    {% elif busqueda or request.GET %}
     <p class="mb-2">No hay {{ cfg.plural }} que coincidan con la búsqueda.</p>
-    <a href="{{ url_lista }}" class="btn btn-secundario btn-sm">Ver todos</a>
+    <a href="{{ url_lista }}?todos=1" class="btn btn-secundario btn-sm">Ver todos</a>
     {% else %}
     <p class="mb-2">Todavía no hay {{ cfg.plural }} cargados.</p>
     {% if puede_crear %}<button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrear"><i class="bi bi-plus-lg me-1"></i>Cargar el primero</button>{% endif %}

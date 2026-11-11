@@ -72,6 +72,13 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       # En desarrollo los estáticos se sirven desde el código montado.
       CAFETO_ESTATICOS_CON_HASH: "False"
+      # Correo para los enlaces de clave. Vacío en desarrollo: los correos
+      # quedan como archivos en .correos/ (ver .env.example).
+      DJANGO_CORREO_SERVIDOR: ${DJANGO_CORREO_SERVIDOR:-}
+      DJANGO_CORREO_PUERTO: ${DJANGO_CORREO_PUERTO:-587}
+      DJANGO_CORREO_USUARIO: ${DJANGO_CORREO_USUARIO:-}
+      DJANGO_CORREO_CLAVE: ${DJANGO_CORREO_CLAVE:-}
+      DJANGO_CORREO_REMITENTE: ${DJANGO_CORREO_REMITENTE:-Sistema Cafeto <no-responder@cafeto.local>}
     depends_on:
       db:
         condition: service_healthy

@@ -14,7 +14,9 @@
     <div class="col-lg-5">
         {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
         {% if productos %}
-        <form method="post" class="tarjeta" novalidate>
+        <form method="post" class="tarjeta" novalidate
+              data-titulo="¿Cargamos la tanda?" data-aceptar="Sí, cargar"
+              data-confirmar="Se descuentan los ingredientes de la receta y entra el producto terminado. Revisá la cantidad: después no se puede deshacer.">
             {% csrf_token %}
             <input type="hidden" name="token_operacion" value="{{ token }}">
             <h2 class="subtitulo h5 mb-0">Nueva tanda</h2>

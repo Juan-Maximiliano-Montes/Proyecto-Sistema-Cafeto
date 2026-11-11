@@ -8,12 +8,15 @@
      data-tema-alternar         botón que cambia entre tema oscuro y claro
      data-lateral-abrir         botón que abre la barra lateral (celular)
      form[data-confirmar]       pide confirmación antes de enviar
+     form[data-acreedor]        exige proveedor o destinatario (uno solo)
      form.form-una-vez          confirma con un resumen y apaga el botón
      [data-formato=cuit|dni|telefono]   formatea mientras se tipea
      select[data-auto-enviar]   envía su formulario al cambiar
      .js-renglones              renglones de un formset (agregar/quitar)
      select.js-catalogo         combo con búsqueda por AJAX (Select2)
      [data-modal-auto]          modal que se abre al cargar la página
+     [data-parecidos]           al escribir o salir del campo avisa iguales o parecidos
+     .js-alta-rapida            "+" que despliega el alta del dato padre
    ========================================================================== */
 (function () {
     'use strict';
@@ -127,17 +130,24 @@
     }
 
     // form[data-confirmar="pregunta"]: una acción que cambia el estado.
+    // La pregunta también puede ir en el botón (button[data-confirmar]) cuando
+    // el formulario tiene dos salidas distintas, como Aprobar y Rechazar.
     document.addEventListener('submit', function (evento) {
         var form = evento.target;
-        if (!form.matches('form[data-confirmar]') || form.dataset.confirmado === '1') { return; }
+        if (!form.matches || !form.matches('form')) { return; }
+        var boton = evento.submitter && evento.submitter.form === form ? evento.submitter : null;
+        var origen = boton && boton.dataset.confirmar ? boton : form;
+        if (!origen.dataset.confirmar || form.dataset.confirmado === '1') { return; }
         evento.preventDefault();
         Cafeto.confirmar({
-            titulo: form.dataset.titulo || '¿Confirmás?',
-            texto: form.dataset.confirmar,
-            aceptar: form.dataset.aceptar,
-            peligro: form.dataset.peligro === '1'
+            titulo: origen.dataset.titulo || '¿Confirmás?',
+            texto: origen.dataset.confirmar,
+            aceptar: origen.dataset.aceptar,
+            peligro: origen.dataset.peligro === '1'
         }).then(function (ok) {
-            if (ok) { form.dataset.confirmado = '1'; form.requestSubmit(); }
+            if (!ok) { return; }
+            form.dataset.confirmado = '1';
+            if (boton) { form.requestSubmit(boton); } else { form.requestSubmit(); }
         });
     }, true);
 
@@ -171,6 +181,38 @@
         });
         return filas.length ? '<table class="table table-sm mb-0"><tbody>' + filas.join('') + '</tbody></table>' : '';
     }
+
+    // form[data-acreedor]: un egreso se le paga a un proveedor O a otro
+    // destinatario, uno solo (Egreso.clean, DD-25.1). El servidor ya lo
+    // rechaza, pero volviendo a la lista: la ventana se cerraba y había que
+    // cargar todo de nuevo. Acá se avisa al lado del campo, antes de enviar.
+    // Va en la fase de captura para frenar también el resumen de confirmación.
+    document.addEventListener('submit', function (evento) {
+        var form = evento.target;
+        if (!form.matches || !form.matches('[data-acreedor]')) { return; }
+        var proveedor = form.querySelector('[name="proveedor"]');
+        var destino = form.querySelector('[name="destinatario"]');
+        if (!destino) { return; }
+        var hayProveedor = !!(proveedor && proveedor.value);
+        var hayDestino = destino.value.trim() !== '';
+        var columna = destino.closest('.col-md-6, .col-12') || destino.parentNode;
+        var viejo = columna.querySelector(':scope > .error-campo.js-acreedor');
+        if (viejo) { viejo.remove(); }
+        destino.classList.remove('is-invalid');
+        if (hayProveedor !== hayDestino) { return; }
+        evento.preventDefault();
+        evento.stopImmediatePropagation();
+        var error = document.createElement('p');
+        error.className = 'error-campo js-acreedor';
+        error.setAttribute('role', 'alert');
+        error.textContent = hayProveedor
+            ? 'Se le paga a un proveedor o a otro destinatario, no a los dos: dejá uno solo.'
+            : (proveedor ? 'Indicá a quién se le paga: elegí el proveedor o escribí el destinatario.'
+                         : 'Indicá a quién se le paga.');
+        columna.appendChild(error);
+        destino.classList.add('is-invalid');
+        destino.focus();
+    }, true);
 
     document.addEventListener('submit', function (evento) {
         var form = evento.target;
@@ -338,7 +380,10 @@
                 width: '100%',
                 placeholder: combo.find('option[value=""]').text() || 'Buscá un producto',
                 allowClear: true,
-                dropdownParent: combo.closest('.modal-body, .modal-content, body').first(),
+                // El contenido del modal y no su cuerpo: el cuerpo tiene
+                // scroll, y Select2 ubicaba la lista sin descontar lo que se
+                // había bajado (aparecía lejos del campo).
+                dropdownParent: combo.closest('.modal-content, body').first(),
                 ajax: {
                     url: combo.data('catalogo'),
                     dataType: 'json',
@@ -431,7 +476,9 @@
                 if (primero) { primero.focus(); }
             });
         });
-        document.querySelectorAll('[data-modal-auto]').forEach(function (modal) {
+        // Sólo una ventana (.modal) se abre sola: el atributo en otro
+        // elemento —un botón— dejaba el fondo oscuro y la pantalla trabada.
+        document.querySelectorAll('.modal[data-modal-auto]').forEach(function (modal) {
             bootstrap.Modal.getOrCreateInstance(modal).show();
         });
         // Abre un fragmento remoto en un modal: [data-remoto="url"][data-destino="#id"]
@@ -448,5 +495,230 @@
             bootstrap.Modal.getOrCreateInstance(modal).show();
             Cafeto.cargar(boton.dataset.remoto, cuerpo);
         });
+    });
+    // ---------------------------------------------------------------------
+    //  Panel lateral: las áreas que la persona abrió quedan abiertas en la
+    //  pantalla siguiente (el área de la pantalla actual se abre siempre).
+    // ---------------------------------------------------------------------
+    var CLAVE_MENU = 'cafeto.menu.abiertos';
+    function areasAbiertas() {
+        try { return JSON.parse(leer(CLAVE_MENU) || '[]'); } catch (e) { return []; }
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        var abiertas = areasAbiertas();
+        document.querySelectorAll('details.lateral-desplegable').forEach(function (area) {
+            if (abiertas.indexOf(area.dataset.grupo) >= 0) { area.open = true; }
+            area.addEventListener('toggle', function () {
+                var lista = areasAbiertas().filter(function (g) { return g !== area.dataset.grupo; });
+                if (area.open) { lista.push(area.dataset.grupo); }
+                guardar(CLAVE_MENU, JSON.stringify(lista));
+            });
+        });
+    });
+
+    // ---------------------------------------------------------------------
+    //  Ayudas de carga (DD-70)
+    //  1. Al salir de un campo vigilado (nombre, CUIT, DNI...) se pregunta
+    //     si ya hay algo igual o parecido, y se muestra al lado.
+    //  2. El "+" de un campo que apunta a otra tabla despliega esa alta en
+    //     la misma pantalla; al guardar, queda elegida en el campo.
+    // ---------------------------------------------------------------------
+    function columnaDe(campo) {
+        return campo.closest('.col-md-6, .col-12') || campo.parentNode;
+    }
+    function escapar(texto) {
+        var div = document.createElement('div');
+        div.textContent = texto == null ? '' : String(texto);
+        return div.innerHTML;
+    }
+    function quitarAviso(campo) {
+        var viejo = columnaDe(campo).querySelector(':scope > .aviso-parecidos');
+        if (viejo) { viejo.remove(); }
+    }
+    function elegirEnCampo(idCampo, id, texto) {
+        var select = document.getElementById(idCampo);
+        if (!select) { return false; }
+        var opcion = Array.prototype.find.call(select.options, function (o) { return o.value === String(id); });
+        if (!opcion) {
+            opcion = new Option(texto, id, true, true);
+            select.add(opcion);
+        }
+        select.value = String(id);
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        if (window.jQuery && window.jQuery(select).data('select2')) { window.jQuery(select).trigger('change'); }
+        return true;
+    }
+    function cerrarAltaRapida(panel) {
+        panel.hidden = true;
+        panel.innerHTML = '';
+    }
+
+    // Se consulta al salir del campo y también tras una pausa al escribir.
+    // Antes se usaba el evento "change", que el navegador NO dispara si el
+    // texto final es igual al que había al entrar: borrar "Leche" y volver
+    // a escribir "Leche" borraba el aviso y no lo volvía a pedir.
+    var PAUSA_PARECIDOS = 700;
+    function esCampoParecidos(nodo) {
+        return nodo && nodo.matches && nodo.matches('[data-parecidos]');
+    }
+    document.addEventListener('input', function (evento) {
+        var campo = evento.target;
+        if (!esCampoParecidos(campo)) { return; }
+        quitarAviso(campo);
+        delete campo.dataset.parecidosMostrado;
+        clearTimeout(campo._esperaParecidos);
+        campo._esperaParecidos = setTimeout(function () { consultarParecidos(campo); }, PAUSA_PARECIDOS);
+    });
+    document.addEventListener('focusout', function (evento) {
+        var campo = evento.target;
+        if (!esCampoParecidos(campo)) { return; }
+        clearTimeout(campo._esperaParecidos);
+        consultarParecidos(campo);
+    });
+    function consultarParecidos(campo) {
+        var valor = (campo.value || '').trim();
+        // Ya está a la vista el aviso de este mismo texto: no se repite.
+        if (campo.dataset.parecidosMostrado === valor &&
+                columnaDe(campo).querySelector(':scope > .aviso-parecidos')) { return; }
+        quitarAviso(campo);
+        delete campo.dataset.parecidosMostrado;
+        if (valor.length < 2) { return; }
+        var dentroDeAlta = campo.closest('.alta-rapida');
+        var excluir = '';
+        var formulario = dentroDeAlta ? null : campo.closest('form');
+        if (formulario) {
+            var m = (formulario.getAttribute('action') || '').match(/\/(\d+)\/editar\/?$/);
+            if (m) { excluir = m[1]; }
+        }
+        var url = campo.dataset.parecidos + '&valor=' + encodeURIComponent(valor) +
+            (excluir ? '&excluir=' + excluir : '');
+        fetch(url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (datos) {
+                if (!datos || !datos.resultados || !datos.resultados.length) { return; }
+                if ((campo.value || '').trim() !== valor) { return; }   // ya cambió
+                var exacto = campo.dataset.parecidosModo === 'exacto' ||
+                    datos.resultados.some(function (r) { return r.igual; });
+                var aviso = document.createElement('div');
+                aviso.className = 'aviso-parecidos aviso ' + (exacto ? 'aviso-error' : 'aviso-aviso') + ' py-2 mt-2 mb-0 small';
+                aviso.setAttribute('role', 'status');
+                var titulo = exacto
+                    ? 'Ya existe ' + escapar(datos.singular) + ' con ese dato:'
+                    : '¿Es alguno de estos? Ya hay parecidos cargados:';
+                var html = '<i class="bi ' + (exacto ? 'bi-exclamation-octagon-fill' : 'bi-lightbulb-fill') + '"></i><div>' +
+                    '<div class="mb-1">' + titulo + '</div><div class="d-flex flex-wrap gap-1">';
+                datos.resultados.forEach(function (r) {
+                    var etiqueta = escapar(r.texto) + (r.baja ? ' <span class="text-tenue">· dado de baja</span>' : '');
+                    if (dentroDeAlta) {
+                        html += '<button type="button" class="btn btn-sm btn-secundario js-usar-existente" data-id="' + r.id +
+                            '" data-texto="' + escapar(r.texto) + '">' + etiqueta + '</button>';
+                    } else {
+                        html += '<a class="btn btn-sm btn-secundario" href="' + escapar(r.url) + '">' + etiqueta + '</a>';
+                    }
+                });
+                html += '</div><div class="mt-1 text-secondary">' + (dentroDeAlta
+                    ? 'Tocá el que corresponda y queda elegido, sin cargarlo de nuevo.'
+                    : 'Si es uno de estos, no hace falta cargarlo: tocalo para verlo' +
+                      (datos.resultados.some(function (r) { return r.baja; }) ? ' o reactivarlo.' : '.')) + '</div></div>';
+                aviso.innerHTML = html;
+                quitarAviso(campo);           // dos consultas cruzadas: queda una sola
+                columnaDe(campo).appendChild(aviso);
+                campo.dataset.parecidosMostrado = valor;
+            })
+            .catch(function () { /* el aviso es una ayuda: sin red, se guarda y avisa el servidor */ });
+    }
+
+    function marcarCamposDelPanel(panel) {
+        // No son del formulario de afuera: así no viajan con él ni aparecen
+        // en su resumen de confirmación.
+        panel.querySelectorAll('input, select, textarea').forEach(function (c) {
+            c.setAttribute('form', 'alta-rapida-sin-formulario');
+        });
+    }
+    function abrirAltaRapida(boton) {
+        var destino = boton.dataset.destino;
+        var panel = document.querySelector('.alta-rapida-panel[data-para="' + destino + '"]');
+        if (!panel) { return; }
+        if (!panel.hidden) { cerrarAltaRapida(panel); return; }
+        panel.dataset.url = boton.dataset.url;
+        panel.hidden = false;
+        panel.innerHTML = '<p class="text-secondary small mt-2 mb-0"><span class="spinner-border spinner-border-sm me-1"></span>Cargando…</p>';
+        fetch(boton.dataset.url, { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.text(); })
+            .then(function (html) {
+                panel.innerHTML = html;
+                marcarCamposDelPanel(panel);
+                var primero = panel.querySelector('input:not([type=hidden]), select, textarea');
+                if (primero) { primero.focus(); }
+            })
+            .catch(function () {
+                panel.innerHTML = '<div class="aviso aviso-error small mt-2 mb-0"><i class="bi bi-wifi-off"></i><span>No se pudo abrir el alta. Probá de nuevo.</span></div>';
+            });
+    }
+    function guardarAltaRapida(panel) {
+        var datos = new FormData();
+        panel.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (c) {
+            if ((c.type === 'checkbox' || c.type === 'radio') && !c.checked) { return; }
+            datos.append(c.name, c.value);
+        });
+        var csrf = panel.closest('form') && panel.closest('form').querySelector('[name=csrfmiddlewaretoken]');
+        if (csrf) { datos.append('csrfmiddlewaretoken', csrf.value); }
+        datos.append('rapido', '1');
+        var boton = panel.querySelector('.js-alta-rapida-guardar');
+        if (boton) { boton.disabled = true; }
+        fetch(panel.dataset.url, { method: 'POST', body: datos, credentials: 'same-origin',
+                                   headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) {
+                var tipo = r.headers.get('content-type') || '';
+                return (tipo.indexOf('json') >= 0 ? r.json() : r.text()).then(function (cuerpo) { return { r: r, cuerpo: cuerpo }; });
+            })
+            .then(function (res) {
+                if (res.r.ok && res.cuerpo && res.cuerpo.ok) {
+                    var destino = panel.dataset.para;
+                    elegirEnCampo(destino, res.cuerpo.id, res.cuerpo.texto);
+                    cerrarAltaRapida(panel);
+                    var campo = document.getElementById(destino);
+                    if (campo) {
+                        var ok = document.createElement('div');
+                        ok.className = 'form-text text-exito';
+                        ok.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + escapar(res.cuerpo.mensaje) + ' Quedó elegido.';
+                        panel.insertAdjacentElement('beforebegin', ok);
+                        setTimeout(function () { ok.remove(); }, 6000);
+                    }
+                } else if (typeof res.cuerpo === 'string') {
+                    panel.innerHTML = res.cuerpo;      // el alta con sus errores
+                    marcarCamposDelPanel(panel);
+                } else {
+                    throw new Error('respuesta inesperada');
+                }
+            })
+            .catch(function () {
+                if (boton) { boton.disabled = false; }
+                var error = document.createElement('div');
+                error.className = 'aviso aviso-error small mt-2 mb-0';
+                error.innerHTML = '<i class="bi bi-wifi-off"></i><span>No se pudo guardar. Revisá la conexión y probá de nuevo.</span>';
+                panel.appendChild(error);
+            });
+    }
+    document.addEventListener('click', function (evento) {
+        var abrir = evento.target.closest('.js-alta-rapida');
+        if (abrir) { evento.preventDefault(); abrirAltaRapida(abrir); return; }
+        var panel = evento.target.closest('.alta-rapida-panel');
+        if (!panel) { return; }
+        if (evento.target.closest('.js-alta-rapida-cancelar')) { cerrarAltaRapida(panel); return; }
+        if (evento.target.closest('.js-alta-rapida-guardar')) { guardarAltaRapida(panel); return; }
+        var existente = evento.target.closest('.js-usar-existente');
+        if (existente) {
+            elegirEnCampo(panel.dataset.para, existente.dataset.id, existente.dataset.texto);
+            cerrarAltaRapida(panel);
+        }
+    });
+    // Enter dentro del alta rápida guarda esa alta, no el formulario de afuera.
+    document.addEventListener('keydown', function (evento) {
+        if (evento.key !== 'Enter') { return; }
+        var panel = evento.target.closest && evento.target.closest('.alta-rapida-panel');
+        if (!panel || evento.target.tagName === 'TEXTAREA') { return; }
+        evento.preventDefault();
+        guardarAltaRapida(panel);
     });
 })();

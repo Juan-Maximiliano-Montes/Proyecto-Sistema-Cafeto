@@ -1,0 +1,14 @@
+Hola, {{ persona.nombre }}:
+
+{% if proposito == 'activar' %}Tenés una cuenta en el Sistema Cafeto de {{ negocio.nombre_fantasia|default:"Cafeto Las Lomitas" }}. Tu usuario es {{ persona.nombre_usuario }} (también podés entrar con tu DNI).
+
+Para elegir tu clave, abrí este enlace:{% else %}Alguien (seguramente vos) pidió recuperar la clave de tu cuenta {{ persona.nombre_usuario }}.
+
+Para elegir una clave nueva, abrí este enlace:{% endif %}
+
+{{ enlace }}
+
+El enlace sirve una sola vez y vence en {% if proposito == 'activar' %}48 horas{% else %}30 minutos{% endif %}.
+
+{% if proposito == 'activar' %}Si no esperabas este correo, avisale a quien administra el sistema.{% else %}Si no fuiste vos, ignorá este correo: tu clave sigue siendo la misma.{% endif %}
+Nadie del local te va a pedir tu clave, ni por teléfono ni por mensaje.

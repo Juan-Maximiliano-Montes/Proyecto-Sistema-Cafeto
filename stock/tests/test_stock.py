@@ -311,9 +311,8 @@ class AjustesTest(Base):
         stock.cargar_conteo(conteo, self.gaseosa, 9)   # teórico 10
         # entre el conteo y la aprobación se venden 3
         merma = stock.registrar_merma(self.operador, 'ROTURA',
-                                      [(self.gaseosa, 3, None)],
-                                      aprobar_ya=True)
-        self.assertIsNotNone(merma)
+                                      [(self.gaseosa, 3, None)])
+        stock.aprobar(merma, self.encargada)      # la aprueba otra persona (DD-67)
         stock.enviar_conteo(conteo)
         stock.aprobar(conteo, self.encargada)
         self.gaseosa.refresh_from_db()
@@ -340,8 +339,9 @@ class AjustesTest(Base):
         sachet = f.producto('Leche sachet', prov=self.prov, precio='1800')
         f.comprar(self.operador, self.prov, (sachet, 4, '1500'))
         traspaso = stock.registrar_traspaso(
-            self.encargada, 'USO_EN_CAFETERIA',
-            [(sachet, 2, self.leche, D('2'), None)], aprobar_ya=True)
+            self.operador, 'USO_EN_CAFETERIA',
+            [(sachet, 2, self.leche, D('2'), None)])
+        traspaso = stock.aprobar(traspaso, self.encargada)   # otra persona (DD-67)
         sachet.refresh_from_db()
         self.leche.refresh_from_db()
         self.assertEqual(sachet.stock_actual, 2)

@@ -14,9 +14,10 @@ from nucleo import idempotencia
 from nucleo.formularios import leer_numero
 from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_permiso
-from seguridad.servicios import registrar_auditoria
+from seguridad.servicios import instantanea, registrar_auditoria
 from stock import servicios
 from stock.models import Produccion, Producto, TipoProducto
+from nucleo.templatetags.cafeto import pesos
 
 
 def _texto(error):
@@ -56,8 +57,9 @@ def producciones(request):
         else:
             registrar_auditoria(
                 request, 'ALTA', 'PRODUCCION', instancia=produccion,
+                nuevo=instantanea(produccion),
                 detalle=f'Tanda de {producto.cantidad_con_unidad(produccion.cantidad)} '
-                        f'de {producto} a $ {produccion.costo_unitario} c/u.')
+                        f'de {producto} a {pesos(produccion.costo_unitario)} c/u.')
             messages.success(request, f'Listo: entraron {producto.cantidad_con_unidad(produccion.cantidad)} de {producto}.')
             return redirect('stock:producciones')
 

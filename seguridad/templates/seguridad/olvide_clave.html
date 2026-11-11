@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block titulo %}Cafeto · Recuperar la clave{% endblock %}
+
+{% block pantalla %}
+<main class="acceso">
+    <div class="acceso-caja">
+        <img class="acceso-logo logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="Cafeto Las Lomitas">
+        <img class="acceso-logo logo-para-claro" src="{% static 'cafeto/marca/cafeto-isologotipo-positivo.svg' %}" alt="Cafeto Las Lomitas">
+
+        <div class="card">
+            {% if enviado %}
+            <h1 class="titulo-pantalla mb-2">Revisá tu correo</h1>
+            <p class="text-secondary">Si esos datos son de una cuenta activa, te mandamos un enlace al correo que figura en tu ficha. Abrilo y elegí tu clave nueva.</p>
+            <ul class="small text-secondary ps-3">
+                <li>El enlace vence en 30 minutos y sirve una sola vez.</li>
+                <li>Si no lo ves, mirá en Spam o Correo no deseado.</li>
+                <li>Si no te llega, pedile a quien administra el sistema que te restablezca la clave.</li>
+            </ul>
+            <a href="{% url 'seguridad:login' %}" class="btn btn-primary w-100 mt-2"><i class="bi bi-arrow-left me-1"></i>Volver al ingreso</a>
+            {% else %}
+            <h1 class="titulo-pantalla mb-1">¿Te olvidaste la clave?</h1>
+            <p class="text-secondary mb-4">Escribí tu DNI o tu usuario y te mandamos un enlace a tu correo para que elijas una nueva.</p>
+            <form method="post" novalidate>
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label class="form-label" for="{{ form.identificador.id_for_label }}">{{ form.identificador.label }}</label>
+                    {{ form.identificador }}
+                    {% if form.identificador.errors %}<p class="error-campo">{{ form.identificador.errors|striptags }}</p>{% endif %}
+                </div>
+                <button type="submit" class="btn btn-primary btn-xl w-100" data-requiere-red><i class="bi bi-envelope me-1"></i> Mandarme el enlace</button>
+            </form>
+            <p class="small text-tenue mt-3 mb-0">Si sos el titular, tu clave se recupera en el equipo del local, con el comando <code>recuperar_titular</code>.</p>
+            <a href="{% url 'seguridad:login' %}" class="d-block text-center small mt-3">Volver al ingreso</a>
+            {% endif %}
+        </div>
+    </div>
+</main>
+{% endblock %}

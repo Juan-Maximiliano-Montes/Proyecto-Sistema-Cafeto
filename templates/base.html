@@ -46,15 +46,31 @@
                     <i class="bi bi-house-door"></i><span>Inicio</span>
                 </a>
             </div>
+            {% comment %}
+            Cada área es un desplegable (<details>): funciona sin JavaScript y
+            con el teclado. El área de la pantalla actual viene abierta; las
+            que la persona abrió a mano las recuerda cafeto.js.
+            {% endcomment %}
             {% for grupo in menu_sistema %}
+            {% if grupo.items|length == 1 %}{% with item=grupo.items.0 %}
             <div class="lateral-grupo">
-                <div class="lateral-titulo eyebrow">{{ grupo.titulo }}</div>
+                <a class="lateral-link{% if item.activo %} activo{% endif %}" href="{{ item.url }}"{% if item.activo %} aria-current="page"{% endif %}>
+                    <i class="bi {{ item.icono }}"></i><span>{{ item.titulo }}</span>
+                </a>
+            </div>
+            {% endwith %}{% else %}
+            <details class="lateral-grupo lateral-desplegable" data-grupo="{{ grupo.titulo|slugify }}"{% if grupo.activo %} open data-actual{% endif %}>
+                <summary class="lateral-titulo">
+                    <i class="bi {{ grupo.icono }}"></i><span>{{ grupo.titulo }}</span>
+                    <i class="bi bi-chevron-down lateral-flecha" aria-hidden="true"></i>
+                </summary>
                 {% for item in grupo.items %}
                 <a class="lateral-link{% if item.activo %} activo{% endif %}" href="{{ item.url }}"{% if item.activo %} aria-current="page"{% endif %}>
                     <i class="bi {{ item.icono }}"></i><span>{{ item.titulo }}</span>
                 </a>
                 {% endfor %}
-            </div>
+            </details>
+            {% endif %}
             {% endfor %}
         </nav>
         <div class="lateral-pie small text-tenue">

@@ -19,6 +19,7 @@ El **gasto de caja** es el caso del día a día: se compra hielo o se le
 paga al plomero con plata del cajón. Es un egreso pagado en el acto con
 efectivo de un turno abierto.
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -74,6 +75,37 @@ def _limpiar(texto, largo):
     return (texto or '').strip()[:largo] or None
 
 
+def _concepto(texto):
+    """El concepto dice QUÉ se paga ("Luz de octubre"): sin él, el pago no
+    se distingue de otro del mismo tipo. Antes faltaba y salía el aviso
+    genérico de Django "Este campo no puede ser nulo", sin decir cuál."""
+    concepto = _limpiar(texto, 100)
+    if concepto is None or len(concepto) < 3:
+        raise ValidationError('Escribí el concepto: qué se paga (por ejemplo, "Luz de octubre").')
+    return concepto
+
+
+# Una obligación puede anotarse ya vencida (la boleta de luz que venció la
+# semana pasada y todavía no se pagó): es deuda real y tiene que figurar
+# como atrasada. Hasta 30 días; más atrás es casi siempre un año mal
+# tipeado, y si no lo es se anota con vencimiento de hoy. Para adelante,
+# hasta un año: no hay boleta que venza más lejos.
+VENCIMIENTO_ATRAS = timedelta(days=30)
+VENCIMIENTO_ADELANTE = timedelta(days=365)
+
+
+def _exigir_vencimiento_razonable(fecha):
+    hoy = timezone.localdate()
+    if fecha < hoy - VENCIMIENTO_ATRAS:
+        raise ValidationError(
+            f'¿Vence el {fecha:%d/%m/%Y}? Es hace más de {VENCIMIENTO_ATRAS.days} '
+            'días: revisá el año. Si es una deuda vieja sin pagar, anotala con '
+            'vencimiento de hoy.')
+    if fecha > hoy + VENCIMIENTO_ADELANTE:
+        raise ValidationError(
+            f'¿Vence el {fecha:%d/%m/%Y}? Es dentro de más de un año: revisá el año.')
+
+
 @transaction.atomic
 def registrar_obligacion(tipo_egreso, concepto, monto, fecha_vencimiento,
                          destinatario=None, proveedor=None, compra=None,
@@ -81,10 +113,11 @@ def registrar_obligacion(tipo_egreso, concepto, monto, fecha_vencimiento,
     """Anota lo que hay que pagar, antes de pagarlo (DD-32)."""
     if fecha_vencimiento is None:
         raise ValidationError('Indicá cuándo vence.')
+    _exigir_vencimiento_razonable(fecha_vencimiento)
     egreso = Egreso(
         id_tipo_egreso=tipo_egreso, id_proveedor=proveedor,
         destinatario=_limpiar(destinatario, 60), id_compra=compra,
-        concepto=_limpiar(concepto, 100), monto=Decimal(monto),
+        concepto=_concepto(concepto), monto=Decimal(monto),
         fecha_vencimiento=fecha_vencimiento,
         comprobante=_limpiar(comprobante, 50), estado_pago='PENDIENTE_PAGO')
     egreso.full_clean(validate_constraints=False)
@@ -128,7 +161,7 @@ def registrar_egreso(tipo_egreso, medio_pago, monto, concepto,
         id_tipo_egreso=tipo_egreso, id_proveedor=proveedor,
         destinatario=_limpiar(destinatario, 60), id_compra=compra,
         id_medio_pago=medio_pago, monto=Decimal(monto),
-        concepto=_limpiar(concepto, 100), fecha_egreso=hoy,
+        concepto=_concepto(concepto), fecha_egreso=hoy,
         comprobante=_limpiar(comprobante, 50),
         estado_pago=('ACREDITADO' if medio_pago.afecta_caja
                      else 'PENDIENTE_ACREDITACION'),
@@ -160,6 +193,14 @@ def conciliar(egreso, acreditado, fecha, referencia_bancaria=None):
     if egreso.estado_pago != 'PENDIENTE_ACREDITACION':
         raise ValidationError(
             f'El egreso {egreso.pk} no está pendiente de acreditación.')
+    if acreditado:
+        if fecha > timezone.localdate():
+            raise ValidationError(
+                'La fecha de acreditación no puede ser un día que todavía no llegó.')
+        if egreso.fecha_egreso and fecha < egreso.fecha_egreso:
+            raise ValidationError(
+                f'El pago se hizo el {egreso.fecha_egreso:%d/%m/%Y}: no pudo '
+                'acreditarse antes de esa fecha.')
     egreso.estado_pago = 'ACREDITADO' if acreditado else 'RECHAZADO'
     egreso.fecha_acreditacion = fecha if acreditado else None
     egreso.referencia_bancaria = _limpiar(referencia_bancaria, 40)

@@ -19,6 +19,9 @@ app_name = 'seguridad'
 urlpatterns = [
     # --- Sesión ---
     path('login/', views.login_view, name='login'),
+    path('olvide-clave/', views.olvide_clave, name='olvide_clave'),
+    path('elegir-clave/<str:proposito>/<str:token>/', views.elegir_clave,
+         name='elegir_clave'),
     path('logout/', views.logout_view, name='logout'),
     path('cambiar-clave/', views.cambiar_clave_view, name='cambiar_clave'),
 

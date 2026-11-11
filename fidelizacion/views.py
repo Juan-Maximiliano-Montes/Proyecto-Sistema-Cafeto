@@ -100,6 +100,7 @@ BENEFICIOS = registrar(ConfiguracionCRUD(
 
 CLIENTES = registrar(ConfiguracionCRUD(
     clave='clientes',
+    a_pedido=True,
     modelo=Cliente,
     formulario=forms.ClienteForm,
     singular='cliente', plural='clientes', articulo='el',

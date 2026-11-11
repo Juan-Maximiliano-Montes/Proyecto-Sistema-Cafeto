@@ -40,6 +40,7 @@
     </div>
     {% if logo %}<img src="{{ logo }}" alt="">{% endif %}
 </header>
+{% if grafico %}<div class="grafico" style="margin: 0 0 6mm; color: #333;">{{ grafico|safe }}</div>{% endif %}
 <table>
     <thead>
         <tr>{% for c in columnas %}<th{% if c.formato == 'numero' or c.formato == 'dinero' %} class="num"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr>

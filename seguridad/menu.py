@@ -147,4 +147,7 @@ def armar(usuario, ruta_actual=''):
     for grupo in menu:
         for item in grupo['items']:
             item['activo'] = item is activo
+        # El grupo de la pantalla actual se dibuja abierto; los demás,
+        # plegados (el panel lateral ya no llega hasta abajo).
+        grupo['activo'] = any(item['activo'] for item in grupo['items'])
     return menu

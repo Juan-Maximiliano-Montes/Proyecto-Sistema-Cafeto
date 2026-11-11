@@ -38,6 +38,7 @@ PROVINCIAS = registrar(ConfiguracionCRUD(
 
 LOCALIDADES = registrar(ConfiguracionCRUD(
     clave='localidades',
+    a_pedido=True,
     modelo=Localidad,
     formulario=LocalidadForm,
     singular='localidad', plural='localidades', articulo='la',

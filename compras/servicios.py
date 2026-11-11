@@ -17,6 +17,7 @@ vencimientos distintos— y entra el stock, todo en una transacción. Si un
 renglón falla no queda media compra cargada ni stock sin su factura.
 """
 from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -47,6 +48,7 @@ CENTAVO = Decimal('0.01')
 #  LA ORDEN
 # ===========================================================================
 @transaction.atomic
+@transaction.atomic
 def emitir_orden(proveedor, usuario, items):
     """Crea el borrador con sus renglones.
 
@@ -59,6 +61,19 @@ def emitir_orden(proveedor, usuario, items):
         raise ValidationError(
             f'"{proveedor}" es un proveedor de servicios: no se le piden '
             'productos.')
+    vistos = set()
+    for item in items:
+        producto = item['producto']
+        if producto.borrado_logico:
+            raise ValidationError(f'"{producto}" está dado de baja: no se puede pedir.')
+        if producto.tipo_producto not in TIPOS_CON_PROVEEDOR:
+            raise ValidationError(
+                f'"{producto}" se elabora en el local: no se le pide a un proveedor.')
+        if producto.pk in vistos:
+            raise ValidationError(
+                f'"{producto}" está dos veces en el pedido: dejá un solo '
+                'renglón con la cantidad total.')
+        vistos.add(producto.pk)
     orden = OrdenCompra.objects.create(
         id_proveedor=proveedor, id_usuario=usuario, estado_orden='PENDIENTE')
     for item in items:
@@ -119,6 +134,10 @@ class RenglonRecibido:
     lotes: list = field(default_factory=list)
 
 
+# Ni las conservas duran tanto: más allá de esto es un año mal tipeado.
+VENCIMIENTO_MAXIMO = timedelta(days=3660)
+
+
 def _validar_renglon(renglon, fecha_compra):
     producto = renglon.producto
     if producto.borrado_logico:
@@ -150,6 +169,13 @@ def _validar_renglon(renglon, fecha_compra):
                 f'Un lote de "{producto}" vence el '
                 f'{vencidos[0].fecha_vencimiento:%d/%m/%Y}, antes de la fecha '
                 'de la compra: la mercadería no se recibe vencida.')
+        lejanos = [l for l in renglon.lotes if l.fecha_vencimiento
+                   and l.fecha_vencimiento > fecha_compra + VENCIMIENTO_MAXIMO]
+        if lejanos:
+            raise ValidationError(
+                f'Un lote de "{producto}" vence el '
+                f'{lejanos[0].fecha_vencimiento:%d/%m/%Y}: es dentro de más de '
+                '10 años. Revisá el año.')
         numeros = [(l.numero_lote or '').strip().lower()
                    for l in renglon.lotes if l.numero_lote]
         if len(numeros) != len(set(numeros)):
@@ -159,6 +185,10 @@ def _validar_renglon(renglon, fecha_compra):
         raise ValidationError(
             f'"{producto}" no controla vencimiento: no lleva lotes.')
     return cantidad, costo
+
+
+# Cuánto para atrás puede estar fechado un comprobante que se carga hoy.
+DIAS_DE_ATRASO_ADMITIDOS = timedelta(days=30)
 
 
 @transaction.atomic
@@ -181,7 +211,7 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
         raise ValidationError('Elegí el tipo de comprobante.')
     if orden is not None:
         orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
-        if (orden.estado_orden != 'EMITIDA'
+        if (not orden.admite_recepcion
                 or orden.id_proveedor_id != proveedor.pk):
             raise ValidationError(
                 f'La orden {orden.pk} no está emitida o es de otro '
@@ -192,6 +222,30 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
     if fecha > hoy:
         raise ValidationError(
             'La fecha de la compra no puede ser posterior a hoy.')
+    # La fecha de la factura puede ser anterior a hoy por dos motivos
+    # legítimos: el proveedor la emitió antes de entregar, o se carga con
+    # atraso. Más de 30 días para atrás ya no es eso: la mercadería entraría
+    # al stock y al costo de un mes cuyos reportes y cierres ya se miraron.
+    if fecha < hoy - DIAS_DE_ATRASO_ADMITIDOS:
+        raise ValidationError(
+            f'La factura es del {fecha:%d/%m/%Y}: tiene más de '
+            f'{DIAS_DE_ATRASO_ADMITIDOS.days} días. Revisá la fecha; si de '
+            'verdad es una factura vieja, cargala con la fecha de hoy y '
+            'aclaralo en la orden o con el proveedor.')
+    if fecha_vencimiento_pago is not None and fecha_vencimiento_pago < fecha:
+        raise ValidationError(
+            'El pago no puede vencer antes de la fecha de la factura.')
+    # Las reglas ck_compras_comprobante de la base, dichas antes de chocar
+    # contra ella: un 0 terminaba en "ya está cargada", que no era cierto.
+    try:
+        punto, numero = int(punto_venta), int(numero_comprobante)
+    except (TypeError, ValueError):
+        raise ValidationError(
+            'El punto de venta y el número del comprobante van en números.')
+    if not 1 <= punto <= 99999:
+        raise ValidationError('El punto de venta va de 1 a 99999.')
+    if not 1 <= numero <= 99999999:
+        raise ValidationError('El número del comprobante va de 1 a 99999999.')
 
     vistos = set()
     validados = []
@@ -234,10 +288,17 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
     try:
         with transaction.atomic():
             compra.save()
-    except IntegrityError:
+    except IntegrityError as error:
+        # Sólo el índice único es "ya está cargada" (dos personas cargando
+        # la misma factura a la vez). Cualquier otro rechazo de la base no
+        # es un duplicado, y decir que lo era confundía.
+        if 'uq_compras_comprobante' in str(error):
+            raise ValidationError(
+                f'La {compra.get_tipo_comprobante_display()} '
+                f'{compra.numero_formateado} de {proveedor} ya está cargada.')
         raise ValidationError(
-            f'La {compra.get_tipo_comprobante_display()} '
-            f'{compra.numero_formateado} de {proveedor} ya está cargada.')
+            'La compra no cumple una regla del sistema: revisá las fechas, '
+            'el número y los importes.')
 
     documento = {'id_compra': compra}
     for renglon, cantidad, costo in validados:
@@ -268,6 +329,28 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
         Producto.objects.filter(pk=producto.pk).update(precio_costo=costo)
 
     if orden is not None:
-        orden.estado_orden = 'RECEPCIONADA'
+        # La planilla de control (DFD 3): si lo recibido no coincide con lo
+        # pedido, la orden queda CON_DIFERENCIAS para que la Administradora
+        # lo resuelva con el proveedor (DD-64).
+        orden.estado_orden = ('CON_DIFERENCIAS' if orden.hay_diferencias()
+                              else 'RECEPCIONADA')
         orden.save(update_fields=['estado_orden'])
     return compra
+
+
+@transaction.atomic
+def cerrar_con_diferencias(orden, observacion):
+    """La Administradora acordó la diferencia con el proveedor (nota de
+    crédito, faltante que no se repone, sobrante que se queda): la orden se
+    da por recibida y deja de esperar mercadería (DD-64)."""
+    orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
+    if orden.estado_orden != 'CON_DIFERENCIAS':
+        raise ValidationError(
+            f'La orden {orden.pk} no tiene diferencias pendientes.')
+    observacion = (observacion or '').strip()
+    if len(observacion) < 5:
+        raise ValidationError(
+            'Contá cómo se resolvió la diferencia con el proveedor.')
+    orden.estado_orden = 'RECEPCIONADA'
+    orden.save(update_fields=['estado_orden'])
+    return orden

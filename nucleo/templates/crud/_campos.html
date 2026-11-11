@@ -8,7 +8,10 @@ va a la derecha del control.
 
 Si la entidad tiene renglones hijos (``cfg.formset``) van abajo de todo,
 en el mismo formulario: se cargan y se guardan junto con el padre.
-{% endcomment %}
+
+Un campo que apunta a otra tabla que el usuario puede dar de alta lleva un
+"+" al lado: despliega esa alta acá mismo, sin salir (DD-70).
+{% endcomment %}{% load crud_extras %}
 
 {% if form.non_field_errors %}
 <div class="aviso aviso-error" role="alert">
@@ -21,7 +24,7 @@ en el mismo formulario: se cargan y se guardan junto con el padre.
 
 <div class="row g-3">
 {% for campo in form.visible_fields %}
-    <div class="{% if campo.field.widget.input_type == 'checkbox' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}">
+    <div class="{% if campo.field.widget.input_type == 'checkbox' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}"{% if campo.field.visible_si %} data-visible-si="{{ campo.field.visible_si }}"{% endif %}>
         {% if campo.field.widget.input_type == 'checkbox' %}
             <div class="form-check">
                 {{ campo }}
@@ -34,7 +37,15 @@ en el mismo formulario: se cargan y se guardan junto con el padre.
                 {{ campo.label }}
                 {% if campo.field.required %}<span class="text-peligro" aria-hidden="true">*</span>{% endif %}
             </label>
-            {{ campo }}
+            {% with url_alta=campo|alta_rapida %}{% if url_alta %}
+            <div class="d-flex gap-2 align-items-start">
+                <div class="flex-grow-1">{{ campo }}</div>
+                <button type="button" class="btn btn-secundario js-alta-rapida" data-url="{{ url_alta }}"
+                        data-destino="{{ campo.id_for_label }}" title="{{ campo|alta_titulo }} sin salir de acá"
+                        aria-label="{{ campo|alta_titulo }}"><i class="bi bi-plus-lg"></i></button>
+            </div>
+            <div class="alta-rapida-panel" data-para="{{ campo.id_for_label }}" hidden></div>
+            {% else %}{{ campo }}{% endif %}{% endwith %}
         {% endif %}
 
         {% if campo.help_text %}

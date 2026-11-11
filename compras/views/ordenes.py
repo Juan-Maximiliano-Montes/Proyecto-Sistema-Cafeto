@@ -19,8 +19,9 @@ from nucleo import idempotencia
 from nucleo.formularios import leer_numero
 from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_permiso
-from seguridad.servicios import registrar_auditoria
+from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock.models import Producto
+from nucleo.templatetags.cafeto import pesos
 
 
 def _texto(error):
@@ -75,7 +76,8 @@ def nueva_orden(request):
             contexto['error'] = _texto(error)
         else:
             registrar_auditoria(request, 'ALTA', 'ORDEN DE COMPRA', instancia=orden,
-                                detalle=f'Orden N° {orden.pk} a {proveedor} por $ {orden.total_orden}.')
+                                nuevo=foto(orden, renglones=orden.detalles.all()),
+                                detalle=f'Orden N° {orden.pk} a {proveedor} por {pesos(orden.total_orden)}.')
             messages.success(request, f'Orden N° {orden.pk} guardada como borrador.')
             return redirect('compras:orden', pk=orden.pk)
     contexto['token'] = request.POST.get('token_operacion') or idempotencia.emitir(request)
@@ -87,6 +89,8 @@ def orden(request, pk):
     orden = get_object_or_404(OrdenCompra.objects.select_related('id_proveedor', 'id_usuario'), pk=pk)
     return render(request, 'compras/orden.html', {
         'orden': orden,
+        'diferencias': (orden.diferencias()
+                        if orden.estado_orden in ('CON_DIFERENCIAS', 'RECEPCIONADA') else None),
         'renglones': orden.detalles.select_related('id_producto'),
         'compras': orden.compras.all(),
     })
@@ -96,19 +100,28 @@ def orden(request, pk):
 @requiere_permiso('gestionar_ordenes', redirigir_a='home')
 def cambiar_estado(request, pk):
     orden = get_object_or_404(OrdenCompra, pk=pk)
+    antes = instantanea(orden)
     accion = request.POST.get('accion')
     try:
         if accion == 'enviar':
             orden = servicios.enviar_orden(orden)
         elif accion == 'cancelar':
             orden = servicios.cancelar_orden(orden)
+        elif accion == 'cerrar_diferencias':
+            orden = servicios.cerrar_con_diferencias(
+                orden, request.POST.get('observacion'))
         else:
             raise ValidationError('Acción desconocida.')
     except ValidationError as error:
         messages.error(request, _texto(error))
     else:
-        registrar_auditoria(request, accion.upper(), 'ORDEN DE COMPRA', instancia=orden,
-                            detalle=f'Orden N° {orden.pk}: {orden.get_estado_orden_display()}.')
+        operacion = {'enviar': 'ENVIO', 'cancelar': 'CANCELACION',
+                     'cerrar_diferencias': 'CIERRE CON DIFERENCIAS'}[accion]
+        detalle = f'Orden N° {orden.pk}: {orden.get_estado_orden_display()}.'
+        if accion == 'cerrar_diferencias':
+            detalle += ' ' + request.POST.get('observacion', '').strip()
+        registrar_auditoria(request, operacion, 'ORDEN DE COMPRA', instancia=orden,
+                            anterior=antes, nuevo=instantanea(orden), detalle=detalle)
         messages.success(request, f'Orden N° {orden.pk}: {orden.get_estado_orden_display().lower()}.')
     return redirect('compras:orden', pk=pk)
 

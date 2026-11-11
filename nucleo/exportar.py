@@ -162,7 +162,8 @@ def _ruta_estatica(relativa):
     return f'file://{ruta}' if ruta else ''
 
 
-def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar_pdf.html'):
+def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar_pdf.html',
+          grafico=None):
     from weasyprint import HTML
 
     renglones = []
@@ -177,6 +178,7 @@ def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar
         'comercio': _encabezado_del_comercio(),
         'titulo': titulo,
         'descripcion': descripcion,
+        'grafico': grafico,               # SVG ya armado (reportes, Hito 5)
         'generado': timezone.localtime(),
         'columnas': columnas,
         'renglones': renglones,
@@ -190,7 +192,7 @@ def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar
                       _nombre_de_archivo(titulo, 'pdf'))
 
 
-def exportar(formato, titulo, columnas, filas, descripcion=''):
+def exportar(formato, titulo, columnas, filas, descripcion='', grafico=None):
     if formato == 'pdf':
-        return a_pdf(titulo, columnas, filas, descripcion)
+        return a_pdf(titulo, columnas, filas, descripcion, grafico=grafico)
     return a_excel(titulo, columnas, filas, descripcion)

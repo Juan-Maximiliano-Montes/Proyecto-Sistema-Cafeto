@@ -1,0 +1,7 @@
+{% comment %}
+Un valor de la foto de auditoría. Si es una lista (los renglones o los
+pagos de una venta), va como tabla interna; si no, tal cual.
+{% endcomment %}{% if valor.es_subtabla %}<div class="table-responsive"><table class="table table-sm table-borderless small mb-0 subtabla-actividad">
+<thead><tr>{% for columna in valor.columnas %}<th class="fw-normal text-secondary text-nowrap">{{ columna }}</th>{% endfor %}</tr></thead>
+<tbody>{% for fila in valor.filas %}<tr>{% for dato in fila %}<td>{{ dato }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table></div>{% else %}{{ valor }}{% endif %}

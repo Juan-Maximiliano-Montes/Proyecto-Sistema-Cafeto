@@ -20,26 +20,32 @@ dice que no se pudo, sin inventar un ticket.
 """
 import json
 import uuid
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
+from django.db.models import Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from negocio.models import ParametrosNegocio
 from nucleo.busqueda import filtrar_por_texto
-from nucleo.formularios import leer_numero
+from nucleo.formularios import leer_numero, sobran_decimales
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import (
     autorizar_con_clave,
+    foto,
+    instantanea,
     registrar_acceso_denegado,
     registrar_auditoria,
 )
-from stock.models import TIPOS_VENDIBLES, Producto, Rubro
+from stock.models import TIPOS_VENDIBLES, Producto
 from ventas import puesto
 from ventas import servicios as ventas
 from ventas.models import MedioPago, MotivoDescuento, Venta
+from nucleo.templatetags.cafeto import pesos
 
 POR_PAGINA = 24
 MAXIMO_DE_RENGLONES = 60
@@ -82,10 +88,6 @@ def mostrador(request):
         '-afecta_caja', 'nombre_medio_pago')
     return render(request, 'ventas/mostrador.html', {
         'turno': turno,
-        'rubros': Rubro.objects.filter(borrado_logico=False,
-                                       productos__tipo_producto__in=TIPOS_VENDIBLES,
-                                       productos__borrado_logico=False)
-                               .distinct().order_by('nombre_rubro'),
         'medios': [{'id': m.pk, 'nombre': m.nombre_medio_pago,
                     'recargo': str(m.recargo_porcentaje or 0),
                     'efectivo': m.afecta_caja} for m in medios],
@@ -98,6 +100,23 @@ def mostrador(request):
     })
 
 
+# Lo que se prepara en el local (cafetería) y lo que se revende (minisuper).
+TIPOS_DE_CAFETERIA = ('ELABORADO', 'PRODUCIDO', 'COMBO')
+DIAS_MAS_VENDIDOS = 30
+TOPE_MAS_VENDIDOS = 12
+
+
+def _mas_vendidos(productos):
+    """Los que más salieron en los últimos 30 días (por unidades), que es
+    lo que la cajera necesita a mano: una sola consulta, sin paginar."""
+    desde = timezone.localdate() - timedelta(days=DIAS_MAS_VENDIDOS)
+    return list(productos.filter(
+        renglones_venta__id_venta__estado_venta='COMPLETADA',
+        renglones_venta__id_venta__fecha_venta__gte=desde)
+        .annotate(vendido=Sum('renglones_venta__cantidad'))
+        .order_by('-vendido', 'nombre_producto')[:TOPE_MAS_VENDIDOS])
+
+
 @require_GET
 @requiere_permiso('vender', redirigir_a='ventas:caja')
 def catalogo(request):
@@ -105,17 +124,26 @@ def catalogo(request):
                  .filter(borrado_logico=False, tipo_producto__in=TIPOS_VENDIBLES)
                  .select_related('id_marca', 'id_rubro')
                  .order_by('nombre_producto'))
-    rubro = request.GET.get('rubro', '')
-    if rubro.isdigit():
-        productos = productos.filter(id_rubro_id=rubro)
     busqueda = request.GET.get('q', '').strip()
+    sector = request.GET.get('sector', '')
     por_codigo = productos.filter(codigo_barras=busqueda) if busqueda else None
     if por_codigo is not None and por_codigo.exists():
         productos = por_codigo          # lo leyó el lector de códigos
-    else:
+    elif busqueda:
+        # Al buscar se busca en todo, sin importar la pestaña.
         productos = filtrar_por_texto(
             productos, ('nombre_producto', 'id_marca__nombre_marca',
                         'id_rubro__nombre_rubro'), busqueda)
+    elif sector == 'cafeteria':
+        productos = productos.filter(tipo_producto__in=TIPOS_DE_CAFETERIA)
+    elif sector == 'minisuper':
+        productos = productos.exclude(tipo_producto__in=TIPOS_DE_CAFETERIA)
+    elif sector == 'mas_vendidos':
+        vendidos = _mas_vendidos(productos)
+        if vendidos:
+            return JsonResponse({'productos': [_producto_json(p) for p in vendidos],
+                                 'hay_mas': False, 'pagina': 1})
+        # Local recién abierto, sin ventas todavía: se muestra el catálogo.
     try:
         pagina = max(1, int(request.GET.get('pagina', 1)))
     except ValueError:
@@ -149,12 +177,16 @@ def _leer_pedido(request):
         if not isinstance(renglon, dict) or renglon.get('producto') not in productos:
             raise ValidationError('Uno de los productos del ticket ya no existe.')
         cantidad = leer_numero(renglon.get('cantidad'), 3)
+        if sobran_decimales(renglon.get('cantidad'), 3):
+            raise ValidationError(
+                f'La cantidad de "{productos[renglon["producto"]]}" admite hasta '
+                '3 decimales (un gramo).')
         if cantidad is None or cantidad <= 0:
             raise ValidationError(
                 f'La cantidad de "{productos[renglon["producto"]]}" no es válida.')
         descuento = leer_numero(renglon.get('descuento') or '0', 2)
         if descuento is None:
-            raise ValidationError('Uno de los descuentos no es un número.')
+            raise ValidationError('Uno de los descuentos no es un número (o tiene más de 2 decimales).')
         items.append(ventas.Item(
             productos[renglon['producto']], cantidad, descuento,
             renglon.get('motivo') or None,
@@ -315,6 +347,7 @@ def cobrar(request):
             raise ValidationError('El ticket no tiene un identificador válido. Recargá la página.')
         autorizante = _autorizante(request, datos, 'autorizar el descuento')
         cliente, beneficios = _fidelizacion(datos)
+        cliente_antes = instantanea(cliente) if cliente is not None else None
         venta, cotizacion = ventas.registrar(
             turno, request.usuario_actual, items, pagos, token=token,
             autorizante=autorizante, cliente=cliente, beneficios=beneficios)
@@ -324,13 +357,14 @@ def cobrar(request):
         # Sólo la venta nueva: la repetida (mismo token) ya quedó asentada.
         registrar_auditoria(
             request, 'ALTA', 'VENTA', instancia=venta,
-            detalle=(f'Venta N° {venta.pk} por $ {venta.total_venta}'
+            nuevo=foto(venta, renglones=venta.detalles.all(), pagos=venta.pagos.all()),
+            detalle=(f'Venta N° {venta.pk} por {pesos(venta.total_venta)}'
                      + (f', descuento autorizado por {autorizante}'
                         if autorizante is not None and cotizacion.pide_autorizacion
                         else '') + '.'))
     puntos = None
     if cotizacion is not None and cotizacion.cliente is not None:
-        puntos = _asentar_fidelizacion(request, venta, cotizacion)
+        puntos = _asentar_fidelizacion(request, venta, cotizacion, cliente_antes)
     return JsonResponse({
         'ok': True,
         'puntos': puntos,
@@ -342,13 +376,17 @@ def cobrar(request):
     })
 
 
-def _asentar_fidelizacion(request, venta, cotizacion):
+def _asentar_fidelizacion(request, venta, cotizacion, cliente_antes=None):
     """La auditoría del DFD 9 (canjes y ascenso) y lo que se le avisa al
     cliente: los puntos que ganó, los que le quedan y su categoría nueva."""
+    from fidelizacion.models import Cliente
+
     cliente = cotizacion.cliente
     for beneficio in cotizacion.canjes:
+        canje = venta.movimientos_puntos.filter(id_beneficio=beneficio).first()
         registrar_auditoria(
-            request, 'CANJE', 'BENEFICIO', instancia=beneficio,
+            request, 'CANJE', 'BENEFICIO', instancia=canje or beneficio,
+            nuevo=instantanea(canje or beneficio),
             modulo='FIDELIZACION',
             detalle=(f'{cliente} canjeó «{beneficio}» por '
                      f'{beneficio.puntos_requeridos} puntos en la venta '
@@ -357,6 +395,8 @@ def _asentar_fidelizacion(request, venta, cotizacion):
     if resultado.ascendio:
         registrar_auditoria(
             request, 'RECATEGORIZACION', 'CLIENTE', instancia=cliente,
+            anterior=cliente_antes,
+            nuevo=instantanea(Cliente.objects.get(pk=cliente.pk)),
             detalle=(f'{cliente} pasa de {resultado.categoria_anterior} a '
                      f'{resultado.categoria_nueva} con la venta N° {venta.pk}.'))
     return {
@@ -414,6 +454,7 @@ def alta_cliente(request):
     cliente = formulario.save()
     registrar_auditoria(
         request, 'ALTA', 'CLIENTE', instancia=cliente,
+        nuevo=instantanea(cliente),
         detalle=f'Alta de {cliente} desde el mostrador (QR {cliente.qr_cliente}).')
     return JsonResponse({
         'ok': True, 'cliente': _cliente_json(cliente),

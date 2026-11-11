@@ -103,11 +103,12 @@
                 <select name="medio" id="medio" class="form-select">
                     {% for m in medios %}<option value="{{ m.pk }}"{% if datos.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
                 </select>
+                {% if a_devolver %}<p class="form-text mb-0">Se devuelve por el mismo medio con que se pagó: lo cobrado con tarjeta se anula en el posnet y no sale del cajón.{% for m, total in con_recargo %} Con {{ m }} se devuelven {{ total|pesos }}, con su parte del recargo.{% endfor %}</p>{% endif %}
                 {% endif %}
                 {% if a_devolver %}
                 <div class="row g-2">
-                    <div class="col-6"><input type="text" name="autoriza_usuario" class="form-control" placeholder="Usuario o DNI de quien autoriza" autocomplete="off" aria-label="Usuario de quien autoriza"></div>
-                    <div class="col-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Su clave" autocomplete="off" aria-label="Clave de quien autoriza"></div>
+                    <div class="col-6"><input type="text" name="autoriza_usuario" class="form-control" placeholder="Usuario o DNI de quien autoriza" autocomplete="off" data-lpignore="true" data-1p-ignore aria-label="Usuario de quien autoriza"></div>
+                    <div class="col-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Su clave" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore aria-label="Clave de quien autoriza"></div>
                 </div>
                 {% endif %}
                 {% endif %}
@@ -115,7 +116,9 @@
                 <div class="d-flex gap-2 flex-wrap">
                     <button type="submit" name="accion" value="calcular" class="btn btn-secundario"><i class="bi bi-calculator me-1"></i>Calcular</button>
                     {% if calculado and turno %}
-                    <button type="submit" name="accion" value="confirmar" class="btn btn-primary flex-grow-1" data-requiere-red><i class="bi bi-check2-circle me-1"></i>Confirmar el cambio</button>
+                    <button type="submit" name="accion" value="confirmar" class="btn btn-primary flex-grow-1" data-requiere-red
+                            data-titulo="¿Confirmamos el cambio?" data-aceptar="Sí, confirmar"
+                            data-confirmar="Lo devuelto vuelve al stock, lo entregado sale, y la diferencia de plata se mueve en la caja. No se puede deshacer."><i class="bi bi-check2-circle me-1"></i>Confirmar el cambio</button>
                     {% endif %}
                 </div>
             </div>

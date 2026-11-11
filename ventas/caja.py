@@ -34,6 +34,7 @@ from ventas.models import (
     TipoMovimientoCaja,
     TurnoCaja,
 )
+from nucleo.templatetags.cafeto import pesos
 
 CERO = Decimal('0.00')
 
@@ -120,9 +121,11 @@ def registrar_movimiento(turno, usuario, tipo, monto, concepto, **documento):
             'cerrado: no admite movimientos de dinero.')
     monto = Decimal(monto)
     if monto < 0 and saldo(turno) + monto < 0:
+        # Sin decir cuánto hay: con ese número cualquiera averiguaba el
+        # saldo pidiendo un retiro absurdo, y el arqueo dejaba de ser ciego.
         raise ValidationError(
-            f'No hay suficiente efectivo en {turno.id_caja_registradora}: '
-            f'hay $ {saldo(turno)} y se quieren sacar $ {-monto}.')
+            f'No hay suficiente efectivo en {turno.id_caja_registradora} para '
+            f'sacar {pesos(-monto)}.')
     concepto = (concepto or '').strip()
     if not concepto:
         raise ValidationError('Indicá el concepto del movimiento.')
@@ -212,15 +215,15 @@ def cerrar(turno, usuario, monto_contado, observacion=None,
 
     if diferencia != 0 and not observacion:
         raise ValidationError(
-            f'La caja cierra con una diferencia de $ {diferencia}: contá a '
+            f'La caja cierra con una diferencia de {pesos(diferencia)}: contá a '
             'qué se debe.')
     if supervisor is not None and supervisor.pk == usuario.pk:
         raise ValidationError(
             'Quien supervisa el cierre tiene que ser otra persona.')
     if abs(diferencia) > tolerancia and supervisor is None:
         raise ValidationError(
-            f'La diferencia de $ {diferencia} supera lo tolerado '
-            f'($ {tolerancia}): el cierre lo tiene que supervisar alguien '
+            f'La diferencia de {pesos(diferencia)} supera lo tolerado '
+            f'({pesos(tolerancia)}): el cierre lo tiene que supervisar alguien '
             'con permiso.')
 
     if supervisor is not None:

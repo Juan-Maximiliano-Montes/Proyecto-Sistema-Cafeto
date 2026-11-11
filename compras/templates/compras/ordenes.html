@@ -22,7 +22,7 @@
     <a href="{% url 'compras:orden' o.pk %}" class="tarjeta text-reset">
         <div class="tarjeta-cabeza">
             <div class="min-w-0"><h2 class="tarjeta-titulo">Orden N° {{ o.pk }}</h2><p class="tarjeta-sub">{{ o.id_proveedor }}</p></div>
-            <span class="insignia {% if o.estado_orden == 'EMITIDA' %}insignia-aviso{% elif o.estado_orden == 'RECEPCIONADA' %}insignia-exito{% elif o.estado_orden == 'CANCELADA' %}insignia-peligro{% else %}insignia-neutra{% endif %}">{{ o.get_estado_orden_display }}</span>
+            <span class="insignia {% if o.estado_orden == 'EMITIDA' or o.estado_orden == 'CON_DIFERENCIAS' %}insignia-aviso{% elif o.estado_orden == 'RECEPCIONADA' %}insignia-exito{% elif o.estado_orden == 'CANCELADA' %}insignia-peligro{% else %}insignia-neutra{% endif %}">{{ o.get_estado_orden_display }}</span>
         </div>
         <dl class="tarjeta-datos"><dt>Fecha</dt><dd>{{ o.fecha_orden|date:"d/m/Y" }}</dd><dt>Total</dt><dd class="monto">{{ o.total_orden|pesos }}</dd></dl>
     </a>

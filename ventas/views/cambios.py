@@ -22,12 +22,14 @@ from django.urls import reverse
 
 from nucleo.formularios import leer_numero
 from seguridad.decorators import requiere_permiso
-from seguridad.servicios import autorizar_con_clave, registrar_auditoria
+from seguridad.servicios import autorizar_con_clave, foto, instantanea, registrar_auditoria
+from fidelizacion.models import Cliente
 from stock.models import Producto
 from ventas import cambios as servicio
 from ventas.anulacion import motivo_de as anulacion_motivo
 from ventas import puesto
 from ventas.models import MedioPago, MotivoCambio, Venta
+from nucleo.templatetags.cafeto import pesos
 
 MAXIMO_ENTREGADOS = 5
 
@@ -72,6 +74,10 @@ def _leer(request, venta):
             raise ValidationError(f'La cantidad de "{producto}" no es válida.')
         entregados.append(servicio.Entregado(producto, cantidad))
     return devueltos, entregados
+
+
+def _con_recargo(venta, medio):
+    return venta.pagos.filter(id_medio_pago=medio, recargo_porcentaje__gt=0).exists()
 
 
 def _filas_entrega(request):
@@ -129,6 +135,20 @@ def cambios(request):
                          'entregado': entregado, 'saldo': saldo,
                          'a_devolver': -saldo if saldo < 0 else Decimal('0'),
                          'a_cobrar': saldo if saldo > 0 else Decimal('0')})
+        # Se devuelve por el mismo medio con que se pagó; se cobra en un
+        # solo pago (DD-65, DD-66).
+        if saldo < 0:
+            contexto['medios'] = servicio.medios_de_reintegro(venta)
+            contexto['con_recargo'] = []
+            for m in contexto['medios']:
+                if _con_recargo(venta, m):
+                    try:
+                        contexto['con_recargo'].append(
+                            (m, servicio.reintegro(venta, m, -saldo)))
+                    except ValidationError:
+                        pass   # se avisa al confirmar, con el medio elegido
+        elif saldo > 0:
+            contexto['medios'] = contexto['medios'].filter(cantidad_cuotas=1)
         if accion != 'confirmar':
             return render(request, 'ventas/cambios.html', contexto)
 
@@ -136,18 +156,24 @@ def cambios(request):
             raise ValidationError('La caja de este dispositivo no tiene un turno abierto.')
         medio = None
         if saldo:
-            medio = MedioPago.objects.filter(pk=request.POST.get('medio') or 0,
-                                             borrado_logico=False).first()
+            medio = contexto['medios'].filter(pk=request.POST.get('medio') or 0).first()
+            if medio is None:
+                raise ValidationError(
+                    'Elegí con qué medio se ' + ('cobra.' if saldo > 0 else
+                                                 'devuelve: el mismo con que se pagó.'))
         autorizante = None
         if saldo < 0:
+            a_devolver = servicio.reintegro(venta, medio, -saldo)
             autorizante = autorizar_con_clave(
                 request, request.POST.get('autoriza_usuario'),
                 request.POST.get('autoriza_clave'), 'autorizar_devolucion',
-                para=f'devolver $ {-saldo} al cliente')
+                para=f'devolver {pesos(a_devolver)} al cliente')
         try:
             token = uuid.UUID(contexto['token'])
         except ValueError:
             raise ValidationError('El formulario venció. Volvé a buscar la venta.')
+        cliente_antes = (instantanea(Cliente.objects.get(pk=venta.id_cliente_id))
+                         if venta.id_cliente_id else None)
         cambio = servicio.registrar(
             turno, request.usuario_actual, venta, request.POST.get('motivo'),
             devueltos, entregados, request.POST.get('detalle_motivo'),
@@ -158,14 +184,15 @@ def cambios(request):
 
     registrar_auditoria(
         request, 'ALTA', 'CAMBIO', instancia=cambio,
+        nuevo=foto(cambio, renglones=cambio.detalles.all()),
         detalle=(f'Cambio N° {cambio.pk} de la venta N° {venta.pk}: '
-                 f'{cambio.get_motivo_display()}. Devuelto $ {cambio.importe_devuelto}, '
-                 f'cobrado $ {cambio.importe_cobrado}'
+                 f'{cambio.get_motivo_display()}. Devuelto {pesos(cambio.importe_devuelto)}, '
+                 f'cobrado {pesos(cambio.importe_cobrado)}'
                  + (f'; autorizó {cambio.id_usuario_autorizante}' if cambio.id_usuario_autorizante else '')
                  + '.'))
     reverso = getattr(cambio, 'reverso_puntos', None)
     if reverso is not None and reverso.hubo:
-        cliente = venta.id_cliente
+        cliente = Cliente.objects.get(pk=venta.id_cliente_id)
         partes = []
         if reverso.acumulacion:
             partes.append(f'se descuentan {reverso.acumulacion} punto(s) de la compra devuelta')
@@ -174,14 +201,19 @@ def cambios(request):
         texto = '; '.join(partes)
         registrar_auditoria(
             request, 'REVERSO DE PUNTOS', 'CLIENTE', instancia=cliente,
+            anterior=cliente_antes, nuevo=instantanea(cliente),
             detalle=(f'{cliente}: {texto} (venta N° {venta.pk}, cambio N° {cambio.pk}). '
                      f'Disponibles: {reverso.disponibles}.'))
         messages.info(request, f'Puntos de {cliente.nombre_cliente} {cliente.apellido_cliente}: '
                                f'{texto}. Le quedan {reverso.disponibles} disponibles.')
-    if cambio.importe_devuelto:
-        messages.success(request, f'Cambio N° {cambio.pk} registrado. Devolvé $ {cambio.importe_devuelto} al cliente.')
+    if cambio.importe_devuelto and cambio.id_medio_pago.afecta_caja:
+        messages.success(request, f'Cambio N° {cambio.pk} registrado. Devolvé {pesos(cambio.importe_devuelto)} al cliente.')
+    elif cambio.importe_devuelto:
+        messages.success(request, f'Cambio N° {cambio.pk} registrado. Hacé la devolución de '
+                                  f'{pesos(cambio.importe_devuelto)} por {cambio.id_medio_pago} '
+                                  '(en el posnet o la cuenta): no sale del cajón.')
     elif cambio.importe_cobrado:
-        messages.success(request, f'Cambio N° {cambio.pk} registrado. Cobrale $ {cambio.importe_cobrado} al cliente.')
+        messages.success(request, f'Cambio N° {cambio.pk} registrado. Cobrale {pesos(cambio.importe_cobrado)} al cliente.')
     else:
         messages.success(request, f'Cambio N° {cambio.pk} registrado, sin diferencia de dinero.')
     return redirect('ventas:cambios')

@@ -39,6 +39,7 @@ from nucleo.validaciones import (
     validar_cuit,
     validar_telefono,
 )
+from nucleo.templatetags.cafeto import pesos
 
 
 # ===========================================================================
@@ -262,7 +263,7 @@ class Proveedor(ConSelloDeModificacion,
         motivos = []
 
         abiertas = OrdenCompra.objects.filter(
-            id_proveedor=self, estado_orden__in=('PENDIENTE', 'EMITIDA')
+            id_proveedor=self, estado_orden__in=('PENDIENTE', 'EMITIDA', 'CON_DIFERENCIAS')
         ).count()
         if abiertas:
             motivos.append(
@@ -344,10 +345,16 @@ class TipoEgreso(Maestra):
 #  COMPRAS
 # ===========================================================================
 class OrdenCompra(SinBajaFisica, models.Model):
-    """Pedido al proveedor. Ciclo PENDIENTE → EMITIDA → RECEPCIONADA (DD-44)."""
+    """Pedido al proveedor. Ciclo PENDIENTE → EMITIDA → RECEPCIONADA (DD-44).
+
+    Si lo recibido no coincide con lo pedido, la orden queda
+    CON_DIFERENCIAS hasta que llegue el resto o la Administradora la cierre
+    con la diferencia acordada con el proveedor (DD-64).
+    """
 
     ESTADOS = (
         ('PENDIENTE', 'Pendiente'), ('EMITIDA', 'Emitida'),
+        ('CON_DIFERENCIAS', 'Recibida con diferencias'),
         ('RECEPCIONADA', 'Recepcionada'), ('CANCELADA', 'Cancelada'),
     )
 
@@ -370,7 +377,8 @@ class OrdenCompra(SinBajaFisica, models.Model):
     # proveedor y sólo se recepciona o se cancela (DD-44).
     TRANSICIONES = {
         'PENDIENTE': {'EMITIDA', 'CANCELADA'},
-        'EMITIDA': {'RECEPCIONADA', 'CANCELADA'},
+        'EMITIDA': {'RECEPCIONADA', 'CON_DIFERENCIAS', 'CANCELADA'},
+        'CON_DIFERENCIAS': {'RECEPCIONADA'},
         'RECEPCIONADA': set(),
         'CANCELADA': set(),
     }
@@ -413,8 +421,8 @@ class OrdenCompra(SinBajaFisica, models.Model):
         constraints = [
             CheckEnBase(
                 check=CheckSQL(
-                    "estado_orden IN ('PENDIENTE','EMITIDA','RECEPCIONADA',"
-                    "'CANCELADA')"),
+                    "estado_orden IN ('PENDIENTE','EMITIDA','CON_DIFERENCIAS',"
+                    "'RECEPCIONADA','CANCELADA')"),
                 name='ck_ordenes_estado'),
             CheckEnBase(
                 check=CheckSQL('total_orden >= 0'), name='ck_ordenes_total'),
@@ -425,6 +433,42 @@ class OrdenCompra(SinBajaFisica, models.Model):
 
     def __str__(self):
         return f'Orden {self.pk} · {self.id_proveedor}'
+
+    @property
+    def admite_recepcion(self):
+        return self.estado_orden in ('EMITIDA', 'CON_DIFERENCIAS')
+
+    def diferencias(self):
+        """La planilla de control: lo pedido contra lo recibido.
+
+        Una fila por producto (los pedidos y los que llegaron sin pedirse),
+        con lo recibido sumado de todas las compras de esta orden.
+        ``diferencia`` < 0 es un faltante; > 0, un sobrante.
+        """
+        from django.db.models import Sum
+
+        from stock.models import Producto
+
+        pedido = {d.id_producto_id: d for d in
+                  self.detalles.select_related('id_producto')}
+        recibido = dict(
+            DetalleCompra.objects.filter(id_compra__id_orden_compra=self)
+            .values_list('id_producto').annotate(t=Sum('cantidad_recibida')))
+        filas = []
+        for pk in list(pedido) + [p for p in recibido if p not in pedido]:
+            renglon = pedido.get(pk)
+            producto = (renglon.id_producto if renglon is not None
+                        else Producto.objects.get(pk=pk))
+            cantidad_pedida = renglon.cantidad_pedida if renglon else Decimal('0')
+            cantidad_recibida = recibido.get(pk) or Decimal('0')
+            filas.append({
+                'producto': producto, 'pedido': cantidad_pedida,
+                'recibido': cantidad_recibida,
+                'diferencia': cantidad_recibida - cantidad_pedida})
+        return filas
+
+    def hay_diferencias(self):
+        return any(f['diferencia'] for f in self.diferencias())
 
 
 class DetalleOrdenCompra(models.Model):
@@ -755,7 +799,26 @@ class Egreso(SinBajaFisica, models.Model):
             saldo = compra.total_compra - otros
             raise ValidationError({'monto': (
                 f'La compra {compra.numero_formateado} tiene un saldo de '
-                f'$ {saldo}: no se le puede imputar $ {self.monto}.')})
+                f'{pesos(saldo)}: no se le puede imputar {pesos(self.monto)}.')})
+
+    def clean(self):
+        """A quién se le paga: un proveedor o un destinatario, uno solo.
+
+        Es la regla ``ck_egresos_acreedor`` de la base, dicha en castellano
+        antes de chocar contra ella: sin esto, un pago con los dos campos
+        vacíos terminaba en un error 500 en vez de un aviso.
+        """
+        super().clean()
+        if self.destinatario is not None:
+            self.destinatario = self.destinatario.strip() or None
+        if self.id_proveedor_id is None and self.destinatario is None:
+            raise ValidationError(
+                'Indicá a quién se le paga: elegí el proveedor o escribí el '
+                'destinatario.')
+        if self.id_proveedor_id is not None and self.destinatario is not None:
+            raise ValidationError(
+                'Se le paga a un proveedor o a otro destinatario, no a los '
+                'dos: dejá uno solo.')
 
     def _recalcular_estado_de_la_compra(self):
         """El estado de la compra se DERIVA de sus egresos (DD-22).

@@ -28,3 +28,6 @@ estaticos/
 
 # Respaldos de la base (docker-compose.prod.yml)
 respaldos/
+
+# Correos de desarrollo (los enlaces para elegir la clave, en archivos)
+.correos/

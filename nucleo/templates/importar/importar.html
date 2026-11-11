@@ -40,7 +40,7 @@
 {% endif %}
 
 <div class="d-flex gap-2 mb-3">
-    <form method="post" action="{% url 'importar_descartar' importador.clave %}">{% csrf_token %}<button type="submit" class="btn btn-secundario"><i class="bi bi-x-lg me-1"></i>Descartar y subir otra</button></form>
+    <form method="post" action="{% url 'importar_descartar' importador.clave %}" data-titulo="¿Descartamos el archivo?" data-aceptar="Sí, descartar" data-confirmar="No se importa nada y vas a tener que subir el archivo de nuevo.">{% csrf_token %}<button type="submit" class="btn btn-secundario"><i class="bi bi-x-lg me-1"></i>Descartar y subir otra</button></form>
     {% if not errores %}
     <form method="post" action="{% url 'importar_confirmar' importador.clave %}" data-titulo="¿Importar?" data-aceptar="Sí, importar"
           data-confirmar="Se aplican {{ altas }} alta(s) y {{ cambios }} cambio(s), todo junto.">

@@ -45,9 +45,12 @@ class SeguridadMiddleware:
         request.sesion_negocio = None
 
         # 1) Rutas que nunca se filtran
-        exentas = (reverse('seguridad:login'), reverse('seguridad:logout'))
+        exentas = (reverse('seguridad:login'), reverse('seguridad:logout'),
+                   reverse('seguridad:olvide_clave'))
         estaticos = settings.STATIC_URL or '/static/'
-        if (ruta in exentas or ruta.startswith(estaticos)
+        # El enlace del correo se abre sin sesión: el token es la credencial.
+        elegir = reverse('seguridad:elegir_clave', args=['x', 'y']).rsplit('x/', 1)[0]
+        if (ruta in exentas or ruta.startswith(estaticos) or ruta.startswith(elegir)
                 or (settings.DEBUG and ruta.startswith('/admin'))):
             return self.get_response(request)
 

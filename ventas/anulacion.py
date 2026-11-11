@@ -24,7 +24,12 @@ Cuándo se puede, y por qué:
   devolvería dos veces lo mismo;
 * la AUTORIZA quien tiene el permiso ``anular_venta`` (Encargado y
   Administrador) y **no hizo la venta** (DD-61): quien cobró no puede
-  anular su propio cobro, ni siquiera siendo Encargado.
+  anular su propio cobro, ni siquiera siendo Encargado;
+* **salvo el titular** (DD-69): la segregación de funciones protege a la
+  dueña del error o el fraude de otro, y nadie se defrauda a sí mismo. El
+  titular puede autorizar la anulación de su propia venta, pero tiene que
+  confirmarla con su usuario y su clave (una reautenticación, como pide
+  NIST SP 800-63B para lo sensible) y el registro lo deja dicho.
 
 Quién la pide y quién la autoriza (DD-61). En el mostrador, el cajero que
 se equivocó la PIDE desde Cambios y la encargada la AUTORIZA ahí mismo, con
@@ -95,6 +100,13 @@ def puede_autorizar(usuario, venta):
     """Si ``usuario`` alcanza para anular ``venta`` sin pedirle la clave a
     nadie: tiene el permiso y no es quien la vendió."""
     return usuario.puede(PERMISO) and usuario.pk != venta.id_usuario_id
+
+
+def es_titular_sobre_su_venta(usuario, venta):
+    """El titular frente a una venta suya: la puede anular, confirmando con
+    su clave (DD-69)."""
+    return (usuario is not None and getattr(usuario, 'es_titular', False)
+            and usuario.pk == venta.id_usuario_id)
 
 
 class AnulacionRechazada(ValidationError):
@@ -168,7 +180,8 @@ def _anular(venta, solicitante, motivo, detalle, autorizante):
         raise AnulacionRechazada(
             f'{usuario.nombre} {usuario.apellido} no tiene permiso para '
             'anular ventas.')
-    if usuario.pk == venta.id_usuario_id:
+    if usuario.pk == venta.id_usuario_id and not (
+            autorizante is not None and es_titular_sobre_su_venta(usuario, venta)):
         raise AnulacionRechazada(
             'La anulación la autoriza otra persona, no quien hizo la venta: '
             'pedí que la autorice alguien más con su usuario y su clave.')

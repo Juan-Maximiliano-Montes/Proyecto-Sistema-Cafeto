@@ -17,9 +17,9 @@
             <input type="text" name="detalle" id="detalle-anulacion-{{ venta.pk }}" class="form-control" maxlength="120">
         </div>
         {% if pide_clave %}
-        <div class="col-12"><p class="small mb-0"><i class="bi bi-person-lock me-1"></i>{% if venta_propia %}Es una venta tuya: la autoriza otra persona.{% else %}La autoriza el Encargado o la Administración, ahí mismo.{% endif %}</p></div>
-        <div class="col-md-6"><input type="text" name="autoriza_usuario" class="form-control" placeholder="Usuario o DNI de quien autoriza" autocomplete="off" aria-label="Usuario de quien autoriza" required></div>
-        <div class="col-md-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Su clave" autocomplete="off" aria-label="Clave de quien autoriza" required></div>
+        <div class="col-12"><p class="small mb-0"><i class="bi bi-person-lock me-1"></i>{% if titular_propia %}Es una venta tuya y sos el titular: confirmala con tu usuario y tu clave.{% elif venta_propia %}Es una venta tuya: la autoriza otra persona.{% else %}La autoriza el Encargado o la Administración, ahí mismo.{% endif %}</p></div>
+        <div class="col-md-6"><input type="text" name="autoriza_usuario" class="form-control" placeholder="Usuario o DNI de quien autoriza" autocomplete="off" data-lpignore="true" data-1p-ignore aria-label="Usuario de quien autoriza" required></div>
+        <div class="col-md-6"><input type="password" name="autoriza_clave" class="form-control" placeholder="Su clave" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore aria-label="Clave de quien autoriza" required></div>
         {% endif %}
         <div class="col-12 d-grid d-md-flex justify-content-md-end">
             <button type="submit" class="btn btn-danger"><i class="bi bi-x-octagon me-1"></i>{% if pide_clave %}Autorizar y anular{% else %}Anular{% endif %}</button>

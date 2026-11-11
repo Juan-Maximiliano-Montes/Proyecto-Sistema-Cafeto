@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block titulo %}Cafeto · Clave provisoria{% endblock %}
+
+{% block contenido %}
+<div class="d-flex justify-content-center">
+    <div class="w-100" style="max-width: 560px;">
+        <div class="tarjeta p-4">
+            <span class="eyebrow"><i class="bi bi-key me-1"></i>Seguridad</span>
+            <h1 class="titulo-pantalla mb-2">{% if alta %}Usuario creado{% else %}Clave restablecida{% endif %}</h1>
+            <div class="aviso aviso-info mb-3"><i class="bi bi-envelope-exclamation"></i><span>No se pudo mandar el correo a {{ correo }} (¿hay internet? ¿está configurado el servidor de correo?). Por eso te mostramos la clave para dársela en persona.</span></div>
+            <p class="text-secondary mb-3">
+                Clave provisoria de <strong>{{ persona.nombre }} {{ persona.apellido }}</strong>
+                (entra con su DNI o con el usuario <strong>{{ persona.nombre_usuario }}</strong>):
+            </p>
+
+            <div class="clave-provisoria" aria-label="Clave provisoria">
+                {% for grupo in grupos %}<span>{{ grupo }}</span>{% endfor %}
+            </div>
+            <p class="small text-tenue text-center mt-2 mb-3">Todo en minúsculas, sin el espacio del medio. Vence el {{ vence|date:"d/m" }} a las {{ vence|date:"H:i" }}.</p>
+
+            <div class="aviso aviso-aviso">
+                <i class="bi bi-shield-lock-fill"></i>
+                <div>
+                    <div class="fw-semibold mb-1">Dásela en persona, acá en el local.</div>
+                    <ul class="mb-0 ps-3 small">
+                        <li>Mostrásela en esta pantalla o dictásela. <strong>No la mandes por WhatsApp, correo ni mensaje</strong>: queda escrita en el chat y en los dos teléfonos.</li>
+                        <li>Sirve una sola vez: al entrar, el sistema le pide que elija una clave propia, que nadie más conoce, ni vos.</li>
+                        <li>Si no la usa en 24 horas, deja de servir y hay que restablecerla de nuevo.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <p class="small text-secondary mt-3 mb-3">Esta pantalla no se puede volver a abrir: si se pierde la clave, se restablece otra. Queda anotado en el Registro de Actividad quién la generó y cuándo, pero no la clave.</p>
+            <a href="{% url 'seguridad:lista' %}" class="btn btn-primary w-100"><i class="bi bi-check2 me-1"></i>Listo, ya se la di</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

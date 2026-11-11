@@ -172,6 +172,8 @@
 <div class="modal fade" id="modalEditar" tabindex="-1" aria-hidden="true"{% if abrir_modal_editar %} data-modal-auto{% endif %}>
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <form method="post" id="formEditar" class="modal-content" novalidate
+              data-titulo="¿Guardamos el perfil?" data-aceptar="Sí, guardar"
+              data-confirmar="Los permisos que cambies valen al instante para todas las personas que tienen este perfil."
               {% if abrir_modal_editar %}action="{% url 'seguridad:editar_perfil' editar_id %}"{% endif %}>
             {% csrf_token %}
             <div class="modal-header">

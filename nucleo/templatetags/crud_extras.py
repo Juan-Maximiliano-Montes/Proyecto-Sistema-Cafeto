@@ -38,3 +38,52 @@ def valor_de(objeto, ruta):
                 # se sigue caminando sobre el objeto tal cual.
                 pass
     return valor
+
+
+@register.filter
+def alta_rapida(campo):
+    """La URL del alta rápida del campo, o '' (DD-70)."""
+    try:
+        return campo.field.widget.attrs.get('data-alta-rapida', '')
+    except AttributeError:
+        return ''
+
+
+@register.filter
+def alta_titulo(campo):
+    try:
+        return campo.field.widget.attrs.get('data-alta-titulo', '')
+    except AttributeError:
+        return ''
+
+
+@register.simple_tag(takes_context=True)
+def boton_alta_rapida(context, clave, destino):
+    """El "+" de alta rápida para un <select> armado a mano (DD-70).
+
+    ``{% boton_alta_rapida 'proveedores' 'proveedor' %}`` junto al select
+    con id ``proveedor``, y ``{% panel_alta_rapida 'proveedor' %}`` debajo.
+    Sólo aparece si quien opera puede dar de alta esa tabla.
+    """
+    from django.utils.html import format_html
+
+    from nucleo.crud import REGISTRO
+    configuracion = REGISTRO.get(clave)
+    usuario = context.get('usuario_actual') or getattr(
+        context.get('request'), 'usuario_actual', None)
+    if configuracion is None or usuario is None or not usuario.puede(
+            configuracion.permiso('crear')):
+        return ''
+    return format_html(
+        '<button type="button" class="btn btn-secundario js-alta-rapida" '
+        'data-url="{}?rapido=1" data-destino="{}" title="{} sin salir de acá" '
+        'aria-label="{}"><i class="bi bi-plus-lg"></i></button>',
+        configuracion.url('crear'), destino, configuracion.nuevo,
+        configuracion.nuevo)
+
+
+@register.simple_tag
+def panel_alta_rapida(destino):
+    from django.utils.html import format_html
+    return format_html('<div class="alta-rapida-panel" data-para="{}" hidden></div>',
+                       destino)

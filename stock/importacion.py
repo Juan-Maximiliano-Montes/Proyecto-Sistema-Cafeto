@@ -22,6 +22,7 @@ from nucleo.formularios import leer_numero
 from nucleo.importar import Columna, Importador, opcion, registrar, si_no
 from nucleo.validaciones import clave_normalizada, normalizar_cuit
 from stock.models import Marca, Producto, Rubro, TipoProducto, UnidadMedida
+from nucleo.templatetags.cafeto import pesos
 
 CAMPOS_QUE_SE_ACTUALIZAN = ('precio_venta', 'precio_costo', 'stock_minimo',
                             'id_proveedor_id', 'codigo_barras')
@@ -171,10 +172,13 @@ class ImportadorProductos(Importador):
         nombres = {'precio_venta': 'precio', 'precio_costo': 'costo', 'stock_minimo': 'mínimo',
                    'id_proveedor_id': 'proveedor', 'codigo_barras': 'código'}
         if campo in ('precio_venta', 'precio_costo'):
-            return f'{nombres[campo]} $ {antes} → $ {despues}'
+            return f'{nombres[campo]} {pesos(antes)} → {pesos(despues)}'
         if campo == 'id_proveedor_id':
             return 'cambia el proveedor'
         return f'{nombres[campo]} {antes or "—"} → {despues or "—"}'
+
+    def instancia_de(self, resultado):
+        return resultado.preparado[0]
 
     def aplicar(self, resultado, usuario):
         producto, marca_nueva = resultado.preparado

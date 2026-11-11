@@ -94,6 +94,11 @@ class ConfiguracionCRUD:
     # llamarse igual (los identifica su DNI o su teléfono). Lo usa la
     # auditoría de consistencia para no tomarlos por duplicados.
     nombre_es_identidad: bool = True
+    # Lista a pedido: al entrar no se consulta la tabla; se muestra el
+    # buscador y recién al buscar, filtrar o tocar "Ver todos" se traen las
+    # filas. Para los maestros que crecen (productos, clientes): nadie los
+    # recorre enteros, se busca uno. Los catálogos cortos se muestran de una.
+    a_pedido: bool = False
     # Permiso para bajar el listado a Excel/PDF. Vacío = el mismo de ver.
     # Los clientes lo piden aparte: verlos de a uno en el mostrador no es
     # lo mismo que llevarse el padrón entero con DNI y teléfono.
@@ -349,10 +354,22 @@ def filas_filtradas(request, configuracion):
     return filas, busqueda, estado, aplicados
 
 
+# Con cualquiera de estos en la dirección, la persona ya pidió ver algo.
+CRITERIOS_DE_LISTA = ('busqueda', 'estado', 'todos', 'pagina', 'por_pagina')
+
+
+def pidio_algo(request):
+    return any(clave in request.GET for clave in CRITERIOS_DE_LISTA) or any(
+        request.GET.get(clave) for clave in request.GET)
+
+
 def _contexto(request, configuracion, extra=None):
     """Arma el contexto del listado: búsqueda, filtros y tarjetas."""
     filas, busqueda, estado, filtros_aplicados = filas_filtradas(
         request, configuracion)
+    esperando = configuracion.a_pedido and not pidio_algo(request)
+    if esperando:
+        filas = filas.none()                 # no llega a la base
     pagina = paginar(request, filas)
 
     contexto = {
@@ -360,7 +377,9 @@ def _contexto(request, configuracion, extra=None):
         **pagina,
         'busqueda': busqueda,
         'estado': estado,
-        'formulario': configuracion.formulario(),
+        'esperando': esperando,
+        'formulario': _preparado(request, configuracion,
+                                 configuracion.formulario()),
         'formset': armar_formset(configuracion),
         'filtros': [
             (filtro, filtro.opciones(), filtros_aplicados[filtro.clave])
@@ -403,9 +422,77 @@ def _mensaje_de_base(error):
             'Revisá lo cargado y volvé a intentar.')
 
 
+def _preparado(request, configuracion, formulario):
+    """El formulario con las ayudas de carga marcadas (DD-70)."""
+    from nucleo.asistencia import preparar
+    return preparar(formulario, configuracion,
+                    getattr(request, 'usuario_actual', None))
+
+
 # ===========================================================================
 #  VISTAS
 # ===========================================================================
+@exige('ver')
+def parecidos(request, configuracion):
+    """Lo que ya existe igual o parecido a lo que se está tipeando (DD-70).
+
+    La pide el navegador al salir de un campo del alta o la edición. Es GET,
+    no escribe nada y responde JSON. ``excluir`` es la fila que se está
+    editando: no tiene sentido avisar que se parece a sí misma.
+    """
+    from django.http import JsonResponse
+
+    from nucleo.asistencia import buscar
+    campo = request.GET.get('campo', '')
+    valor = (request.GET.get('valor') or '').strip()[:200]
+    excluir = request.GET.get('excluir', '')
+    resultados = buscar(configuracion, configuracion.formulario(), campo, valor,
+                        excluir=int(excluir) if excluir.isdigit() else None)
+    return JsonResponse({'campo': campo, 'resultados': resultados,
+                         'singular': configuracion.singular})
+
+
+def _alta_rapida(request, configuracion):
+    """El alta de esta tabla, desplegada DENTRO de otro formulario (DD-70).
+
+    GET devuelve el fragmento con los campos (prefijo ``rapido``, para que
+    no choquen con los del formulario de afuera). POST guarda igual que el
+    alta común —mismas validaciones, mismo asiento de auditoría— y
+    responde JSON con la fila nueva para que quede elegida en el campo.
+    """
+    from django.http import JsonResponse
+
+    from nucleo.asistencia import preparar
+    usuario = getattr(request, 'usuario_actual', None)
+    formulario = preparar(
+        configuracion.formulario(request.POST or None, prefix='rapido'),
+        configuracion, usuario, rapido=True)
+    contexto = {'cfg': configuracion, 'form': formulario, 'formset': None}
+    if request.method != 'POST':
+        return render(request, 'crud/_alta_rapida.html', contexto)
+    if not formulario.is_valid():
+        return render(request, 'crud/_alta_rapida.html', contexto, status=400)
+    instancia = formulario.save(commit=False)
+    try:
+        with transaction.atomic():
+            instancia.save()
+            formulario.save_m2m()
+            registrar_auditoria(
+                request, 'ALTA', configuracion.singular.upper(),
+                anterior=None, nuevo=instantanea(instancia),
+                instancia=instancia,
+                detalle=_detalle(configuracion, instancia, formulario)
+                + ' (alta rápida desde otro formulario)')
+    except (IntegrityError, ValidationError) as error:
+        mensaje = (_mensaje_de_base(error) if isinstance(error, IntegrityError)
+                   else ' '.join(error.messages))
+        formulario.add_error(None, mensaje)
+        return render(request, 'crud/_alta_rapida.html', contexto, status=400)
+    return JsonResponse({'ok': True, 'id': instancia.pk, 'texto': str(instancia),
+                         'mensaje': f'{configuracion.singular.capitalize()} '
+                                    f'"{instancia}" {configuracion.participio("cread")}.'})
+
+
 @exige('ver')
 def listar(request, configuracion):
     """Listado con búsqueda, filtro por estado y el filtro propio."""
@@ -473,6 +560,22 @@ def ver(request, configuracion, pk):
     })
 
 
+def _visible_en(condicion, instancia):
+    """Evalúa ``visible_si`` ("campo=VALOR,VALOR") sobre una fila guardada,
+    con la misma lectura que el navegador: una casilla vale "si" o "no"."""
+    if not condicion or '=' not in condicion:
+        return True
+    campo, valores = condicion.split('=', 1)
+    if not hasattr(instancia, campo):          # depende de algo que no se guarda
+        return True
+    actual = getattr(instancia, campo, None)
+    if isinstance(actual, bool):
+        actual = 'si' if actual else 'no'
+    elif hasattr(actual, 'pk'):
+        actual = actual.pk
+    return str(actual if actual is not None else '') in valores.split(',')
+
+
 def datos_de_la_ficha(configuracion, instancia):
     """[(etiqueta, valor legible), ...] de todos los campos cargables.
 
@@ -496,6 +599,12 @@ def datos_de_la_ficha(configuracion, instancia):
         # ficha de lo ALMACENADO sólo podría mostrar un guión.
         if nombre not in guardados:
             continue
+        # Un campo que el formulario sólo muestra en cierto caso (las
+        # cuotas, sólo en una tarjeta de crédito) tampoco va en la ficha
+        # cuando no es ese caso: "Cuotas: 1" al lado del efectivo se leía
+        # como una cuota.
+        if not _visible_en(getattr(campo.field, 'visible_si', ''), instancia):
+            continue
         mostrar = getattr(instancia, 'get_%s_display' % nombre, None)
         if callable(mostrar):
             valor = mostrar()
@@ -508,10 +617,13 @@ def datos_de_la_ficha(configuracion, instancia):
 @exige('crear')
 def crear(request, configuracion):
     """Alta. POST-Redirect-GET y auditoría del registro nuevo."""
+    if request.GET.get('rapido') or request.POST.get('rapido'):
+        return _alta_rapida(request, configuracion)
     if request.method != 'POST':
         return redirect(configuracion.url('lista'))
 
-    formulario = configuracion.formulario(request.POST)
+    formulario = _preparado(request, configuracion,
+                            configuracion.formulario(request.POST))
     valido = formulario.is_valid()
 
     # Los renglones hijos viajan en el MISMO POST que el padre y se validan
@@ -593,7 +705,8 @@ def editar(request, configuracion, pk):
         if request.GET.get('formulario'):
             return render(request, 'crud/_campos.html', {
                 'cfg': configuracion,
-                'form': configuracion.formulario(instance=instancia),
+                'form': _preparado(request, configuracion,
+                                   configuracion.formulario(instance=instancia)),
                 'formset': armar_formset(
                     configuracion, instancia=instancia)})
         return redirect(configuracion.url('lista'))
@@ -602,7 +715,8 @@ def editar(request, configuracion, pk):
         return redirect(configuracion.url('lista'))
 
     anterior = instantanea(configuracion.modelo.objects.get(pk=pk))
-    formulario = configuracion.formulario(request.POST, instance=instancia)
+    formulario = _preparado(request, configuracion, configuracion.formulario(
+        request.POST, instance=instancia))
     valido = formulario.is_valid()
 
     renglones = armar_formset(configuracion, request.POST, instancia)
@@ -762,8 +876,8 @@ def _detalle(configuracion, instancia, formulario):
 # --- Rutas -----------------------------------------------------------------
 
 ACCIONES_COMPLETAS = ('lista', 'exportar', 'crear', 'ver', 'editar',
-                      'eliminar', 'reactivar')
-ACCIONES_SIN_BAJA = ('lista', 'exportar', 'crear', 'ver', 'editar')
+                      'eliminar', 'reactivar', 'parecidos')
+ACCIONES_SIN_BAJA = ('lista', 'exportar', 'crear', 'ver', 'editar', 'parecidos')
 
 
 def rutas_crud(clave, acciones=ACCIONES_COMPLETAS):
@@ -792,6 +906,7 @@ def rutas_crud(clave, acciones=ACCIONES_COMPLETAS):
         'editar': ('<int:pk>/editar/', editar),
         'eliminar': ('<int:pk>/baja/', dar_de_baja),
         'reactivar': ('<int:pk>/reactivar/', reactivar),
+        'parecidos': ('parecidos/', parecidos),
     }
     return [
         path(f'{clave}/{sufijo}', vista, {'clave': clave},

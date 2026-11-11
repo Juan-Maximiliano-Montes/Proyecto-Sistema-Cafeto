@@ -14,13 +14,16 @@ Cada clase cubre una amenaza concreta y dice cuál es:
     CambioDeClaveTest          claves débiles y cambios sin la clave actual
     EncabezadosTest            /admin, clickjacking, sniffing
 """
+import re
 from datetime import timedelta
 from io import StringIO
+from unittest import mock
 
+from django.core import mail
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -87,6 +90,17 @@ class SesionEnElServidorTest(Base):
         self.assertEqual(asiento.id_usuario, self.beto)
         self.assertEqual(asiento.id_sesion.id_usuario, self.beto)
         self.assertEqual(asiento.modulo_afectado, 'SEGURIDAD')
+
+    def test_el_ingreso_dice_que_hacer_si_se_olvido_la_clave(self):
+        """Mismo texto para cualquiera: no revela si un usuario existe."""
+        html = self.client.get(reverse('seguridad:login')).content.decode()
+        self.assertIn('¿Te olvidaste la clave?', html)
+        self.assertIn(reverse('seguridad:olvide_clave'), html)
+        pagina = self.client.get(reverse('seguridad:olvide_clave')).content.decode()
+        self.assertIn('recuperar_titular', pagina)
+        con_error = self.client.post(reverse('seguridad:login'),
+                                     {'identificador': 'nadie99', 'clave': 'x'}).content.decode()
+        self.assertIn('¿Te olvidaste la clave?', con_error)
 
     def test_el_login_cambia_la_llave_de_la_sesion(self):
         """Fijación de sesión: la llave de antes del login no sirve después."""
@@ -185,6 +199,13 @@ class BloqueoProgresivoTest(Base):
     def fallar(self, identificador, veces):
         for _ in range(veces):
             self.entrar(identificador, 'clave-mala')
+
+    def test_el_intento_que_activa_el_bloqueo_ya_lo_avisa(self):
+        """Prueba en el navegador: el 5.º intento bloqueaba, pero el aviso
+        recién salía en el 6.º."""
+        self.fallar('40000002', self.UMBRAL - 1)
+        respuesta = self.entrar('40000002', 'clave-mala')
+        self.assertIn('queda bloqueado', self.mensajes(respuesta))
 
     def test_despues_del_umbral_ni_la_clave_correcta_entra(self):
         self.fallar('40000002', self.UMBRAL)
@@ -459,6 +480,161 @@ class CambioDePerfilTest(Base):
             'nombre': 'Cajero', 'correo': 'c@cafeto.test',
             'id_perfil': self.p_operador.pk})
         self.assertTrue(Usuario.objects.filter(dni_usuario='41000004').exists())
+
+    def test_la_clave_inicial_no_es_el_dni_y_llega_un_enlace(self):
+        """Con el DNI se entra: si también fuera la clave, cualquiera que lo
+        conociera estrenaba la cuenta antes que su dueño. Ahora la persona
+        recibe un enlace y elige su clave; nadie más la conoce."""
+        respuesta = self.client.post(reverse('seguridad:crear'), {
+            'dni_usuario': '41000005', 'apellido': 'Nueva',
+            'nombre': 'Cajera', 'correo': 'cj@cafeto.test',
+            'id_perfil': self.p_operador.pk})
+        nueva = Usuario.objects.get(dni_usuario='41000005')
+        self.assertFalse(nueva.verificar_clave('41000005'))
+        self.assertRedirects(respuesta, reverse('seguridad:lista'))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['cj@cafeto.test'])
+        self.assertIn('/elegir-clave/activar/', mail.outbox[0].body)
+
+
+# ===========================================================================
+class ClaveProvisoriaTest(Base):
+
+    def test_la_provisoria_vence_a_las_24_horas(self):
+        provisoria = self.beto.restablecer_clave()
+        Usuario.objects.filter(pk=self.beto.pk).update(
+            fecha_cambio_clave=timezone.now() - timedelta(hours=25))
+        respuesta = self.entrar('40000002', provisoria)
+        self.assertEqual(respuesta.status_code, 200)        # sigue en el ingreso
+        self.assertContains(respuesta, 'clave provisoria venció')
+        self.assertFalse(Sesion.objects.filter(id_usuario=self.beto, activa=True).exists())
+        # No es un intento fallido: no suma al bloqueo.
+        self.assertFalse(IntentoAcceso.objects.filter(id_usuario=self.beto).exists())
+
+    def test_antes_de_vencer_entra_y_la_cambia(self):
+        provisoria = self.beto.restablecer_clave()
+        Usuario.objects.filter(pk=self.beto.pk).update(
+            fecha_cambio_clave=timezone.now() - timedelta(hours=23))
+        self.assertRedirects(self.entrar('40000002', provisoria),
+                             reverse('seguridad:cambiar_clave'))
+
+    def test_una_clave_propia_no_vence(self):
+        self.beto.set_clave('Otra-clave-larga-1')
+        self.beto.save()
+        Usuario.objects.filter(pk=self.beto.pk).update(
+            fecha_cambio_clave=timezone.now() - timedelta(days=400))
+        self.beto.refresh_from_db()
+        self.assertFalse(self.beto.clave_provisoria_vencida)
+
+    def test_la_del_titular_no_vence(self):
+        self.titular.debe_cambiar_clave = True
+        self.titular.fecha_cambio_clave = timezone.now() - timedelta(days=30)
+        self.assertFalse(self.titular.clave_provisoria_vencida)
+
+    def test_sin_correo_que_salga_la_provisoria_va_en_persona(self):
+        """El respaldo: sin internet en el local el correo no sale, y la
+        clave se muestra una vez para darla en persona."""
+        self.entrar('31000001')
+        with mock.patch('seguridad.recuperacion.send_mail', side_effect=OSError):
+            respuesta = self.client.post(
+                reverse('seguridad:restablecer_clave', args=[self.beto.pk]))
+        self.assertTemplateUsed(respuesta, 'seguridad/clave_provisoria.html')
+        self.assertEqual(respuesta['Cache-Control'], 'no-store')
+        self.assertContains(respuesta, 'No se pudo mandar el correo')
+        provisoria = ''.join(respuesta.context['grupos'])
+        self.beto.refresh_from_db()
+        self.assertTrue(self.beto.verificar_clave(provisoria))
+        siguiente = self.client.get(reverse('seguridad:lista')).content.decode()
+        self.assertNotIn(provisoria, siguiente)
+
+
+# ===========================================================================
+class RecuperacionPorCorreoTest(Base):
+    """El enlace del correo: pedirlo, usarlo una vez y que venza."""
+
+    def pedir(self, identificador):
+        return self.client.post(reverse('seguridad:olvide_clave'),
+                                {'identificador': identificador})
+
+    def enlace(self):
+        return re.search(r'http://testserver(/elegir-clave/\S+/)', mail.outbox[-1].body).group(1)
+
+    def elegir(self, url, clave='Una-clave-nueva-77'):
+        return self.client.post(url, {'clave_nueva': clave, 'clave_repetir': clave})
+
+    def test_pide_el_enlace_y_elige_la_clave(self):
+        respuesta = self.pedir('40000002')
+        self.assertContains(respuesta, 'Revisá tu correo')
+        self.assertEqual(mail.outbox[0].to, ['40000002@cafeto.test'])
+        url = self.enlace()
+        self.assertContains(self.client.get(url), 'Elegí tu clave nueva')
+        self.assertRedirects(self.elegir(url), reverse('seguridad:login'))
+        self.beto.refresh_from_db()
+        self.assertTrue(self.beto.verificar_clave('Una-clave-nueva-77'))
+        self.assertTrue(LogAuditoria.objects.filter(
+            operacion_realizada='RECUPERACION DE CLAVE POR CORREO').exists())
+
+    def test_el_enlace_sirve_una_sola_vez(self):
+        self.pedir('cajab')
+        url = self.enlace()
+        self.elegir(url)
+        respuesta = self.elegir(url, 'Otra-clave-mas-88')
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertContains(respuesta, 'ya no sirve', status_code=400)
+        self.beto.refresh_from_db()
+        self.assertFalse(self.beto.verificar_clave('Otra-clave-mas-88'))
+
+    def test_el_enlace_vence(self):
+        self.pedir('40000002')
+        url = self.enlace()
+        with mock.patch.dict('seguridad.recuperacion.VIGENCIA',
+                             {'recuperar': timedelta(seconds=-1)}):
+            self.assertEqual(self.client.get(url).status_code, 400)
+
+    def test_un_enlace_tocado_o_de_otro_proposito_no_sirve(self):
+        self.pedir('40000002')
+        url = self.enlace()
+        self.assertEqual(self.client.get(url[:-3] + 'xx/').status_code, 400)
+        self.assertEqual(self.client.get(url.replace('/recuperar/', '/activar/')).status_code, 400)
+
+    def test_la_respuesta_no_dice_si_la_cuenta_existe(self):
+        existe = self.pedir('40000002').content.decode()
+        no_existe = self.pedir('99999999').content.decode()
+        self.assertEqual(len(mail.outbox), 1)
+        quitar = lambda html: re.sub(r'name="csrfmiddlewaretoken" value="[^"]+"', '', html)
+        self.assertEqual(quitar(existe), quitar(no_existe))
+
+    def test_no_se_puede_inundar_la_casilla_de_otro(self):
+        for _ in range(6):
+            self.pedir('40000002')
+        self.assertEqual(len(mail.outbox), 3)
+
+    def test_el_titular_no_recupera_por_correo(self):
+        self.pedir('30000000')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_elegir_la_clave_echa_a_quien_tenia_la_cuenta_abierta(self):
+        otro = Client()
+        self.entrar('40000002', cliente=otro)
+        self.assertTrue(Sesion.objects.filter(id_usuario=self.beto, activa=True).exists())
+        self.pedir('40000002')
+        self.elegir(self.enlace())
+        self.assertFalse(Sesion.objects.filter(id_usuario=self.beto, activa=True).exists())
+
+    def test_el_restablecimiento_del_admin_manda_el_enlace_y_anula_la_clave_vieja(self):
+        self.entrar('31000001')
+        respuesta = self.client.post(
+            reverse('seguridad:restablecer_clave', args=[self.beto.pk]))
+        self.assertRedirects(respuesta, reverse('seguridad:lista'))
+        self.beto.refresh_from_db()
+        self.assertFalse(self.beto.verificar_clave(CLAVE))
+        self.assertIn('/elegir-clave/activar/', mail.outbox[0].body)
+
+    def test_dos_usuarios_no_comparten_correo(self):
+        repetido = Usuario(dni_usuario='41000009', apellido='Otra', nombre='Persona',
+                           correo='40000002@CAFETO.test', id_perfil=self.p_operador)
+        with self.assertRaisesMessage(ValidationError, 'ya es de otra persona'):
+            repetido.full_clean()
 
 
 # ===========================================================================

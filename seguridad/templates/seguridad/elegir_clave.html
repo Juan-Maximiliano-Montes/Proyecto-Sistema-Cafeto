@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block titulo %}Cafeto · Elegí tu clave{% endblock %}
+
+{% block pantalla %}
+<main class="acceso">
+    <div class="acceso-caja">
+        <img class="acceso-logo logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="Cafeto Las Lomitas">
+        <img class="acceso-logo logo-para-claro" src="{% static 'cafeto/marca/cafeto-isologotipo-positivo.svg' %}" alt="Cafeto Las Lomitas">
+
+        <div class="card">
+            {% if invalido %}
+            <h1 class="titulo-pantalla mb-2">Este enlace ya no sirve</h1>
+            <p class="text-secondary">Puede que haya vencido, que ya lo hayas usado o que esté incompleto (a veces el correo corta los enlaces largos).</p>
+            <a href="{% url 'seguridad:olvide_clave' %}" class="btn btn-primary w-100"><i class="bi bi-envelope me-1"></i>Pedir un enlace nuevo</a>
+            <a href="{% url 'seguridad:login' %}" class="d-block text-center small mt-3">Volver al ingreso</a>
+            {% else %}
+            <h1 class="titulo-pantalla mb-1">{% if proposito == 'activar' %}¡Bienvenido, {{ persona.nombre }}!{% else %}Elegí tu clave nueva{% endif %}</h1>
+            <p class="text-secondary mb-1">Tu usuario es <strong>{{ persona.nombre_usuario }}</strong> (también podés entrar con tu DNI).</p>
+            <p class="small text-secondary mb-4">Mínimo 8 caracteres, que no sea sólo números ni se parezca a tu nombre o tu DNI.</p>
+            {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+            <form method="post" novalidate>
+                {% csrf_token %}
+                <input type="text" name="username" value="{{ persona.nombre_usuario }}" autocomplete="username" hidden>
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.clave_nueva.id_for_label }}">{{ form.clave_nueva.label }}</label>
+                    {{ form.clave_nueva }}
+                    {% if form.clave_nueva.errors %}<p class="error-campo">{{ form.clave_nueva.errors|striptags }}</p>{% endif %}
+                </div>
+                <div class="mb-4">
+                    <label class="form-label" for="{{ form.clave_repetir.id_for_label }}">{{ form.clave_repetir.label }}</label>
+                    {{ form.clave_repetir }}
+                    {% if form.clave_repetir.errors %}<p class="error-campo">{{ form.clave_repetir.errors|striptags }}</p>{% endif %}
+                </div>
+                <button type="submit" class="btn btn-primary btn-xl w-100" data-requiere-red><i class="bi bi-check2 me-1"></i> Guardar mi clave</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</main>
+{% endblock %}

@@ -10,7 +10,9 @@
     </div>
 </div>
 {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
-<form method="post" class="tarjeta" novalidate>
+<form method="post" class="tarjeta" novalidate
+      data-titulo="¿Cargamos el traspaso?" data-aceptar="Sí, cargar"
+      data-confirmar="Revisá los productos y las cantidades. El traspaso queda pendiente hasta que alguien lo apruebe; recién ahí se mueve el stock.">
     {% csrf_token %}
     <input type="hidden" name="token_operacion" value="{{ token }}">
     <div class="row g-2">

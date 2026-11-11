@@ -29,6 +29,8 @@ from nucleo.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 from nucleo.validaciones import (
     NO_NEGATIVO,
     VALIDADOR_DNI,
+    exigir_dni_creible,
+    validar_anio_de_negocio,
     VALIDADOR_TELEFONO,
     clave_normalizada,
     exigir_nombre_unico,
@@ -106,6 +108,10 @@ class CategoriaFidelizacion(Maestra):
             self.importe_por_punto, minimo=Decimal('0'),
             maximo=Decimal('9999999999.99'), decimales=2,
             etiqueta='El importe por punto', incluye_minimo=False)
+        if self.importe_por_punto < 1:
+            raise ValidationError(
+                'El importe por punto es cuántos pesos hay que gastar para '
+                'sumar un punto: tiene que ser de $ 1 o más.')
 
         self._validar_categoria_de_ingreso()
 
@@ -308,6 +314,10 @@ class Beneficio(Maestra):
             if (self.vigencia_desde - hoy).days > 730:
                 raise ValidationError({'vigencia_desde': (
                     'La vigencia no puede empezar a más de 2 años vista.')})
+        try:
+            validar_anio_de_negocio(self.vigencia_hasta, 'La fecha de fin de vigencia')
+        except ValidationError as error:
+            raise ValidationError({'vigencia_hasta': error.messages})
         validar_orden_de_fechas(
             self.vigencia_desde, self.vigencia_hasta,
             'la fecha de inicio de vigencia', 'La fecha de fin de vigencia')
@@ -522,6 +532,10 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
         super().clean()
 
         validar_edad(self.fecha_nacimiento, timezone.localdate())
+        try:
+            exigir_dni_creible(self.dni_cliente)
+        except ValidationError as error:
+            raise ValidationError({'dni_cliente': error.messages})
 
         # El índice único no distingue vigentes de dados de baja. Sin esto,
         # recargar un cliente que se había dado de baja devolvía un error

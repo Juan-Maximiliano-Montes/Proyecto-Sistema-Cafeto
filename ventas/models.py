@@ -56,6 +56,7 @@ from nucleo.validaciones import (
     texto_de_catalogo,
     validar_decimal,
 )
+from nucleo.templatetags.cafeto import pesos
 
 
 # ===========================================================================
@@ -67,6 +68,13 @@ class MedioPago(Maestra):
     ``afecta_caja`` dice si la plata entra físicamente al cajón (el
     efectivo) o va a una cuenta (transferencia, tarjeta, QR). Sólo lo que
     afecta la caja admite vuelto y entra al arqueo.
+
+    Recargo y cuotas (DD-65). La Ley 25.065 (art. 37, inc. c) prohíbe
+    cobrar distinto con tarjeta que en efectivo, y la Resolución 51-E/2017
+    de la Secretaría de Comercio aclara que eso vale para el pago en una
+    sola cuota. Lo único que puede trasladarse es el costo de financiar en
+    cuotas, informado. Por eso el recargo sólo existe en un plan de tarjeta
+    de crédito en más de una cuota ("Crédito 3 cuotas"), y la base lo exige.
     """
 
     # El dato inicial protegido: su recargo es siempre 0 y no se da de baja,
@@ -82,7 +90,40 @@ class MedioPago(Maestra):
         'Entra al cajón (efectivo)', default=False,
         help_text='Marcalo sólo si el dinero entra físicamente a la caja: '
                   'admite vuelto y se cuenta en el arqueo.')
+    es_tarjeta_credito = models.BooleanField(
+        'Es tarjeta de crédito', default=False,
+        help_text='Sólo la tarjeta de crédito admite pagar en cuotas.')
+    cantidad_cuotas = models.PositiveSmallIntegerField(
+        'Cuotas', default=1,
+        help_text='1 si es un solo pago. Un plan en cuotas es un medio de '
+                  'pago aparte (por ejemplo, "Crédito 3 cuotas").')
     usuario_modificacion = sello_usuario_modificacion('medios_pago_modificados')
+
+    @property
+    def cuotas_para_mostrar(self):
+        """En la base, ``cantidad_cuotas`` es 1 en todo lo que no es crédito
+        (un solo pago: así las cuentas y la regla del recargo no tienen que
+        pensar en un nulo). En pantalla, un "1" al lado del efectivo se
+        leía como "1 cuota", y el efectivo no tiene cuotas."""
+        if not self.es_tarjeta_credito:
+            return 'No aplica'
+        if self.cantidad_cuotas == 1:
+            return 'Un pago'
+        return f'{self.cantidad_cuotas} cuotas'
+
+    @property
+    def recargo_para_mostrar(self):
+        """"9 %" y no "9": un número suelto al lado de "Recargo" no decía
+        si eran pesos o porcentaje."""
+        if not self.recargo_porcentaje:
+            return 'Sin recargo'
+        return f'{self.recargo_porcentaje.normalize():f} %'.replace('.', ',')
+
+    @property
+    def no_se_da_de_baja(self):
+        """El efectivo no se da de baja (lo rechaza el modelo): la lista no
+        ofrece el botón que después diría que no."""
+        return self.es_efectivo
 
     class Meta:
         db_table = 'medios_pago'
@@ -90,10 +131,19 @@ class MedioPago(Maestra):
         verbose_name_plural = 'Medios de pago'
         ordering = ['nombre_medio_pago']
         constraints = [
+            # Ley 25.065, art. 37 c) y Res. 51-E/2017: sin recargo en un
+            # solo pago; sólo el costo de financiar en cuotas (DD-65).
             CheckEnBase(
                 check=CheckSQL(
-                    'recargo_porcentaje >= 0 AND recargo_porcentaje <= 100'),
+                    'recargo_porcentaje >= 0 AND recargo_porcentaje <= 100 '
+                    'AND (recargo_porcentaje = 0 OR cantidad_cuotas > 1)'),
                 name='ck_medios_pago_recargo'),
+            # Las cuotas son de la tarjeta de crédito, y nada más.
+            CheckEnBase(
+                check=CheckSQL(
+                    'cantidad_cuotas BETWEEN 1 AND 36 '
+                    'AND (es_tarjeta_credito OR cantidad_cuotas = 1)'),
+                name='ck_medios_pago_cuotas'),
             CheckEnBase(
                 check=CheckSQL("trim(nombre_medio_pago) <> ''"),
                 name='ck_medios_pago_textos'),
@@ -121,8 +171,10 @@ class MedioPago(Maestra):
 
     def clean(self):
         super().clean()
+        # Mínimo 2: "QR" es un nombre de medio de pago legítimo (y es uno
+        # de los datos iniciales; con 3 no se lo podía ni editar).
         self.nombre_medio_pago = texto_de_catalogo(
-            self.nombre_medio_pago, 3, 25, 'El nombre del medio de pago')
+            self.nombre_medio_pago, 2, 25, 'El nombre del medio de pago')
         exigir_nombre_unico(self, 'nombre_medio_pago',
                             etiqueta='un medio de pago')
         self.recargo_porcentaje = validar_decimal(
@@ -134,6 +186,31 @@ class MedioPago(Maestra):
             raise ValidationError({'recargo_porcentaje': (
                 'El efectivo no puede tener recargo: el vuelto y el arqueo '
                 'de caja se calculan sobre el importe cobrado.')})
+        if self.afecta_caja and self.es_tarjeta_credito:
+            raise ValidationError({'es_tarjeta_credito': (
+                'Una tarjeta de crédito no entra al cajón: desmarcá «Entra '
+                'al cajón».')})
+        if not self.es_tarjeta_credito:
+            self.cantidad_cuotas = 1
+        if not self.cantidad_cuotas or not 1 <= self.cantidad_cuotas <= 36:
+            raise ValidationError({'cantidad_cuotas': (
+                'Las cuotas van de 1 a 36.')})
+        if self.recargo_porcentaje and self.cantidad_cuotas == 1:
+            raise ValidationError({'recargo_porcentaje': (
+                'Un pago en una sola cuota no lleva recargo: la Ley 25.065 '
+                '(art. 37) prohíbe cobrar distinto con tarjeta que en '
+                'efectivo. El recargo sólo es el costo de financiar un plan '
+                'en cuotas.')})
+        if self.pk is not None:
+            anterior = type(self).objects.filter(pk=self.pk).values(
+                'cantidad_cuotas', 'es_tarjeta_credito').first()
+            if (anterior is not None and self.pagos.exists()
+                    and (anterior['cantidad_cuotas'] != self.cantidad_cuotas
+                         or anterior['es_tarjeta_credito'] != self.es_tarjeta_credito)):
+                raise ValidationError({'cantidad_cuotas': (
+                    'Este medio ya se usó para cobrar: sus cuotas no se '
+                    'cambian (los tickets ya emitidos dicen otra cosa). '
+                    'Para otro plan, da de alta un medio de pago nuevo.')})
         if self.es_efectivo:
             self.afecta_caja = True
 
@@ -341,6 +418,12 @@ class TurnoCaja(SinBajaFisica, models.Model):
     @property
     def abierto(self):
         return self.estado_turno == 'ABIERTA'
+
+    @property
+    def quedo_de_otro_dia(self):
+        """Sigue abierto y se abrió un día anterior a hoy."""
+        return (self.abierto and
+                timezone.localtime(self.fecha_apertura).date() < timezone.localdate())
 
 
 class TipoMovimientoCaja(models.TextChoices):
@@ -609,8 +692,10 @@ class Venta(SinBajaFisica, models.Model):
                 # DD-61: separación de funciones. Quien cobró no autoriza
                 # la anulación de su propia venta (si no, podría cobrar,
                 # anular y quedarse con la plata sin que nadie intervenga).
+                # Salvo el titular (DD-69): nadie se defrauda a sí mismo.
                 if (self.estado_venta == EstadoVenta.ANULADA
-                        and self.id_usuario_anulacion_id == self.id_usuario_id):
+                        and self.id_usuario_anulacion_id == self.id_usuario_id
+                        and not self.id_usuario_anulacion.es_titular):
                     raise ValidationError(
                         'La anulación la autoriza otra persona, no quien '
                         'hizo la venta.')
@@ -820,7 +905,7 @@ class PagoVenta(LibroInmutable, models.Model):
         ]
 
     def __str__(self):
-        return f'{self.id_medio_pago}: $ {self.importe_cobrado}'
+        return f'{self.id_medio_pago}: {pesos(self.importe_cobrado)}'
 
     @property
     def importe_cobrado(self):

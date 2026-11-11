@@ -27,9 +27,10 @@ from nucleo.exportar import ColumnaExportable, exportar
 from nucleo.formularios import leer_numero
 from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_alguno, requiere_permiso
-from seguridad.servicios import registrar_acceso_denegado, registrar_auditoria
+from seguridad.servicios import instantanea, registrar_acceso_denegado, registrar_auditoria
 from ventas import puesto
 from ventas.models import MedioPago
+from nucleo.templatetags.cafeto import pesos
 
 PERMISOS = ('ver_egresos', 'registrar_egreso', 'registrar_gasto_caja',
             'conciliar_egresos')
@@ -149,10 +150,11 @@ def registrar(request):
         messages.error(request, _texto(error))
         return redirect('compras:egresos')
     registrar_auditoria(request, 'ALTA', 'EGRESO', instancia=egreso,
-                        detalle=f'{egreso.get_estado_pago_display()}: $ {egreso.monto} · {egreso.concepto}.')
+                        nuevo=instantanea(egreso),
+                        detalle=f'{egreso.get_estado_pago_display()}: {pesos(egreso.monto)} · {egreso.concepto}.')
     messages.success(request, {
         'anotar': 'Anotado: aparece en «A pagar» hasta que se pague.',
-        'caja': f'Gasto registrado: salieron $ {egreso.monto} del cajón.',
+        'caja': f'Gasto registrado: salieron {pesos(egreso.monto)} del cajón.',
     }.get(modo, f'Pago registrado ({egreso.get_estado_pago_display().lower()}).'))
     return redirect('compras:egresos')
 
@@ -161,6 +163,7 @@ def registrar(request):
 @requiere_permiso('registrar_egreso', redirigir_a='compras:egresos')
 def pagar(request, pk):
     egreso = get_object_or_404(Egreso, pk=pk)
+    antes = instantanea(egreso)
     token = request.POST.get('token_operacion')
     try:
         medio = MedioPago.objects.filter(pk=request.POST.get('medio') or 0, borrado_logico=False).first()
@@ -175,7 +178,8 @@ def pagar(request, pk):
         messages.error(request, _texto(error))
         return redirect('compras:egresos')
     registrar_auditoria(request, 'PAGO', 'EGRESO', instancia=egreso,
-                        detalle=f'Pagó $ {egreso.monto} con {egreso.id_medio_pago}: {egreso.concepto}.')
+                        anterior=antes, nuevo=instantanea(egreso),
+                        detalle=f'Pagó {pesos(egreso.monto)} con {egreso.id_medio_pago}: {egreso.concepto}.')
     messages.success(request, f'Pagado: {egreso.concepto}.')
     return redirect('compras:egresos')
 
@@ -184,6 +188,7 @@ def pagar(request, pk):
 @requiere_permiso('conciliar_egresos', redirigir_a='compras:egresos')
 def conciliar(request, pk):
     egreso = get_object_or_404(Egreso, pk=pk)
+    antes = instantanea(egreso)
     acreditado = request.POST.get('resultado') == 'acreditado'
     try:
         egreso = servicio.conciliar(
@@ -193,7 +198,8 @@ def conciliar(request, pk):
         messages.error(request, _texto(error))
         return redirect(f"{reverse('compras:egresos')}?ver=por_acreditar")
     registrar_auditoria(request, 'CONCILIACION', 'EGRESO', instancia=egreso,
-                        detalle=f'{egreso.get_estado_pago_display()}: $ {egreso.monto} · '
+                        anterior=antes, nuevo=instantanea(egreso),
+                        detalle=f'{egreso.get_estado_pago_display()}: {pesos(egreso.monto)} · '
                                 f'{egreso.referencia_bancaria or "sin referencia"}.')
     messages.success(request, f'Egreso {egreso.get_estado_pago_display().lower()}.'
                      + ('' if acreditado else ' Si hay que volver a pagar, se registra un pago nuevo.'))

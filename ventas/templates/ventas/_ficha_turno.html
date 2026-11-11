@@ -12,8 +12,9 @@
     {% else %}
     <dt>Estado</dt><dd><span class="insignia insignia-exito">Abierto</span></dd>
     {% endif %}
-    <dt>Ventas</dt><dd>{{ ventas.cantidad|default:0 }} · {{ ventas.total|pesos }}{% if ventas.anuladas %} <span class="text-danger small">({{ ventas.anuladas }} anulada{{ ventas.anuladas|pluralize }}, fuera del total)</span>{% endif %}</dd>
+    <dt>Ventas</dt><dd>{{ ventas.cantidad|default:0 }}{% if not propio_abierto %} · {{ ventas.total|pesos }}{% endif %}{% if ventas.anuladas %} <span class="text-danger small">({{ ventas.anuladas }} anulada{{ ventas.anuladas|pluralize }}{% if not propio_abierto %}, fuera del total{% endif %})</span>{% endif %}</dd>
 </dl>
+{% if propio_abierto %}<p class="aviso aviso-info small"><i class="bi bi-eye-slash"></i><span>Es tu turno abierto: los importes se ven después de declarar lo contado (arqueo ciego).</span></p>{% endif %}
 {% if recaudacion %}
 <h6 class="subtitulo">Recaudación por medio de pago</h6>
 <div class="table-responsive mb-3">
@@ -35,10 +36,10 @@
 <h6 class="subtitulo">Movimientos</h6>
 <div class="table-responsive">
 <table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th><th class="table-numero">Monto</th></tr></thead>
+    <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th>{% if not propio_abierto %}<th class="table-numero">Monto</th>{% endif %}</tr></thead>
     <tbody>
     {% for m in movimientos %}
-        <tr><td>{{ m.fecha_hora|time:"H:i" }}</td><td>{{ m.get_tipo_movimiento_display }}</td><td>{{ m.concepto }}</td><td>{{ m.id_usuario.nombre }}</td><td class="table-numero">{{ m.monto|pesos }}</td></tr>
+        <tr><td>{{ m.fecha_hora|time:"H:i" }}</td><td>{{ m.get_tipo_movimiento_display }}</td><td>{{ m.concepto }}</td><td>{{ m.id_usuario.nombre }}</td>{% if not propio_abierto %}<td class="table-numero">{{ m.monto|pesos }}</td>{% endif %}</tr>
     {% endfor %}
     </tbody>
 </table>

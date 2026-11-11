@@ -21,7 +21,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 
 from seguridad.models import Sesion, Usuario
-from seguridad.servicios import registrar_auditoria
+from seguridad.servicios import instantanea, registrar_auditoria
 
 
 class Command(BaseCommand):
@@ -56,6 +56,7 @@ class Command(BaseCommand):
                 'titular. Para cambiarlo, el titular la transfiere desde la '
                 'pantalla de Usuarios.')
 
+        anterior = instantanea(titular)
         clave = get_random_string(12)
         titular.set_clave(clave)
         titular.debe_cambiar_clave = True
@@ -65,6 +66,7 @@ class Command(BaseCommand):
             motivo_cierre='REVOCACION')
         registrar_auditoria(
             None, 'RECUPERACION DE CLAVE', 'TITULAR', instancia=titular,
+            anterior=anterior, nuevo=instantanea(titular),
             modulo='SEGURIDAD',
             detalle=(f'Clave provisoria del titular {titular} generada '
                      'desde el servidor (manage.py recuperar_titular).'))

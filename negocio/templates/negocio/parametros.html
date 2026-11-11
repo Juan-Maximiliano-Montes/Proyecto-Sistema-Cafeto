@@ -9,7 +9,9 @@
         <p class="bajada">Lo que sale en los tickets y en los PDF, y las reglas con las que se cobra y se cierra la caja.</p>
     </div>
 </div>
-<form method="post" novalidate class="row g-3">
+<form method="post" novalidate class="row g-3"
+      data-titulo="¿Guardamos los cambios?" data-aceptar="Sí, guardar"
+      data-confirmar="Estos valores cambian cómo funciona todo el sistema (tolerancias, puntos, vencimientos) desde ahora.">
     {% csrf_token %}
     {% if form.non_field_errors %}<div class="col-12"><div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div></div>{% endif %}
     <div class="col-xl-6">

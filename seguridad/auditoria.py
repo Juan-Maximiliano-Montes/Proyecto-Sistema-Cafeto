@@ -89,17 +89,89 @@ def etiqueta_de(modelo, columna):
     return etiqueta[0].upper() + etiqueta[1:] if etiqueta else columna
 
 
-def valor_legible(modelo, columna, valor):
+class Subtabla:
+    """Una lista de filas dentro de la foto: los renglones o los pagos de
+    una venta, los de una compra. Antes se imprimía cruda —la lista de
+    diccionarios tal como la guarda Python— y se leía como código."""
+
+    es_subtabla = True
+
+    def __init__(self, columnas, filas):
+        self.columnas = columnas     # etiquetas en castellano
+        self.filas = filas           # listas de valores ya legibles
+
+    def __str__(self):               # para la exportación y las pruebas
+        return '; '.join(', '.join(str(v) for v in fila) for fila in self.filas)
+
+
+# Lo que es plata se muestra como plata; un porcentaje, con su signo.
+_ES_DINERO = ('monto', 'precio', 'costo', 'subtotal', 'total', 'importe',
+              'vuelto', 'saldo', 'fondo')
+
+
+def _numero_legible(columna, valor):
+    from nucleo.templatetags.cafeto import cantidad, pesos
+    if 'porcentaje' in columna:
+        return f'{cantidad(valor)} %'
+    if any(parte in columna for parte in _ES_DINERO):
+        return pesos(valor)
+    return cantidad(valor)
+
+
+def _subtabla(padre, items):
+    """Arma la tabla interna de una lista de fotos hijas.
+
+    Se descartan las columnas que no le dicen nada a quien lee: la clave
+    propia del renglón, la que apunta de vuelta a la venta (ya se sabe de
+    qué venta es), el sello técnico y las que están vacías en todos.
+    """
+    items = [i for i in items if isinstance(i, dict)]
+    if not items:
+        return '—'
+    claves = []
+    for item in items:
+        claves += [c for c in item if c not in claves]
+    hijo = modelo_de({c: None for c in claves})
+
+    def sobra(columna):
+        if columna in RUIDO:
+            return True
+        campo = _campo_de(hijo, columna)
+        if campo is not None and (campo.primary_key or (
+                campo.is_relation and padre is not None
+                and campo.related_model is padre)):
+            return True
+        return all(i.get(columna) in (None, '') for i in items)
+
+    columnas = [c for c in claves if not sobra(c)]
+    if hijo is not None:
+        orden = {c.column: n for n, c in enumerate(hijo._meta.fields)}
+        columnas.sort(key=lambda c: orden.get(c, len(orden)))
+    return Subtabla(
+        [etiqueta_de(hijo, c) for c in columnas],
+        [[valor_legible(hijo, c, i.get(c), padre=hijo) for c in columnas]
+         for i in items])
+
+
+def valor_legible(modelo, columna, valor, padre=None):
     """El valor como lo entendería una persona.
 
     Una FK se resuelve contra su tabla. Si la fila apuntada ya no existe
     —puede haberse purgado— se devuelve el id, que es la verdad disponible,
     y no se rompe: la auditoría tiene que poder leerse siempre.
+
+    Una lista (los renglones de una venta) o una foto anidada (el saliente
+    y el entrante de una transferencia de titularidad) se devuelven como
+    ``Subtabla``.
     """
     if valor is None:
         return '—'
     if isinstance(valor, bool):
         return 'Sí' if valor else 'No'
+    if isinstance(valor, list):
+        return _subtabla(modelo, valor) if valor else '—'
+    if isinstance(valor, dict):
+        return _subtabla(modelo, [valor])
 
     campo = _campo_de(modelo, columna)
     if campo is not None and campo.is_relation and campo.related_model:
@@ -107,6 +179,9 @@ def valor_legible(modelo, columna, valor):
             return str(campo.related_model.objects.get(pk=valor))
         except Exception:
             return '#%s (ya no existe)' % valor
+
+    if campo is not None and campo.get_internal_type() == 'DecimalField':
+        return _numero_legible(columna, valor)
 
     if isinstance(valor, str):
         legible = _fecha_legible(valor)

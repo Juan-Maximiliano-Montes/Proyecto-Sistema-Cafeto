@@ -168,6 +168,7 @@ MARCAS = registrar(ConfiguracionCRUD(
 
 PRODUCTOS = registrar(ConfiguracionCRUD(
     clave='productos',
+    a_pedido=True,
     modelo=Producto,
     formulario=forms.ProductoForm,
     singular='producto', plural='productos', articulo='el',
@@ -178,8 +179,8 @@ PRODUCTOS = registrar(ConfiguracionCRUD(
     # como si fuera el de la marca y no el del producto.
     columnas=(
         Columna('Producto', 'nombre_producto'),
-        Columna('Precio de venta', 'precio_venta', 'dinero'),
-        Columna('Stock', 'stock_actual', 'numero'),
+        Columna('Precio de venta', 'precio_para_mostrar', 'dinero'),
+        Columna('Stock', 'stock_para_mostrar', 'numero'),
         Columna('Marca', 'id_marca'),
         Columna('Presentación', 'presentacion'),
         Columna('Rubro', 'id_rubro'),

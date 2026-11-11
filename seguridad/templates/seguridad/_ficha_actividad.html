@@ -71,12 +71,12 @@ No hay ni un control de formulario acá. El libro es append-only.
                 {{ fila.etiqueta }}
             </th>
             {% if hubo_antes %}
-            <td class="{% if fila.destacada %}text-decoration-line-through opacity-75{% endif %}">
-                {{ fila.antes }}
+            <td class="{% if fila.destacada and not fila.antes.es_subtabla %}text-decoration-line-through opacity-75{% endif %}">
+                {% include "seguridad/_valor_actividad.html" with valor=fila.antes %}
             </td>
             {% endif %}
-            <td class="{% if fila.destacada %}fw-bold{% endif %}">
-                {{ fila.despues }}
+            <td class="{% if fila.destacada and not fila.despues.es_subtabla %}fw-bold{% endif %}">
+                {% include "seguridad/_valor_actividad.html" with valor=fila.despues %}
             </td>
         </tr>
         {% endfor %}
