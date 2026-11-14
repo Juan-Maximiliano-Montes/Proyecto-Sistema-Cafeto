@@ -912,6 +912,10 @@ class Command(BaseCommand):
             supervisor = self.lucia
         cajero.post('ventas:declarar_arqueo', {'token_operacion': cajero.token(),
                                                'monto_contado': str(contado)})
+        if supervisor is not None:
+            # Con una diferencia grande el sistema no la muestra hasta que la
+            # cajera dice que su conteo es definitivo (DD-81).
+            cajero.post('ventas:cierre', {'cerrar_igual': '1'})
         datos = {'token_operacion': cajero.token(), 'observacion': observacion}
         if supervisor is not None:
             datos.update({'autoriza_usuario': supervisor.usuario.nombre_usuario,
@@ -1029,9 +1033,14 @@ class Command(BaseCommand):
         self.carla.entrar()       # las de Lucía las aprueba otra persona (DD-67)
         self.resolver(self.carla, m.get('rotura'), 'aprobar', 'Visto')
         self.resolver(self.carla, m.get('vencido'), 'aprobar', 'Visto')
-        self.merma(self.carla, 'CONSUMO_INTERNO', [(self.p['grano'], '0.25')],
-                   'Prueba de molienda de la cafetera nueva', aprobar_ya=True)
+        molienda = self.merma(self.carla, 'CONSUMO_INTERNO', [(self.p['grano'], '0.25')],
+                              'Prueba de molienda de la cafetera nueva')
         self.carla.salir()
+        # La de Carla también la aprueba otra persona: lo propio sólo lo
+        # aprueba la titular (DD-80).
+        self.lucia.entrar()
+        self.resolver(self.lucia, molienda, 'aprobar', 'Visto')
+        self.lucia.salir()
         self.paso(f'{AjusteStock.objects.count()} ajustes de stock: aprobados, rechazado y '
                   'uno pendiente')
 

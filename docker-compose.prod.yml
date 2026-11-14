@@ -21,7 +21,11 @@ services:
     profiles: ["herramientas"]
 
   web:
-    volumes: !reset []
+    # El código no se monta: corre el de la imagen. Sólo se monta, de sólo
+    # lectura, la carpeta con la cuenta de servicio de Firebase de la app
+    # móvil (./secretos/firebase.json, ver el README).
+    volumes: !override
+      - ./secretos:/run/secrets:ro
     restart: unless-stopped
     environment:
       DJANGO_DEBUG: "False"

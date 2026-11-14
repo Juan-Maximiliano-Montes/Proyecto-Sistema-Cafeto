@@ -38,6 +38,17 @@
     <tr class="total"><td>Diferencia</td><td class="der">{{ turno.diferencia_caja|pesos }}</td></tr>
 </table>
 {% if turno.observacion_diferencia %}<div>Explicación: {{ turno.observacion_diferencia }}</div>{% endif %}
+{% if conteos|length > 1 %}
+<div class="linea"></div>
+<div class="centro"><strong>ATENCIÓN: SE CONTÓ {{ conteos|length }} VECES</strong></div>
+<div>Al declarar un conteo el sistema muestra cuánto tenía que haber. Estos son todos, en orden:</div>
+<table>
+    {% for c in conteos %}
+    <tr><td>{{ forloop.counter }}. {{ c.cuando|date:"H:i" }} {{ c.usuario.nombre }}</td><td class="der">{{ c.monto|pesos }}</td></tr>
+    <tr><td colspan="2">&nbsp;&nbsp;{% if c.destino == 'CIERRE' %}con este se cerró{% elif c.destino == 'DESCARTADO' %}volvió atrás sin cerrar{% else %}salió sin cerrar ni volver atrás{% endif %}{% if c.otra_sesion %} · antes cerró la sesión y volvió a entrar{% endif %}</td></tr>
+    {% endfor %}
+</table>
+{% endif %}
 <div class="linea"></div>
 <div class="centro">Recaudación por medio de pago</div>
 <table>

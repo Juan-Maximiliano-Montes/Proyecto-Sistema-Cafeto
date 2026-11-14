@@ -563,9 +563,9 @@ def exigir_existencia(producto, cantidad, lote=None):
 
 
 def puede_aprobar_lo_propio(usuario):
-    """La Administradora (la dueña) aprueba lo que ella misma cargó; el
-    Encargado y el Operador, no (DD-67)."""
-    return usuario is not None and usuario.es_administrador
+    """La titular (la dueña) aprueba lo que ella misma cargó; nadie más,
+    tampoco otro Administrador (DD-67, precisado por DD-80)."""
+    return usuario is not None and getattr(usuario, 'es_titular', False)
 
 
 def exigir_otra_persona(ajuste, autorizante):

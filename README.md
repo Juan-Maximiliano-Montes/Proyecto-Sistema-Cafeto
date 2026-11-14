@@ -122,6 +122,7 @@ transaccionales, en Python), sus pantallas y sus pruebas.
 | `ventas` | MEDIOS_PAGO · CAJAS_REGISTRADORAS · TURNOS_CAJA · MOVIMIENTOS_CAJA · VENTAS · DETALLES · PAGOS · CAMBIOS | Puesto de caja, arqueo ciego en dos pasos, relevo, mostrador, pago mixto, cambios y devoluciones, consultas |
 | `compras` | PROVEEDORES · ORDENES · COMPRAS · DETALLES · TIPOS_EGRESO · EGRESOS | Recepción con lotes, órdenes de compra (con PDF), pagos, gastos de caja, conciliación, importación de proveedores |
 | `fidelizacion` | CATEGORIAS · BENEFICIOS · CLIENTES · PUNTOS | **Hito 5** (las tablas y los catálogos ya están) |
+| `api_movil` | OPERACIONES_CELULAR (las claves `Idempotency-Key`) | API JSON de la app móvil: catálogo público y beneficios; para el equipo, panel, consulta con escáner, alertas, ofertas, recepción contra la orden, conteo, mermas, traspasos, autorización de ajustes, producción y ABM liviano de marcas y rubros; para los clientes, su QR y sus puntos |
 
 Dentro de cada app, las pantallas van en `views/` (un archivo por proceso:
 `ventas/views/caja.py`, `ventas/views/mostrador.py`…) y las reglas en los
@@ -163,6 +164,70 @@ permisos de Seguridad son exclusivos del perfil administrador. Lo que excede
 el perfil de quien opera (un descuento sobre su tope, devolver plata, cerrar
 con diferencia) lo autoriza otra persona con su usuario y su clave en el
 mismo dispositivo, y queda escrito quién fue.
+
+---
+
+## La app móvil
+
+La app «Sistema Cafeto Móvil» habla con `/api/movil/` (app `api_movil`). Lo
+público es el catálogo y los beneficios; el equipo entra con **el mismo
+usuario y la misma clave que en la web** y recibe un token que vence a las
+12 horas. Cada pedido vuelve a controlar el permiso en el servidor.
+
+* El ingreso pasa por los mismos controles que el de la web: bloqueo
+  progresivo por reintentos (la cuenta queda frenada en los dos canales),
+  intentos en INTENTOS_ACCESO y asiento en el Registro de Actividad.
+* No abre una fila en SESIONES (DD-01): entrar desde el celular no cierra
+  la sesión de la web. Cambiar o restablecer la clave, o dar de baja al
+  usuario, corta todos sus tokens.
+* Lo que se modifica desde el celular queda en el Registro de Actividad con
+  el usuario, su perfil y la IP («Desde la app móvil»).
+* Las tareas del equipo (recepción, conteo, mermas, traspasos, ajustes,
+  producción) llaman a los mismos servicios que la web. Lo que mueve
+  mercadería trae una `Idempotency-Key`: un reintento no lo repite.
+* Los clientes entran con Firebase. Para ver su QR y sus puntos, el sistema
+  verifica su token con `firebase-admin` y la cuenta de servicio del
+  proyecto. Sin esa credencial, `/api/movil/clientes/` responde 503
+  (`CLIENTES_SIN_CONFIGURAR`) y el resto anda igual.
+* La ficha del cliente se encuentra por su cuenta de la app; la primera vez,
+  por su correo verificado. Si dos fichas comparten el correo, la app pide
+  el DNI. El correo ya no se puede repetir entre clientes vigentes, y los
+  repetidos de antes se ven con `manage.py clientes_correo_repetido` (y en
+  el inicio, para quien ve clientes). Para una ficha que se cargó en la caja
+  sin correo, se le carga el correo desde la pantalla de Clientes con el
+  cliente presente: la próxima vez que abra la app, la encuentra sola.
+
+**La cuenta de servicio de Firebase** (una sola vez, y en el NAS igual):
+
+1. En la [consola de Firebase](https://console.firebase.google.com/), abrir
+   el proyecto de la app → ⚙ **Configuración del proyecto** → pestaña
+   **Cuentas de servicio** → **Generar nueva clave privada**. Se descarga un
+   JSON.
+2. Guardarlo como `secretos/firebase.json` en la carpeta del proyecto. La
+   carpeta `secretos/` está en `.gitignore`: esa clave **nunca** se sube ni
+   se comparte (con ella se administra el proyecto de Firebase).
+3. `docker compose up -d --build` (instala `firebase-admin` y monta
+   `secretos/` de sólo lectura en `/run/secrets/`).
+4. Comprobar:
+
+```bash
+docker compose exec web python manage.py probar_firebase
+```
+
+  Dice qué falta (la librería, la variable o el archivo) o que está todo
+  bien.
+
+Para probarla desde el celular, en la misma red Wi-Fi que la PC:
+
+```bash
+ipconfig        # la "Dirección IPv4" de la PC, por ejemplo 192.168.0.10
+```
+
+En el `.env` de la app móvil: `EXPO_PUBLIC_API_URL=http://192.168.0.10:8000/api/movil`
+(nunca `localhost`: desde el celular es el propio celular), y reiniciar Expo
+con `npx expo start -c`. En desarrollo `DJANGO_ALLOWED_HOSTS` vale `*`; en el
+NAS tiene que incluir la IP o el nombre con que entra el celular, y fuera
+de la red local la API va por HTTPS.
 
 ---
 

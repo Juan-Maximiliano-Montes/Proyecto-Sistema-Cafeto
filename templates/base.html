@@ -90,7 +90,26 @@
             {% block barra_izquierda %}{% endblock %}
             <span class="sin-conexion" role="status"><i class="bi bi-wifi-off"></i>Sin conexión: no cobres hasta que vuelva</span>
             <div class="ms-auto d-flex align-items-center gap-2">
-                {% if caja_de_la_sesion %}
+                {% if cajas_del_local %}
+                <div class="dropdown">
+                    <button type="button" class="chip-caja{% if cajas_abiertas %} abierta{% endif %} dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Estado de las cajas">
+                        <span class="punto"></span>{% if cajas_abiertas == 1 %}1 caja abierta{% elif cajas_abiertas %}{{ cajas_abiertas }} cajas abiertas{% else %}Cajas cerradas{% endif %}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end lista-cajas">
+                        {% for caja, turno in cajas_del_local %}
+                        <li>
+                            <a class="dropdown-item" href="{% if turno %}{% url 'ventas:turnos' %}?caja={{ caja.pk }}&amp;estado=abiertos{% else %}{% url 'ventas:turnos' %}?caja={{ caja.pk }}{% endif %}">
+                                <span class="chip-caja-fila{% if turno %} abierta{% endif %}"><span class="punto"></span></span>
+                                <span><strong>{{ caja }}</strong>{% if caja == caja_de_la_sesion %} <span class="insignia insignia-neutra">este equipo</span>{% endif %}<br>
+                                <small class="text-secondary">{% if turno %}{{ turno.id_usuario_apertura.nombre }} · desde {{ turno.fecha_apertura|date:"d/m H:i" }}{% else %}Cerrada{% endif %}</small></span>
+                            </a>
+                        </li>
+                        {% endfor %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item small" href="{% url 'ventas:caja' %}"><i class="bi bi-cash-stack me-1"></i>{% if caja_de_la_sesion %}Ir a la caja de este equipo{% else %}Elegir la caja de este equipo{% endif %}</a></li>
+                    </ul>
+                </div>
+                {% elif caja_de_la_sesion %}
                 <a href="{% url 'ventas:caja' %}" class="chip-caja{% if turno_de_la_sesion %} abierta{% endif %}" title="{% if turno_de_la_sesion %}Turno abierto{% else %}Caja cerrada{% endif %}">
                     <span class="punto"></span>{{ caja_de_la_sesion }}
                 </a>

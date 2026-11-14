@@ -167,11 +167,11 @@
         {% if puede_cerrar and not arqueo %}
         <form method="post" action="{% url 'ventas:declarar_arqueo' %}" class="tarjeta" novalidate
               data-titulo="¿Cerrar con este conteo?" data-aceptar="Sí, es lo que conté"
-              data-confirmar="Lo que declares queda registrado y no se puede cambiar después. Contá dos veces.">
+              data-confirmar="Lo que declares queda registrado. Contá dos veces antes de declarar.">
             {% csrf_token %}
             {{ form_arqueo.token_operacion }}
             <h2 class="subtitulo h5 mb-0">Cerrar la caja</h2>
-            <p class="small text-secondary mb-0">Contá el efectivo del cajón sin mirar el sistema. Después vas a ver si hay diferencia.</p>
+            <p class="small text-secondary mb-0">Contá el efectivo del cajón sin mirar el sistema. Te vamos a decir si coincide; si no coincide, podés volver a contar una vez.</p>
             <div>
                 <label class="form-label" for="{{ form_arqueo.monto_contado.id_for_label }}">{{ form_arqueo.monto_contado.label }}</label>
                 <div class="input-group input-group-lg"><span class="input-group-text">$</span>{{ form_arqueo.monto_contado }}</div>

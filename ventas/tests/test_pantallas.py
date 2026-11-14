@@ -168,8 +168,59 @@ class ArqueoCiegoTest(Base):
         self.assertEqual(respuesta.context['contado'], D('4000'))
         self.assertEqual(respuesta.context['diferencia'], D('-1000'))
 
+    def cerrar_igual(self):
+        return self.client.post(reverse('ventas:cierre'), {'cerrar_igual': '1'})
+
+    def test_si_no_coincide_no_dice_por_cuanto(self):
+        self.declarar('3000')
+        pantalla = self.client.get(reverse('ventas:cierre'))
+        self.assertEqual(pantalla.context['etapa'], 'NO_COINCIDE')
+        self.assertContains(pantalla, 'no coincide con el libro')
+        self.assertNotContains(pantalla, '5.000')
+        self.assertNotContains(pantalla, '2.000')
+
+    def test_puede_volver_a_contar_una_vez_sin_ver_la_diferencia(self):
+        self.declarar('3000')
+        self.client.post(reverse('ventas:descartar_arqueo'))
+        self.declarar('5000')
+        pantalla = self.client.get(reverse('ventas:cierre'))
+        self.assertEqual(pantalla.context['etapa'], 'COINCIDE')
+        self.confirmar()
+        self.turno.refresh_from_db()
+        self.assertEqual(self.turno.diferencia_caja, 0)
+
+    def test_el_segundo_conteo_que_no_coincide_queda_fijo(self):
+        self.declarar('3000')
+        self.client.post(reverse('ventas:descartar_arqueo'))
+        self.declarar('3500')
+        pantalla = self.client.get(reverse('ventas:cierre'))
+        self.assertEqual(pantalla.context['etapa'], 'REVELADA')
+        self.assertNotContains(pantalla, 'Volver sin cerrar')
+        # Ya vio la diferencia: ni volviendo atrás ni saliendo del sistema
+        # puede declarar lo que el libro esperaba.
+        self.client.post(reverse('ventas:descartar_arqueo'))
+        self.client.logout()
+        self.entrar(self.operador)
+        self.declarar('5000')
+        pantalla = self.client.get(reverse('ventas:cierre'))
+        self.assertEqual(pantalla.context['contado'], D('3500'))
+        self.assertEqual(pantalla.context['etapa'], 'REVELADA')
+
+    def test_una_diferencia_chica_no_pide_explicacion(self):
+        from negocio.models import ParametrosNegocio
+        tolerancia = ParametrosNegocio.vigentes().tolerancia_arqueo
+        if tolerancia <= 0:
+            self.skipTest('Sin tolerancia configurada')
+        self.declarar(str(D('5000') - tolerancia))
+        self.assertEqual(self.client.get(reverse('ventas:cierre')).context['etapa'], 'COINCIDE')
+        self.confirmar()
+        self.turno.refresh_from_db()
+        self.assertEqual(self.turno.estado_turno, 'CERRADA')
+        self.assertEqual(self.turno.diferencia_caja, -tolerancia)
+
     def test_una_diferencia_grande_pide_supervisor(self):
         self.declarar('3000')
+        self.cerrar_igual()
         respuesta = self.confirmar(observacion='Faltante')
         self.assertContains(respuesta, 'autorice')
         self.turno.refresh_from_db()
@@ -331,3 +382,134 @@ class PantallasDeConsultaTest(Base):
                              fetch_redirect_response=False)
         self.assertRedirects(self.client.get(reverse('ventas:turnos')), reverse('ventas:caja'),
                              fetch_redirect_response=False)
+
+
+class TitularCierraSolaTest(Base):
+    """DD-80: a la dueña no la supervisa nadie; confirma con su clave."""
+
+    def setUp(self):
+        super().setUp()
+        self.duenia = f.titular()
+        self.turno = f.abrir_turno(self.duenia, self.cajon, fondo='5000')
+        self.entrar(self.duenia)
+
+    declarar = ArqueoCiegoTest.declarar
+    confirmar = ArqueoCiegoTest.confirmar
+
+    def test_con_su_clave_cierra_aunque_falte_plata(self):
+        self.declarar('3000')
+        pantalla = self.client.get(reverse('ventas:cierre'))
+        self.assertTrue(pantalla.context['titular_sola'])
+        self.assertContains(pantalla, 'alcanza con tu clave')
+        self.confirmar(observacion='Saqué para el flete', autoriza_clave=f.CLAVE)
+        self.turno.refresh_from_db()
+        self.assertEqual(self.turno.estado_turno, 'CERRADA')
+        self.assertEqual(self.turno.tipo_cierre, 'NORMAL')
+        self.assertIsNone(self.turno.id_usuario_supervisor)
+        self.assertEqual(self.turno.diferencia_caja, D('-2000'))
+
+    def test_sin_la_clave_no_cierra(self):
+        self.declarar('3000')
+        self.confirmar(observacion='Saqué para el flete')
+        self.confirmar(observacion='Saqué para el flete', autoriza_clave='otra-cosa')
+        self.turno.refresh_from_db()
+        self.assertEqual(self.turno.estado_turno, 'ABIERTA')
+
+    def test_otro_administrador_sigue_necesitando_a_alguien(self):
+        self.declarar('3000')
+        self.confirmar(observacion='x', autoriza_clave=f.CLAVE)   # cierra la dueña
+        admin = f.usuario('40000009', 'Administrador', nombre='Ana')
+        turno = f.abrir_turno(admin, self.cajon, fondo='5000')
+        self.client.logout()
+        self.entrar(admin)
+        self.declarar('3000')
+        self.client.post(reverse('ventas:cierre'), {'cerrar_igual': '1'})
+        respuesta = self.confirmar(observacion='Faltante',
+                                   autoriza_usuario='40000009', autoriza_clave=f.CLAVE)
+        self.assertContains(respuesta, 'otra persona')
+        turno.refresh_from_db()
+        self.assertEqual(turno.estado_turno, 'ABIERTA')
+
+
+class ConteosEnElDocumentoTest(Base):
+    """DD-80: cada conteo declarado sale en el documento de recaudación."""
+
+    def setUp(self):
+        super().setUp()
+        self.turno = f.abrir_turno(self.operador, self.cajon, fondo='5000')
+        self.entrar(self.operador)
+
+    declarar = ArqueoCiegoTest.declarar
+    confirmar = ArqueoCiegoTest.confirmar
+
+    def documento(self):
+        return self.client.get(reverse('ventas:recaudacion', args=[self.turno.pk]))
+
+    def test_un_solo_conteo_no_agrega_nada(self):
+        self.declarar('5000')
+        self.confirmar()
+        documento = self.documento()
+        self.assertEqual([c['destino'] for c in documento.context['conteos']], ['CIERRE'])
+        self.assertNotContains(documento, 'SE CONTÓ')
+
+    def test_volver_atras_y_recontar_queda_en_el_papel(self):
+        self.declarar('4000')
+        self.client.post(reverse('ventas:descartar_arqueo'))
+        self.declarar('5000')
+        self.confirmar()
+        documento = self.documento()
+        conteos = documento.context['conteos']
+        self.assertEqual([(c['monto'], c['destino']) for c in conteos],
+                         [(D('4000'), 'DESCARTADO'), (D('5000'), 'CIERRE')])
+        self.assertContains(documento, 'SE CONTÓ 2 VECES')
+        self.assertContains(documento, 'volvió atrás sin cerrar')
+
+    def test_salir_y_volver_a_entrar_tambien(self):
+        self.declarar('4000')
+        self.client.logout()
+        self.entrar(self.operador)
+        self.declarar('5000')
+        self.confirmar()
+        conteos = self.documento().context['conteos']
+        self.assertEqual([c['destino'] for c in conteos], ['ABANDONADO', 'CIERRE'])
+        self.assertTrue(conteos[1]['otra_sesion'])
+        self.assertContains(self.documento(), 'cerró la sesión y volvió a entrar')
+
+
+class CajasEnLaBarraTest(Base):
+    """Quien supervisa ve todas las cajas en la barra; la cajera, la suya."""
+
+    def test_la_encargada_ve_las_dos_cajas(self):
+        f.abrir_turno(self.operador, self.cajon, fondo='5000')
+        f.abrir_turno(self.encargada, f.caja_minisuper(), fondo='5000')
+        self.entrar(self.encargada)
+        inicio = self.client.get(reverse('home'), follow=True)
+        self.assertEqual(inicio.context['cajas_abiertas'], 2)
+        self.assertContains(inicio, '2 cajas abiertas')
+        self.assertContains(inicio, 'este equipo')
+
+    def test_la_cajera_solo_ve_la_de_su_equipo(self):
+        f.abrir_turno(self.operador, self.cajon, fondo='5000')
+        self.entrar(self.operador)
+        pantalla = self.client.get(reverse('ventas:caja'))
+        self.assertNotIn('cajas_del_local', pantalla.context)
+        self.assertNotContains(pantalla, 'cajas abiertas')
+
+
+class AvisoDeReconteoTest(Base):
+
+    def test_la_duenia_se_entera_en_el_inicio(self):
+        from negocio import panel
+        turno = f.abrir_turno(self.operador, self.cajon, fondo='5000')
+        self.entrar(self.operador)
+        declarar = lambda monto: ArqueoCiegoTest.declarar(self, monto)
+        declarar('4000')
+        self.client.post(reverse('ventas:descartar_arqueo'))
+        declarar('5000')
+        ArqueoCiegoTest.confirmar(self)
+        turno.refresh_from_db()
+        self.assertEqual(turno.estado_turno, 'CERRADA')
+        _numeros, avisos = panel.del_dia(f.titular())
+        self.assertIn('RECONTEOS', [a['clave'] for a in avisos])
+        _numeros, avisos = panel.del_dia(self.operador)
+        self.assertNotIn('RECONTEOS', [a['clave'] for a in avisos])

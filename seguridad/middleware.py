@@ -7,7 +7,9 @@ ninguna pantalla queda desprotegida por olvido.
 En orden:
 
   1. Deja pasar el login, el logout y los archivos estáticos (y el /admin
-     de Django, que sólo existe en desarrollo).
+     de Django, que sólo existe en desarrollo). También la API de la app
+     móvil: no usa la sesión web sino su propio token, y cada una de sus
+     vistas controla el token y el permiso (``api_movil.autenticacion``).
   2. Si NO hay sesión iniciada -> al login.
   3. Si hay sesión, la valida EN EL SERVIDOR contra la tabla SESIONES: que
      sea la vigente del usuario (el token coincide), que no haya vencido
@@ -27,6 +29,9 @@ from django.urls import reverse
 
 from seguridad.models import Usuario
 from seguridad.servicios import validar_sesion
+
+# Debajo de esto vive la API de la app móvil (cafeto/urls.py).
+PREFIJO_API_MOVIL = '/api/movil/'
 
 
 def _espera_json(request):
@@ -51,6 +56,7 @@ class SeguridadMiddleware:
         # El enlace del correo se abre sin sesión: el token es la credencial.
         elegir = reverse('seguridad:elegir_clave', args=['x', 'y']).rsplit('x/', 1)[0]
         if (ruta in exentas or ruta.startswith(estaticos) or ruta.startswith(elegir)
+                or ruta.startswith(PREFIJO_API_MOVIL)
                 or (settings.DEBUG and ruta.startswith('/admin'))):
             return self.get_response(request)
 

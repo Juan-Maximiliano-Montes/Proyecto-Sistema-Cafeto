@@ -471,6 +471,12 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
         validators=[VALIDADOR_TELEFONO])
     email_cliente = models.EmailField(
         'Email', max_length=254, null=True, blank=True)
+    # La cuenta de la app (Firebase) con la que el cliente se vinculó. Una
+    # vez vinculada, se lo encuentra por acá y el correo deja de importar.
+    # No se carga ni se edita en ninguna pantalla: lo escribe la API móvil.
+    uid_firebase = models.CharField(
+        'Cuenta de la app', max_length=128, null=True, blank=True,
+        editable=False)
     qr_cliente = models.CharField('Código QR', max_length=64)
     puntos_acumulados = models.IntegerField(
         'Puntos acumulados', default=0, editable=False)
@@ -520,6 +526,11 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
                 name='uq_clientes_telefono_cliente'),
             models.UniqueConstraint(
                 fields=['dni_cliente'], name='uq_clientes_dni_cliente'),
+            # Una cuenta de la app, una sola ficha.
+            models.UniqueConstraint(
+                fields=['uid_firebase'],
+                condition=models.Q(uid_firebase__isnull=False),
+                name='uq_clientes_uid_firebase'),
         ]
 
     def clean(self):
@@ -548,6 +559,40 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
             exigir_que_no_este_dado_de_baja(
                 type(self), self, {'telefono_cliente': self.telefono_cliente},
                 etiqueta='El cliente con teléfono %s' % self.telefono_cliente)
+        if self.email_cliente and not self.borrado_logico:
+            otro = self.otro_con_el_mismo_correo()
+            if otro is not None:
+                raise ValidationError({'email_cliente': (
+                    f'El cliente con email {self.email_cliente.strip()} ya existe: '
+                    f'«{otro}». Cada cliente necesita su propio correo: con él '
+                    'entra a la app del club y ve sus puntos.')})
+
+    def otro_con_el_mismo_correo(self):
+        """Otro cliente VIGENTE con este correo (sin distinguir mayúsculas).
+
+        El correo es con lo que el cliente entra a la app: con dos fichas
+        vigentes que lo comparten, la app no sabría cuál mostrarle. No hay
+        un índice único en la base porque pueden quedar repetidos de antes;
+        esos los lista ``manage.py clientes_correo_repetido``.
+        """
+        if not self.email_cliente:
+            return None
+        return (type(self).objects
+                .filter(borrado_logico=False,
+                        email_cliente__iexact=self.email_cliente.strip())
+                .exclude(pk=self.pk).first())
+
+    @classmethod
+    def correos_repetidos(cls):
+        """Los correos que comparten dos o más clientes vigentes, con cuántos."""
+        from django.db.models import Count
+        from django.db.models.functions import Lower
+
+        return (cls.objects.filter(borrado_logico=False, email_cliente__isnull=False)
+                .exclude(email_cliente='')
+                .annotate(correo=Lower('email_cliente'))
+                .values('correo').annotate(cantidad=Count('pk'))
+                .filter(cantidad__gt=1).order_by('correo'))
 
     @property
     def nombre_completo(self):
@@ -636,6 +681,11 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
         return []
 
     def motivos_que_impiden_reactivar(self):
+        # Reactivarlo no puede dejar dos fichas vigentes con el mismo correo.
+        otro = self.otro_con_el_mismo_correo()
+        if otro is not None:
+            return [f'su correo ({self.email_cliente}) ya es de «{otro}»: '
+                    'cambiáselo o unificá las fichas primero']
         return []
 
 

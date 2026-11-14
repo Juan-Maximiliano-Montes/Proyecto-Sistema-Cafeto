@@ -10,6 +10,7 @@
     </div>
 </div>
 
+{% if etapa == 'REVELADA' %}
 <div class="row g-3">
     <div class="col-lg-5">
         <div class="tarjeta">
@@ -24,7 +25,7 @@
                 <div class="aviso {% if pide_supervisor %}aviso-error{% else %}aviso-aviso{% endif %} mb-0">
                     <i class="bi bi-exclamation-triangle-fill"></i>
                     <span>{% if diferencia > 0 %}Sobran{% else %}Faltan{% endif %} <strong>{{ diferencia|pesos }}</strong>.
-                    {% if pide_supervisor %}Supera lo tolerado ({{ tolerancia|pesos }}): lo tiene que autorizar alguien que supervise.{% endif %}</span>
+                    {% if titular_sola %}Supera lo tolerado ({{ tolerancia|pesos }}): como sos la titular alcanza con tu clave.{% elif pide_supervisor %}Supera lo tolerado ({{ tolerancia|pesos }}): lo tiene que autorizar alguien que supervise.{% endif %}</span>
                 </div>
                 {% endif %}
             </div>
@@ -43,7 +44,13 @@
                 {{ form.observacion }}
             </div>
             {% endif %}
-            {% if pide_supervisor %}
+            {% if titular_sola %}
+            <h2 class="subtitulo h6">Confirmá que sos vos</h2>
+            <p class="small text-secondary">No hace falta otra persona. Te pedimos tu clave por si la sesión quedó abierta.</p>
+            <div class="row g-2 mb-3">
+                <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_clave.id_for_label }}">Tu clave</label>{{ form.autoriza_clave }}</div>
+            </div>
+            {% elif pide_supervisor %}
             <h2 class="subtitulo h6">Autoriza</h2>
             <div class="row g-2 mb-3">
                 <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_usuario.id_for_label }}">{{ form.autoriza_usuario.label }}</label>{{ form.autoriza_usuario }}</div>
@@ -62,12 +69,53 @@
                 <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1"></i>{% if relevo %}Hacer el relevo{% else %}Cerrar la caja{% endif %}</button>
             </div>
         </form>
-        <form method="post" action="{% url 'ventas:descartar_arqueo' %}" class="mt-2"
-              data-titulo="¿Volver sin cerrar?" data-aceptar="Sí, volver"
-              data-confirmar="La caja sigue abierta. Lo que declaraste queda registrado; para cerrar vas a tener que contar de nuevo.">
+    </div>
+</div>
+{% elif etapa == 'NO_COINCIDE' %}
+<div class="tarjeta p-4" style="max-width: 40rem">
+    <div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i>
+        <span><strong>Lo que contaste no coincide con el libro.</strong> No te mostramos por cuánto: lo más común es un error al contar. Contá de nuevo con calma, billete por billete.</span></div>
+    <p class="small text-secondary">Si volvés a contar y sigue sin coincidir, ahí sí vas a ver la diferencia y ese conteo va a quedar como definitivo.</p>
+    <div class="d-flex gap-2 flex-wrap">
+        <form method="post" action="{% url 'ventas:descartar_arqueo' %}">
             {% csrf_token %}
-            <button type="submit" class="btn btn-link text-secondary p-0">Volver sin cerrar</button>
+            <button type="submit" class="btn btn-primary btn-xl"><i class="bi bi-arrow-repeat me-1"></i>Volver a contar</button>
+        </form>
+        <form method="post"
+              data-titulo="¿Cerrar con este conteo?" data-aceptar="Sí, es definitivo"
+              data-confirmar="Vas a ver la diferencia y ya no vas a poder volver a contar. La tiene que autorizar alguien que supervise.">
+            {% csrf_token %}
+            <input type="hidden" name="cerrar_igual" value="1">
+            <button type="submit" class="btn btn-outline-secondary btn-xl">Estoy seguro de lo que conté</button>
         </form>
     </div>
 </div>
+{% else %}
+<div class="tarjeta p-4" style="max-width: 40rem">
+    <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i>
+        <span><strong>Tu conteo coincide con el libro.</strong> Los números salen en el documento de cierre.</span></div>
+    <form method="post" novalidate
+          data-titulo="{% if relevo %}¿Hacemos el relevo?{% else %}¿Cerramos la caja?{% endif %}" data-aceptar="{% if relevo %}Sí, hacer el relevo{% else %}Sí, cerrar{% endif %}"
+          data-confirmar="{% if relevo %}Tu turno se cierra con lo que contaste y el cajón pasa a la otra persona.{% else %}El turno se cierra con lo que contaste. Un turno cerrado no se vuelve a abrir.{% endif %}">
+        {% csrf_token %}
+        {{ form.token_operacion }}
+        {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+        {% if relevo %}
+        <h2 class="subtitulo h6">Quién sigue con el cajón</h2>
+        <p class="small text-secondary">Lo que contaste pasa a ser su fondo inicial.</p>
+        <div class="row g-2 mb-3">
+            <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_usuario.id_for_label }}">{{ form.entrante_usuario.label }}</label>{{ form.entrante_usuario }}</div>
+            <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_clave.id_for_label }}">{{ form.entrante_clave.label }}</label>{{ form.entrante_clave }}</div>
+        </div>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1"></i>{% if relevo %}Hacer el relevo{% else %}Cerrar la caja{% endif %}</button>
+    </form>
+    <form method="post" action="{% url 'ventas:descartar_arqueo' %}" class="mt-2"
+          data-titulo="¿Volver sin cerrar?" data-aceptar="Sí, volver"
+          data-confirmar="La caja sigue abierta. Lo que declaraste queda registrado; para cerrar vas a tener que contar de nuevo.">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-link text-secondary p-0">Volver sin cerrar</button>
+    </form>
+</div>
+{% endif %}
 {% endblock %}

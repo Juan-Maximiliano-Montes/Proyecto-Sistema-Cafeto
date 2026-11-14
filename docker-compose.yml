@@ -54,10 +54,16 @@ services:
     volumes:
       # El codigo se monta para poder editarlo sin reconstruir la imagen.
       #
-      # No hay ningun otro montaje, y es a proposito: el esquema entero lo
-      # crean las migraciones de Django a partir de los modelos, asi que un
-      # clon de este repositorio levanta solo, sin carpetas externas.
+      # El esquema entero lo crean las migraciones de Django a partir de los
+      # modelos, asi que un clon de este repositorio levanta solo, sin
+      # carpetas externas.
       - .:/opt/app
+      # La cuenta de servicio de Firebase para la app movil (README, «La app
+      # movil»): ./secretos/firebase.json, fuera del repositorio. Se monta la
+      # carpeta y no el archivo: si el archivo no existiera, Docker crearia
+      # en su lugar una carpeta llamada firebase.json. Sin el archivo, la API
+      # responde 503 en /clientes/ y el resto anda igual.
+      - ./secretos:/run/secrets:ro
     ports:
       - "8000:8000"
     environment:
@@ -79,6 +85,9 @@ services:
       DJANGO_CORREO_USUARIO: ${DJANGO_CORREO_USUARIO:-}
       DJANGO_CORREO_CLAVE: ${DJANGO_CORREO_CLAVE:-}
       DJANGO_CORREO_REMITENTE: ${DJANGO_CORREO_REMITENTE:-Sistema Cafeto <no-responder@cafeto.local>}
+      # App móvil: dónde está, DENTRO del contenedor, la cuenta de servicio
+      # de Firebase (el montaje de ./secretos de arriba).
+      CAFETO_FIREBASE_CREDENCIAL: ${CAFETO_FIREBASE_CREDENCIAL:-/run/secrets/firebase.json}
     depends_on:
       db:
         condition: service_healthy

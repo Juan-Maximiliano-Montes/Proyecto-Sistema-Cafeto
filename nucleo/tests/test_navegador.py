@@ -24,6 +24,7 @@ Corre sólo donde está Playwright (no forma parte de la imagen de Docker):
 """
 import os
 import re
+import unittest
 from collections import Counter
 from datetime import timedelta
 from decimal import Decimal
@@ -128,7 +129,9 @@ class RecorridoEnNavegadorTest(StaticLiveServerTestCase):
     @classmethod
     def setUpClass(cls):
         if sync_playwright is None:
-            raise cls.skipException('Playwright no está instalado.')
+            # SkipTest es lo que unittest entiende como "saltear": desde
+            # setUpClass marca salteada la clase entera.
+            raise unittest.SkipTest('Playwright no está instalado.')
         # Playwright corre su propio bucle de eventos en este hilo; el ORM
         # se usa sólo para armar los datos, antes de abrir el navegador.
         os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'

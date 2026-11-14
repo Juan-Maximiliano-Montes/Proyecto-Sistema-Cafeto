@@ -209,17 +209,29 @@ VENTANA_DE_INTENTOS = timedelta(hours=24)
 INTENTOS_POR_IP = 30
 VENTANA_POR_IP = timedelta(minutes=15)
 
+# El ingreso desde la app móvil (api_movil) no abre una fila en SESIONES: la
+# sesión web es única (DD-01) y la del celular la cerraría. Lo que lo deja
+# asentado es este asiento de LOG_AUDITORIA, y para el bloqueo cuenta como
+# cualquier ingreso correcto.
+OPERACION_INGRESO_MOVIL = 'INICIO DE SESION MOVIL'
+
 
 def _fallos(identificador, usuario, ip, desde):
-    from seguridad.models import IntentoAcceso
+    from seguridad.models import IntentoAcceso, LogAuditoria
 
     intentos = IntentoAcceso.objects.filter(fecha_hora__gt=desde).exclude(
         motivo_rechazo='CUENTA_BLOQUEADA')
     if usuario is not None:
-        # Un ingreso correcto o una clave nueva ponen la cuenta en cero.
+        # Un ingreso correcto —en la web o en el celular— o una clave nueva
+        # ponen la cuenta en cero.
         ultimo_ingreso = usuario.sesiones.aggregate(
             m=Max('fecha_inicio'))['m']
-        for corte in (ultimo_ingreso, usuario.fecha_cambio_clave):
+        ultimo_ingreso_movil = LogAuditoria.objects.filter(
+            id_usuario=usuario,
+            operacion_realizada=OPERACION_INGRESO_MOVIL).aggregate(
+            m=Max('fecha_hora'))['m']
+        for corte in (ultimo_ingreso, ultimo_ingreso_movil,
+                      usuario.fecha_cambio_clave):
             if corte and corte > desde:
                 desde = corte
         return intentos.filter(id_usuario=usuario, fecha_hora__gt=desde)
@@ -388,7 +400,8 @@ def describir_espera(restante):
 #  AUTORIZACIÓN EN EL MOSTRADOR
 # ---------------------------------------------------------------------------
 def autorizar_con_clave(request, identificador, clave, permiso,
-                        distinto_de=None, para='', auditar=True):
+                        distinto_de=None, para='', auditar=True,
+                        titular_se_confirma=True):
     """La encargada pone su usuario y su clave en la tablet de la cajera.
 
     Para lo que el perfil de quien opera no alcanza —un descuento por
@@ -405,6 +418,14 @@ def autorizar_con_clave(request, identificador, clave, permiso,
     y por qué no se aceptó. ``auditar=False`` es para la vista previa del
     ticket, que se recalcula con cada tecla: el intento que cuenta es el
     del cobro.
+
+    **La titular no necesita a otra persona** (DD-80). El control por
+    oposición protege a la dueña de los demás, no de sí misma: cuando quien
+    opera es la titular, alcanza con que vuelva a poner SU clave. La clave se
+    pide igual, por si dejó la sesión abierta y se fue. Sólo vale para ella:
+    otro Administrador sigue necesitando a otra persona.
+    ``titular_se_confirma=False`` es para cuando hace falta una persona
+    distinta de verdad (quien recibe el cajón en un relevo).
     """
     from django.core.exceptions import ValidationError
     from django.db.models import Q
@@ -444,7 +465,8 @@ def autorizar_con_clave(request, identificador, clave, permiso,
                                   'USUARIO_INACTIVO')
         rechazar('Quien autoriza está dado de baja.',
                  'quien autoriza está dado de baja')
-    if distinto_de is not None and usuario.pk == distinto_de.pk:
+    se_confirma = titular_se_confirma and getattr(usuario, 'es_titular', False)
+    if distinto_de is not None and usuario.pk == distinto_de.pk and not se_confirma:
         rechazar('La autorización la tiene que dar otra persona, no quien opera.',
                  'quiso autorizarse a sí mismo')
     if not usuario.tiene_permiso(permiso):

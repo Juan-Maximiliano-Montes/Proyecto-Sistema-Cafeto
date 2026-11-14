@@ -31,6 +31,16 @@ def usuario(dni, perfil_nombre='Operador', apellido='Prueba', nombre=None):
     return nuevo
 
 
+def titular():
+    """La dueña del sistema (la crea la migración inicial), con la clave de
+    las pruebas y lista para operar."""
+    duenia = Usuario.objects.get(es_titular=True)
+    duenia.set_clave(CLAVE)
+    duenia.debe_cambiar_clave = False
+    duenia.save()
+    return duenia
+
+
 def proveedor(nombre='Distribuidora Norte', cuit='30-71234567-1'):
     return Proveedor.objects.create(nombre_proveedor=nombre,
                                     cuit_proveedor=cuit)

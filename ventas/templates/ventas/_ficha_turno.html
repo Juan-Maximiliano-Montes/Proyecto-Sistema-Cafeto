@@ -9,6 +9,13 @@
     <dt>Contado</dt><dd class="monto">{{ turno.monto_final|pesos }}</dd>
     <dt>Diferencia</dt><dd class="monto {% if turno.diferencia_caja < 0 %}text-peligro{% endif %}">{{ turno.diferencia_caja|pesos }}</dd>
     {% if turno.observacion_diferencia %}<dt>Explicación</dt><dd>{{ turno.observacion_diferencia }}</dd>{% endif %}
+    {% if conteos|length > 1 %}
+    <dt class="text-peligro">Se contó {{ conteos|length }} veces</dt>
+    <dd><ul class="list-unstyled mb-0 small">{% for c in conteos %}
+        <li>{{ c.cuando|date:"H:i" }} · {{ c.usuario.nombre }} declaró <strong>{{ c.monto|pesos }}</strong> ·
+            {% if c.destino == 'CIERRE' %}con este se cerró{% elif c.destino == 'DESCARTADO' %}<span class="text-peligro">volvió atrás sin cerrar</span>{% elif c.destino == 'PENDIENTE' %}todavía sin cerrar{% else %}<span class="text-peligro">salió sin cerrar ni volver atrás</span>{% endif %}{% if c.otra_sesion %} <span class="text-peligro">· antes cerró la sesión y volvió a entrar</span>{% endif %}</li>
+    {% endfor %}</ul></dd>
+    {% endif %}
     {% else %}
     <dt>Estado</dt><dd><span class="insignia insignia-exito">Abierto</span></dd>
     {% endif %}

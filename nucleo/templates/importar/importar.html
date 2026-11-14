@@ -58,7 +58,7 @@
             <tr{% if not r.ok %} class="fila-destacada"{% endif %}>
                 <td class="text-nowrap">{{ r.numero }}</td>
                 <td>{% if not r.ok %}<span class="insignia insignia-peligro">Error</span>{% elif r.accion == 'ALTA' %}<span class="insignia insignia-exito">Alta</span>{% elif r.accion == 'CAMBIO' %}<span class="insignia insignia-aviso">Cambio</span>{% else %}<span class="insignia insignia-neutra">Sin cambios</span>{% endif %}</td>
-                <td>{{ r.descripcion }}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}</td>
+                <td>{{ r.descripcion }}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}{% for a in r.avisos %}<span class="d-block text-warning small"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ a }}</span>{% endfor %}</td>
             </tr>
         {% endfor %}
         </tbody>

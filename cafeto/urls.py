@@ -9,6 +9,7 @@
     /compras/            proveedores, compras, órdenes, pagos y gastos
     /negocio/            datos del local y reportes
     /fidelizacion/       clientes del club, categorías y beneficios
+    /api/movil/          la API de la app móvil (JSON, con su propio token)
 
 El /admin/ de Django sólo existe en desarrollo (DEBUG): en producción es
 una puerta trasera que saltea la auditoría y los permisos del sistema.
@@ -27,6 +28,7 @@ urlpatterns = [
     path('compras/', include('compras.urls')),
     path('fidelizacion/', include('fidelizacion.urls')),
     path('negocio/', include('negocio.urls')),
+    path('api/movil/', include('api_movil.urls')),
     path('', include('nucleo.urls')),
     path('perfil/', seguridad_views.mi_perfil, name='mi_perfil'),
     path('', inicio, name='home'),

@@ -95,8 +95,14 @@ class MermaTest(Base):
         self.assertEqual(aprobado.id_usuario_autorizante, self.admin)
 
     def test_la_duena_aprueba_la_suya(self):
+        duenia = f.titular()
+        ajuste = self.merma(duenia)
+        self.assertEqual(stock.aprobar(ajuste, duenia).estado_ajuste, 'APROBADO')
+
+    def test_otro_administrador_no_aprueba_la_suya(self):
         ajuste = self.merma(self.admin)
-        self.assertEqual(stock.aprobar(ajuste, self.admin).estado_ajuste, 'APROBADO')
+        with self.assertRaisesMessage(ValidationError, 'lo cargaste vos'):
+            stock.aprobar(ajuste, self.admin)
 
     def test_aprobar_ya_solo_para_la_duena(self):
         with self.assertRaisesMessage(ValidationError, 'lo cargaste vos'):

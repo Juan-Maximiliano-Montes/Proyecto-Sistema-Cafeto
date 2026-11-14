@@ -337,6 +337,12 @@ code, .codigo { color: var(--c-marca); background: transparent; }
 }
 .chip-caja .punto { width: .5rem; height: .5rem; border-radius: 50%; background: var(--c-texto-3); }
 .chip-caja.abierta .punto { background: var(--c-exito); box-shadow: 0 0 0 3px var(--c-exito-fondo); }
+button.chip-caja { cursor: pointer; }
+.lista-cajas { min-width: 17rem; }
+.lista-cajas .dropdown-item { display: flex; align-items: flex-start; gap: .6rem; white-space: normal; }
+.chip-caja-fila { padding-top: .45rem; }
+.chip-caja-fila .punto { display: block; width: .5rem; height: .5rem; border-radius: 50%; background: var(--c-texto-3); }
+.chip-caja-fila.abierta .punto { background: var(--c-exito); box-shadow: 0 0 0 3px var(--c-exito-fondo); }
 main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
 
 .encabezado {

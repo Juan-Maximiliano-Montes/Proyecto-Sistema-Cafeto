@@ -23,8 +23,9 @@
     </div>
 </form>
 
+{% if sin_productos %}<div class="aviso aviso-aviso" role="status"><i class="bi bi-search"></i><span>{{ sin_productos }}</span></div>{% endif %}
 {% if filas %}
-<div class="aviso aviso-aviso"><i class="bi bi-info-circle-fill"></i><span>Alcanza a <strong>{{ total }}</strong> producto(s){% if total > filas|length %} (se muestran los primeros {{ filas|length }}){% endif %}.</span></div>
+<div class="aviso aviso-aviso"><i class="bi bi-info-circle-fill"></i><span>Alcanza a <strong>{{ total }}</strong> producto(s){% if total > filas|length %} (se muestran los primeros {{ filas|length }}){% endif %}.{% if sin_cambio == total %} <strong>Ninguno cambia de precio:</strong> con ese porcentaje y ese redondeo quedan todos igual. Probá con un redondeo más chico.{% elif sin_cambio %} {{ sin_cambio }} quedan igual por el redondeo.{% endif %}</span></div>
 <div class="tarjeta p-0 overflow-hidden mb-3">
     <div class="table-responsive">
     <table class="table align-middle mb-0">

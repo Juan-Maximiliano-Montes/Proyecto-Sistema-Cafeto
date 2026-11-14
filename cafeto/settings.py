@@ -85,6 +85,9 @@ INSTALLED_APPS = [
     'ventas',
     'compras',
     'fidelizacion',
+    # La API de la app móvil (/api/movil/): no tiene tablas propias, usa
+    # las de los módulos de arriba con sus mismas reglas.
+    'api_movil',
 ]
 
 MIDDLEWARE = [
@@ -315,3 +318,12 @@ else:
     EMAIL_TIMEOUT = 5
 DEFAULT_FROM_EMAIL = os.environ.get(
     'DJANGO_CORREO_REMITENTE', 'Sistema Cafeto <no-responder@cafeto.local>')
+
+# ---------------------------------------------------------------------------
+#  App móvil: las cuentas de los clientes (api_movil/firebase.py)
+# ---------------------------------------------------------------------------
+# Ruta, DENTRO del contenedor, del archivo JSON de la cuenta de servicio de
+# Firebase con la que se verifican los tokens de los clientes. Ese archivo
+# es una credencial: nunca va en el repositorio. Vacío, los endpoints de
+# /api/movil/clientes/ responden 503 y el resto de la API anda igual.
+FIREBASE_CREDENCIAL = os.environ.get('CAFETO_FIREBASE_CREDENCIAL', '')

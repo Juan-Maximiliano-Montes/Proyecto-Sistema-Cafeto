@@ -12,7 +12,6 @@ lo que hace que nadie quiera cargar las compras.
 """
 import json
 from datetime import date
-from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -123,29 +122,6 @@ def _renglones_de_la_orden(orden):
     return renglones
 
 
-SALTO_DE_COSTO = 3
-
-
-def _costos_que_llaman_la_atencion(renglones):
-    """Renglones cuyo costo es más del triple, o menos de un tercio, del anterior.
-
-    Casi siempre es un cero de más o de menos al tipear. No se prohíbe (los
-    precios cambian): se pide que quien carga lo mire y lo confirme.
-    """
-    raros = []
-    for renglon in renglones:
-        anterior = renglon.producto.precio_costo
-        try:
-            nuevo = Decimal(renglon.costo_unitario)
-        except (InvalidOperation, TypeError):
-            continue
-        if not anterior or anterior <= 0 or nuevo <= 0:
-            continue
-        if nuevo > anterior * SALTO_DE_COSTO or nuevo * SALTO_DE_COSTO < anterior:
-            raros.append({'producto': renglon.producto, 'anterior': anterior, 'nuevo': nuevo})
-    return raros
-
-
 @requiere_permiso('registrar_compra', redirigir_a='home')
 def recepcion(request):
     proveedores = Proveedor.objects.filter(borrado_logico=False).exclude(
@@ -180,7 +156,7 @@ def recepcion(request):
             otros = leer_numero(request.POST.get('otros') or '0', 2)
             if otros is None:
                 raise ValidationError('Los otros conceptos no son un número.')
-            raros = _costos_que_llaman_la_atencion(renglones)
+            raros = servicios.costos_que_llaman_la_atencion(renglones)
             if raros and not request.POST.get('confirmo_costos'):
                 contexto['costos_raros'] = raros
                 raise ValidationError(

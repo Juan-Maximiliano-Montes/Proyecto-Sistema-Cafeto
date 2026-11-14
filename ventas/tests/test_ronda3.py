@@ -67,13 +67,13 @@ class VencimientosLejanosTest(TestCase):
 
 class SaltoDeCostoTest(TestCase):
     def test_un_costo_con_un_cero_de_mas_pide_confirmacion(self):
-        from compras.views.recepciones import _costos_que_llaman_la_atencion
+        # La regla vive en el servicio: la usan la pantalla y la app móvil.
         proveedor = fabrica.proveedor()
         agua = fabrica.producto('Agua de prueba', prov=proveedor, costo='600')
         renglon = lambda costo: compras.RenglonRecibido(agua, D('1'), D(costo))
-        self.assertEqual(_costos_que_llaman_la_atencion([renglon('650')]), [])
-        self.assertEqual(len(_costos_que_llaman_la_atencion([renglon('6000')])), 1)
-        self.assertEqual(len(_costos_que_llaman_la_atencion([renglon('60')])), 1)
+        self.assertEqual(compras.costos_que_llaman_la_atencion([renglon('650')]), [])
+        self.assertEqual(len(compras.costos_que_llaman_la_atencion([renglon('6000')])), 1)
+        self.assertEqual(len(compras.costos_que_llaman_la_atencion([renglon('60')])), 1)
 
 
 class PreciosBajoElCostoTest(TestCase):
@@ -182,3 +182,33 @@ class NumerosDeRellenoTest(TestCase):
                                           importe_por_punto=D('0.50'))
         with self.assertRaisesMessage(ValidationError, '1 o más'):
             categoria.full_clean()
+
+
+class PantallaDePreciosTest(TestCase):
+    """Lo que encontró Maxi el 14/11: filtros que no dan nada, sin aviso."""
+
+    def setUp(self):
+        from compras.models import Proveedor
+        fabrica.entrar(self.client, fabrica.usuario('30111230', 'Administrador'))
+        self.golosinas = fabrica.proveedor()
+        self.luz = Proveedor.objects.create(nombre_proveedor='Empresa de luz',
+                                            cuit_proveedor='30-70707070-4')
+        self.alfajor = fabrica.producto('Alfajor de prueba', prov=self.golosinas,
+                                        precio='1000', costo='600')
+
+    def test_un_proveedor_de_servicios_no_aparece_en_el_filtro(self):
+        pantalla = self.client.get(reverse('stock:precios'))
+        proveedores = list(pantalla.context['proveedores'])
+        self.assertIn(self.golosinas, proveedores)
+        self.assertNotIn(self.luz, proveedores)
+
+    def test_si_los_filtros_no_dan_nada_lo_dice(self):
+        pantalla = self.client.get(reverse('stock:precios'), {
+            'proveedor': self.luz.pk, 'porcentaje': '2', 'redondeo': '10'})
+        self.assertContains(pantalla, 'No hay ningún producto a la venta')
+        self.assertContains(pantalla, 'Empresa de luz')
+
+    def test_avisa_cuando_el_redondeo_se_come_el_aumento(self):
+        pantalla = self.client.get(reverse('stock:precios'), {
+            'porcentaje': '0.1', 'redondeo': '100'})
+        self.assertContains(pantalla, 'Ninguno cambia de precio')

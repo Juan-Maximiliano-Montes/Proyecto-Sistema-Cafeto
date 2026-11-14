@@ -18,7 +18,7 @@ renglón falla no queda media compra cargada ni stock sin su factura.
 """
 from dataclasses import dataclass, field
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -136,6 +136,29 @@ class RenglonRecibido:
 
 # Ni las conservas duran tanto: más allá de esto es un año mal tipeado.
 VENCIMIENTO_MAXIMO = timedelta(days=3660)
+
+SALTO_DE_COSTO = 3
+
+
+def costos_que_llaman_la_atencion(renglones):
+    """Renglones cuyo costo es más del triple, o menos de un tercio, del anterior.
+
+    Casi siempre es un cero de más o de menos al tipear. No se prohíbe (los
+    precios cambian): se pide que quien carga lo mire y lo confirme. Lo usan
+    la pantalla de recepción y la API móvil.
+    """
+    raros = []
+    for renglon in renglones:
+        anterior = renglon.producto.precio_costo
+        try:
+            nuevo = Decimal(renglon.costo_unitario)
+        except (InvalidOperation, TypeError):
+            continue
+        if not anterior or anterior <= 0 or nuevo <= 0:
+            continue
+        if nuevo > anterior * SALTO_DE_COSTO or nuevo * SALTO_DE_COSTO < anterior:
+            raros.append({'producto': renglon.producto, 'anterior': anterior, 'nuevo': nuevo})
+    return raros
 
 
 def _validar_renglon(renglon, fecha_compra):

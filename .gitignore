@@ -1,5 +1,7 @@
 # Credenciales: nunca se suben
 .env
+# La cuenta de servicio de Firebase de la app móvil (secretos/firebase.json)
+secretos/
 
 # Python
 __pycache__/

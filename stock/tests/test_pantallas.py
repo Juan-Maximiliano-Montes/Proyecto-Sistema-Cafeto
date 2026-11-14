@@ -93,8 +93,8 @@ class MermaTest(Base):
 
     def test_un_doble_envio_carga_una_sola_merma(self):
         # "Aprobarla ya" es de la dueña: la que carga y aprueba en un paso
-        # es la Administradora (DD-67).
-        f.entrar(self.client, f.usuario('40000003', 'Administrador', nombre='Ana'))
+        # es la titular (DD-67, DD-80).
+        f.entrar(self.client, f.titular())
         token = self.client.get(reverse('stock:merma')).context['token']
         datos = {'token_operacion': token, 'motivo': 'ROTURA', 'aprobar_ya': '1',
                  'producto_0': self.yogur.pk, 'cantidad_0': '1'}

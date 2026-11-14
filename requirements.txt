@@ -25,3 +25,8 @@ segno==1.6.6
 # Producción: servidor WSGI y archivos estáticos sin depender de un CDN.
 gunicorn==26.2.0
 whitenoise==6.12.0
+
+# App móvil: verifica el token de Firebase de los clientes (api_movil/
+# firebase.py). Sin la credencial configurada no se usa: /clientes/ responde
+# 503 y el resto de la API anda igual.
+firebase-admin==6.5.0

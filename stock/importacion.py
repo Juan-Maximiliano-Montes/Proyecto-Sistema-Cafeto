@@ -52,12 +52,29 @@ class ImportadorProductos(Importador):
         Columna('minimo', 'Stock mínimo', False, 'Para el aviso de faltantes.', '5', ('minimo',)),
         Columna('proveedor', 'Proveedor', False, 'CUIT o nombre. Obligatorio para reventa e insumos.',
                 '30-71234567-1'),
-        Columna('codigo', 'Código de barras', False, 'El EAN del envase.', '7790000000000',
+        Columna('codigo', 'Código de barras', False, 'El EAN del envase.', '7790000000003',
                 ('codigo', 'ean')),
         Columna('fraccionable', 'Fraccionable', False, 'Sí si se vende por peso (KG o L, contenido 1).', 'No'),
         Columna('vence', 'Controla vencimiento', False, 'Sí si va por lote con fecha de vencimiento.', 'No',
                 ('vencimiento',)),
     )
+
+    def ejemplo_de(self, columna):
+        # El ejemplo usa un proveedor y un rubro que existen de verdad: una
+        # planilla modelo cuyo propio ejemplo da error no enseña nada.
+        if columna.clave == 'proveedor':
+            from compras.models import Proveedor
+            real = (Proveedor.objects.filter(borrado_logico=False)
+                    .order_by('nombre_proveedor').values_list('cuit_proveedor', flat=True).first())
+            return real or columna.ejemplo
+        if columna.clave == 'rubro':
+            from stock.models import Rubro
+            real = (Rubro.objects.filter(borrado_logico=False, nombre_rubro=columna.ejemplo)
+                    .values_list('nombre_rubro', flat=True).first()
+                    or Rubro.objects.filter(borrado_logico=False)
+                    .order_by('nombre_rubro').values_list('nombre_rubro', flat=True).first())
+            return real or columna.ejemplo
+        return columna.ejemplo
 
     def preparar(self):
         self.rubros = {clave_normalizada(r.nombre_rubro): r for r in Rubro.objects.filter(borrado_logico=False)}
@@ -143,6 +160,7 @@ class ImportadorProductos(Importador):
             except ValidationError as error:
                 errores.extend(error.messages)
                 return
+            self._avisar_bajo_costo(resultado, producto)
             cambios = [c for c in CAMPOS_QUE_SE_ACTUALIZAN if getattr(producto, c) != antes[c]]
             resultado.accion = 'CAMBIO' if cambios else 'SIN CAMBIOS'
             resultado.descripcion = str(producto) + (
@@ -162,10 +180,21 @@ class ImportadorProductos(Importador):
         except ValidationError as error:
             errores.extend(error.messages)
             return
+        self._avisar_bajo_costo(resultado, producto)
         resultado.accion = 'ALTA'
         resultado.descripcion = (f'{marca_texto} · {nombre} · {producto.presentacion}'
                                  + ('' if marca else ' (marca nueva)'))
         resultado.preparado = (producto, None if marca else marca_texto)
+
+    @staticmethod
+    def _avisar_bajo_costo(resultado, producto):
+        """No frena la importación (puede ser una liquidación), pero una
+        planilla con el precio y el costo cruzados se ve antes de aplicar."""
+        precio, costo = producto.precio_venta, producto.precio_costo
+        if precio and costo and precio < costo:
+            resultado.avisos.append(
+                f'El precio de venta ($ {precio:,.2f}) queda por debajo del costo '
+                f'($ {costo:,.2f}): se vendería a pérdida. Fijate que no estén cruzados.')
 
     @staticmethod
     def _describir(campo, antes, despues):

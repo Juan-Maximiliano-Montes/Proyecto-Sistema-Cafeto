@@ -33,10 +33,15 @@ def actualizar_precios(request):
     # Un redondeo que no es un número ("abc") daba error 500: cae en un valor
     # que la regla de precios rechaza con su mensaje ("Elegí cómo se redondea").
     paso = leer_numero(datos.get('redondeo') or '10', 2) or Decimal('0')
+    # En los filtros sólo va lo que tiene algo para remarcar. Un proveedor
+    # de servicios (la luz, el agua) no tiene productos a la venta: ofrecerlo
+    # acá sólo sirve para elegirlo por error y no ver nada.
+    vendibles = precios.alcanzados()
     contexto = {
-        'rubros': Rubro.objects.filter(borrado_logico=False).order_by('nombre_rubro'),
-        'marcas': Marca.objects.filter(borrado_logico=False).order_by('nombre_marca'),
-        'proveedores': Proveedor.objects.filter(borrado_logico=False).order_by('nombre_proveedor'),
+        'rubros': Rubro.objects.filter(pk__in=vendibles.values('id_rubro')).order_by('nombre_rubro'),
+        'marcas': Marca.objects.filter(pk__in=vendibles.values('id_marca')).order_by('nombre_marca'),
+        'proveedores': Proveedor.objects.filter(
+            pk__in=vendibles.exclude(id_proveedor=None).values('id_proveedor')).order_by('nombre_proveedor'),
         'redondeos': precios.REDONDEOS, 'datos': datos, 'paso': paso,
     }
     if datos.get('porcentaje'):
@@ -71,7 +76,17 @@ def actualizar_precios(request):
                 messages.success(request, f'Listo: se actualizaron {cantidad} precio(s).')
                 return redirect('stock:productos_lista')
             filas = precios.calcular(productos[:VISTA_PREVIA], porcentaje, paso)
-            contexto.update({'filas': filas, 'total': productos.count(),
+            total = productos.count()
+            if not total:
+                elegidos = [str(v) for v in filtros.values() if v]
+                contexto['sin_productos'] = (
+                    'No hay ningún producto a la venta que sea de '
+                    + ' y de '.join(f'"{e}"' for e in elegidos)
+                    + ' a la vez. Probá dejando alguno de los filtros en "Todos".'
+                    if elegidos else 'Todavía no hay productos a la venta para remarcar.')
+            sin_cambio = sum(1 for _p, antes, despues in
+                             precios.calcular(productos, porcentaje, paso) if antes == despues)
+            contexto.update({'filas': filas, 'total': total, 'sin_cambio': sin_cambio,
                              'token': idempotencia.emitir(request)})
         except ValidationError as error:
             contexto['error'] = ' '.join(error.messages)

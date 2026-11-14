@@ -30,6 +30,7 @@
         <option value="">Todos los turnos</option>
         <option value="abiertos"{% if filtro.estado == 'abiertos' %} selected{% endif %}>Abiertos</option>
         <option value="con_diferencia"{% if filtro.estado == 'con_diferencia' %} selected{% endif %}>Con diferencia</option>
+        <option value="recontados"{% if filtro.estado == 'recontados' %} selected{% endif %}>Contados más de una vez</option>
     </select>
     <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ filtro.desde }}" class="form-control"></label>
     <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ filtro.hasta }}" class="form-control"></label>

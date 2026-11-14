@@ -51,6 +51,7 @@ class Resultado:
     accion: str = ''            # 'ALTA' | 'CAMBIO' | 'SIN CAMBIOS'
     descripcion: str = ''
     errores: list = field(default_factory=list)
+    avisos: list = field(default_factory=list)   # no frenan: piden que se mire
     preparado: object = None    # lo que necesita aplicar(); no se serializa
     foto_anterior: dict = None  # la fila antes de aplicar (sólo en un CAMBIO)
     foto_nueva: dict = None     # la fila después de aplicar
@@ -142,9 +143,16 @@ class Importador:
 
     def _mapear(self, crudas):
         """Ubica la fila de títulos y arma {clave: valor} por fila."""
-        indice_titulos = next((i for i, fila in enumerate(crudas[:10]) if any(fila)), None)
-        if indice_titulos is None:
+        # La fila de títulos es la que más columnas conocidas tiene entre las
+        # primeras diez: una lista de un proveedor suele traer arriba un
+        # título ("Lista de precios de noviembre") o el membrete.
+        conocidas = set().union(*(c.nombres() for c in self.columnas))
+        candidatas = [(sum(1 for t in fila if clave_normalizada(t) in conocidas), -i)
+                      for i, fila in enumerate(crudas[:10]) if any(fila)]
+        if not candidatas:
             return []
+        aciertos, menos_i = max(candidatas)
+        indice_titulos = -menos_i
         titulos = [clave_normalizada(t) for t in crudas[indice_titulos]]
         posiciones = {}
         for columna in self.columnas:
@@ -213,6 +221,11 @@ class Importador:
     # ------------------------------------------------------------------
     #  Planilla modelo
     # ------------------------------------------------------------------
+    def ejemplo_de(self, columna):
+        """El valor de la fila de ejemplo. Un importador lo cambia cuando el
+        ejemplo tiene que existir en ESTE local (un proveedor, un rubro)."""
+        return columna.ejemplo
+
     def planilla_modelo(self):
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill
@@ -225,7 +238,7 @@ class Importador:
             celda = hoja.cell(row=1, column=i, value=columna.titulo)
             celda.font = Font(bold=True)
             celda.fill = PatternFill('solid', fgColor='FAB41F' if columna.obligatoria else 'FFF3D6')
-            hoja.cell(row=2, column=i, value=columna.ejemplo or None)
+            hoja.cell(row=2, column=i, value=self.ejemplo_de(columna) or None)
             hoja.column_dimensions[get_column_letter(i)].width = max(14, len(columna.titulo) + 4)
         hoja.freeze_panes = 'A2'
         ayuda = libro.create_sheet('Cómo completarla')

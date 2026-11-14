@@ -19,7 +19,7 @@ Todo lo que escribe corre en ``transaction.atomic()`` y bloquea el turno
 con ``select_for_update()`` antes de leer el saldo: dos retiros
 simultáneos no pueden leer el mismo saldo y sacar plata de más.
 """
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -191,7 +191,7 @@ def retiro(turno, usuario, monto, concepto):
 # ===========================================================================
 @transaction.atomic
 def cerrar(turno, usuario, monto_contado, observacion=None,
-           supervisor=None, relevo=False):
+           supervisor=None, relevo=False, confirmo_titular=False):
     """Cierra el turno con lo contado y deja escrita la diferencia.
 
     * diferencia = contado - esperado (el saldo del libro).
@@ -220,7 +220,11 @@ def cerrar(turno, usuario, monto_contado, observacion=None,
     if supervisor is not None and supervisor.pk == usuario.pk:
         raise ValidationError(
             'Quien supervisa el cierre tiene que ser otra persona.')
-    if abs(diferencia) > tolerancia and supervisor is None:
+    # La titular cierra sola aunque haya diferencia (DD-80): la vista ya le
+    # pidió su clave. Queda como cierre NORMAL, sin supervisor, porque en la
+    # base "supervisó" es siempre OTRA persona.
+    titular_sola = confirmo_titular and getattr(usuario, 'es_titular', False)
+    if abs(diferencia) > tolerancia and supervisor is None and not titular_sola:
         raise ValidationError(
             f'La diferencia de {pesos(diferencia)} supera lo tolerado '
             f'({pesos(tolerancia)}): el cierre lo tiene que supervisar alguien '
@@ -248,15 +252,123 @@ def cerrar(turno, usuario, monto_contado, observacion=None,
 
 @transaction.atomic
 def relevar(turno, saliente, monto_contado, entrante, observacion=None,
-            supervisor=None):
+            supervisor=None, confirmo_titular=False):
     """Cambio de turno: cierra con lo contado y abre con eso mismo.
 
     El efectivo no se mueve del cajón: lo que el que se va contó es el
     fondo del que llega. Si hubo diferencia, queda en el turno que cierra.
     """
     cerrado = cerrar(turno, saliente, monto_contado, observacion,
-                     supervisor=supervisor, relevo=supervisor is None)
+                     supervisor=supervisor, relevo=supervisor is None,
+                     confirmo_titular=confirmo_titular)
     nuevo = abrir(cerrado.id_caja_registradora, entrante,
                   cerrado.monto_final,
                   concepto=f'Relevo del turno {cerrado.pk}')
     return cerrado, nuevo
+
+
+OPERACION_ARQUEO = 'ARQUEO DE TURNO DE CAJA'
+OPERACION_DESCARTE = 'ARQUEO DESCARTADO DE TURNO DE CAJA'
+OPERACION_REVELADO = 'ARQUEO REVELADO DE TURNO DE CAJA'
+# Cuántas veces se puede contar sin que el sistema muestre la diferencia.
+CONTEOS_A_CIEGAS = 2
+
+
+def _asientos_de_arqueo(turno, *operaciones):
+    from seguridad.models import LogAuditoria
+    return (LogAuditoria.objects
+            .filter(tabla_afectada=turno._meta.db_table[:40], id_registro=turno.pk,
+                    operacion_realizada__in=operaciones))
+
+
+def conteos_seguidos(turno):
+    """Cuántos conteos se declararon desde el último movimiento del cajón.
+
+    Un conteo viejo, de antes de seguir vendiendo, no cuenta: fue un "cerrar"
+    apretado por error en medio del turno."""
+    ultimo = turno.movimientos.order_by('-fecha_hora').values_list('fecha_hora', flat=True).first()
+    asientos = _asientos_de_arqueo(turno, OPERACION_ARQUEO)
+    if ultimo is not None:
+        asientos = asientos.filter(fecha_hora__gt=ultimo)
+    return asientos.count()
+
+
+def conteo_revelado(turno):
+    """El conteo de este turno al que ya se le mostró la diferencia, o None.
+
+    Desde ese momento el número queda fijo, se cierre la sesión o no: quien
+    ya vio cuánto tenía que haber no puede volver a contar (DD-81)."""
+    if turno is None or not turno.abierto:
+        return None
+    asiento = _asientos_de_arqueo(turno, OPERACION_REVELADO).order_by('-fecha_hora', '-pk').first()
+    if asiento is None:
+        return None
+    declarado = (asiento.registro_nuevo or {}).get('arqueo_declarado') or {}
+    if declarado.get('monto_contado') is None:
+        return None
+    return {'contado': str(declarado['monto_contado']), 'relevo': bool(declarado.get('relevo'))}
+
+
+def conteos_declarados(turno):
+    """Cada vez que alguien declaró lo contado para cerrar este turno.
+
+    El cierre deja volver atrás (uno se puede equivocar contando), pero
+    quien vuelve atrás ya vio cuánto tenía que haber. Por eso cada conteo
+    queda asentado ANTES de mostrar la diferencia, en LOG_AUDITORIA (un
+    libro que la base no deja modificar), y acá se leen todos para el
+    documento de recaudación: si hubo más de uno, la dueña lo ve en el
+    papel sin tener que ir a buscarlo (DD-80).
+
+    Cada elemento dice cuándo, quién, cuánto y cómo terminó ese conteo:
+    ``CIERRE`` (con ese se cerró), ``DESCARTADO`` (volvió atrás),
+    ``ABANDONADO`` (salió del sistema sin cerrar ni volver atrás) o
+    ``PENDIENTE`` (el turno sigue abierto y es el último).
+    ``otra_sesion`` avisa que entre el conteo anterior y éste la persona
+    cerró la sesión y volvió a entrar.
+    """
+    from seguridad.models import LogAuditoria
+
+    asientos = list(
+        LogAuditoria.objects
+        .filter(tabla_afectada=turno._meta.db_table[:40], id_registro=turno.pk,
+                operacion_realizada__in=(OPERACION_ARQUEO, OPERACION_DESCARTE))
+        .select_related('id_usuario').order_by('fecha_hora', 'pk'))
+    conteos = []
+    for asiento in asientos:
+        if asiento.operacion_realizada == OPERACION_DESCARTE:
+            if conteos and conteos[-1]['destino'] is None:
+                conteos[-1]['destino'] = 'DESCARTADO'
+            continue
+        declarado = (asiento.registro_nuevo or {}).get('arqueo_declarado') or {}
+        try:
+            monto = Decimal(str(declarado.get('monto_contado')))
+        except (InvalidOperation, TypeError, ValueError):
+            monto = None
+        if conteos and conteos[-1]['destino'] is None:
+            conteos[-1]['destino'] = 'ABANDONADO'
+        conteos.append({
+            'cuando': asiento.fecha_hora, 'usuario': asiento.id_usuario,
+            'monto': monto, 'destino': None, 'sesion': asiento.id_sesion_id,
+            'otra_sesion': bool(conteos) and conteos[-1]['sesion'] != asiento.id_sesion_id,
+        })
+    if conteos and conteos[-1]['destino'] is None:
+        conteos[-1]['destino'] = 'PENDIENTE' if turno.abierto else 'CIERRE'
+    return conteos
+
+
+def turnos_con_reconteo(desde):
+    """Los turnos cerrados desde ``desde`` en los que se contó más de una vez.
+
+    Es el aviso para la dueña: un reconteo no prueba nada por sí solo, pero
+    es lo primero que conviene mirar (DD-81)."""
+    from seguridad.models import LogAuditoria
+
+    cerrados = TurnoCaja.objects.filter(estado_turno='CERRADA', fecha_cierre__date__gte=desde)
+    repetidos = (LogAuditoria.objects
+                 .filter(tabla_afectada=TurnoCaja._meta.db_table[:40],
+                         operacion_realizada=OPERACION_ARQUEO,
+                         id_registro__in=cerrados.values('pk'))
+                 .values('id_registro').annotate(veces=Count('pk')).filter(veces__gt=1)
+                 .values_list('id_registro', flat=True))
+    return cerrados.filter(pk__in=list(repetidos)).order_by('-fecha_cierre')
+

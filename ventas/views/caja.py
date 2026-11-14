@@ -62,11 +62,16 @@ def _con_token(formulario_clase, request, **kwargs):
 def _arqueo_pendiente(request, turno):
     """Lo declarado en el paso 1 del cierre de ESTE turno, o None."""
     datos = request.session.get(CLAVE_ARQUEO)
-    if not datos or turno is None or datos.get('turno') != turno.pk:
+    if (datos and turno is not None and datos.get('turno') == turno.pk
+            and datos.get('usuario') == request.usuario_actual.pk):
+        return datos
+    # Un conteo al que ya se le mostró la diferencia sigue en pie aunque se
+    # haya cerrado la sesión: se retoma tal cual, no se vuelve a contar.
+    fijo = servicio_caja.conteo_revelado(turno)
+    if fijo is None:
         return None
-    if datos.get('usuario') != request.usuario_actual.pk:
-        return None
-    return datos
+    return {'turno': turno.pk, 'usuario': request.usuario_actual.pk,
+            'contado': fijo['contado'], 'relevo': fijo['relevo'], 'revelado': True}
 
 
 # ===========================================================================
@@ -254,11 +259,38 @@ def cierre(request):
     tolerancia = ParametrosNegocio.vigentes().tolerancia_arqueo
     pide_supervisor = abs(diferencia) > tolerancia
     relevo = arqueo['relevo']
+    # La titular no necesita que otra persona le supervise el cierre: lo
+    # confirma con su propia clave (DD-80).
+    titular_sola = pide_supervisor and request.usuario_actual.es_titular
 
+    # Arqueo ciego con recuento (DD-81). Mientras no se muestre la
+    # diferencia, quien cuenta sólo sabe si coincide o no, y puede volver a
+    # contar. La diferencia se muestra cuando el conteo ya no se puede
+    # cambiar: al segundo que no coincide, o si elige cerrar igual. A la
+    # titular se le muestra siempre: es la dueña de la plata.
+    if (not arqueo.get('revelado') and pide_supervisor and (
+            request.usuario_actual.es_titular
+            or servicio_caja.conteos_seguidos(turno) >= servicio_caja.CONTEOS_A_CIEGAS
+            or (request.method == 'POST' and request.POST.get('cerrar_igual')))):
+        arqueo = _revelar(request, turno, arqueo)
+        if request.method == 'POST' and request.POST.get('cerrar_igual'):
+            return redirect('ventas:cierre')
+    if arqueo.get('revelado'):
+        etapa = 'REVELADA'
+    elif pide_supervisor:
+        etapa = 'NO_COINCIDE'
+    else:
+        etapa = 'COINCIDE'
+
+    if request.method == 'POST' and etapa == 'NO_COINCIDE':
+        return redirect('ventas:cierre')
     if request.method == 'POST':
         form = ConfirmacionCierreForm(request.POST)
         form.is_valid()
         datos = form.cleaned_data
+        if etapa == 'COINCIDE' and diferencia != 0 and not datos.get('observacion'):
+            datos['observacion'] = 'Diferencia dentro de lo tolerado'
+
         token = datos.get('token_operacion')
         if not idempotencia.consumir(request, token):
             messages.info(request, 'Ese cierre ya se había procesado.')
@@ -266,7 +298,12 @@ def cierre(request):
         antes = instantanea(turno)
         try:
             supervisor = None
-            if pide_supervisor:
+            if titular_sola:
+                autorizar_con_clave(
+                    request, request.usuario_actual.nombre_usuario,
+                    datos.get('autoriza_clave'), 'supervisar_cierre',
+                    para='cerrar con esta diferencia')
+            elif pide_supervisor:
                 supervisor = autorizar_con_clave(
                     request, datos.get('autoriza_usuario'),
                     datos.get('autoriza_clave'), 'supervisar_cierre',
@@ -277,14 +314,16 @@ def cierre(request):
                     request, datos.get('entrante_usuario'),
                     datos.get('entrante_clave'), 'abrir_caja',
                     distinto_de=request.usuario_actual,
-                    para='tomar el turno')
+                    para='tomar el turno', titular_se_confirma=False)
                 cerrado, nuevo = servicio_caja.relevar(
                     turno, request.usuario_actual, contado, entrante,
-                    datos.get('observacion'), supervisor=supervisor)
+                    datos.get('observacion'), supervisor=supervisor,
+                    confirmo_titular=titular_sola)
             else:
                 cerrado = servicio_caja.cerrar(
                     turno, request.usuario_actual, contado,
-                    datos.get('observacion'), supervisor=supervisor)
+                    datos.get('observacion'), supervisor=supervisor,
+                    confirmo_titular=titular_sola)
                 nuevo = None
         except ValidationError as error:
             idempotencia.devolver(request, token)
@@ -301,6 +340,8 @@ def cierre(request):
                          f'{cerrado.monto_esperado}, diferencia $ '
                          f'{cerrado.diferencia_caja}'
                          + (f'; supervisó {supervisor}' if supervisor else '')
+                         + ('; la titular lo confirmó con su clave, sin otra persona'
+                            if titular_sola else '')
                          + (f'; sigue {nuevo.id_usuario_apertura}' if nuevo else '')
                          + '.'))
             if nuevo:
@@ -316,7 +357,23 @@ def cierre(request):
         'turno': turno, 'contado': contado, 'esperado': esperado,
         'diferencia': diferencia, 'tolerancia': tolerancia,
         'pide_supervisor': pide_supervisor, 'relevo': relevo, 'form': form,
+        'titular_sola': titular_sola, 'etapa': etapa,
     })
+
+
+def _revelar(request, turno, arqueo):
+    """Deja el conteo fijo y asentado, justo antes de mostrar la diferencia."""
+    arqueo = {**arqueo, 'revelado': True}
+    request.session[CLAVE_ARQUEO] = arqueo
+    if servicio_caja.conteo_revelado(turno) is None:
+        registrar_auditoria(
+            request, 'ARQUEO REVELADO', 'TURNO DE CAJA', instancia=turno,
+            anterior=instantanea(turno),
+            nuevo={**instantanea(turno), 'arqueo_declarado': {
+                'monto_contado': arqueo['contado'], 'relevo': arqueo['relevo']}},
+            detalle=f'Se le mostró la diferencia del conteo de {pesos(Decimal(arqueo["contado"]))}: '
+                    'desde ahora ese conteo no se cambia.')
+    return arqueo
 
 
 @require_POST
@@ -328,7 +385,12 @@ def descartar_arqueo(request):
     hay que volver a contar, y el primer conteo ya quedó asentado.
     """
     turno = puesto.turno_de(request)
-    if _arqueo_pendiente(request, turno):
+    pendiente = _arqueo_pendiente(request, turno)
+    if pendiente and pendiente.get('revelado'):
+        messages.error(request, 'Ya viste la diferencia de ese conteo: no se puede '
+                                'volver a contar. Terminá el cierre.')
+        return redirect('ventas:cierre')
+    if pendiente:
         declarado = request.session.pop(CLAVE_ARQUEO, None) or {}
         registrar_auditoria(
             request, 'ARQUEO DESCARTADO', 'TURNO DE CAJA', instancia=turno,
@@ -356,6 +418,9 @@ def _turnos_filtrados(request):
         turnos = turnos.exclude(diferencia_caja=0).filter(diferencia_caja__isnull=False)
     elif estado == 'abiertos':
         turnos = turnos.filter(estado_turno='ABIERTA')
+    elif estado == 'recontados':
+        turnos = turnos.filter(pk__in=servicio_caja.turnos_con_reconteo(
+            date(2000, 1, 1)).values('pk'))
     for clave, filtro in (('desde', 'fecha_apertura__date__gte'),
                           ('hasta', 'fecha_apertura__date__lte')):
         valor = request.GET.get(clave, '')
@@ -393,6 +458,7 @@ def ficha_turno(request, pk):
     return render(request, 'ventas/_ficha_turno.html', {
         'turno': turno,
         'propio_abierto': propio_abierto,
+        'conteos': [] if propio_abierto else servicio_caja.conteos_declarados(turno),
         'resumen': ([] if propio_abierto
                     else [(e, m) for e, m in servicio_caja.resumen(turno) if m]),
         'movimientos': turno.movimientos.select_related('id_usuario')
@@ -431,6 +497,7 @@ def recaudacion(request, pk):
         'turno': turno, 'filas': filas,
         'total': sum((f['total'] for f in filas), Decimal('0')),
         'resumen': [(e, m) for e, m in servicio_caja.resumen(turno) if m],
+        'conteos': servicio_caja.conteos_declarados(turno),
         'negocio': ParametrosNegocio.vigentes(),
     })
 
