@@ -64,6 +64,7 @@ class Anulacion:
     """Lo que se revirtió, para avisarlo en pantalla y dejarlo en el log."""
     venta: object
     efectivo: object = None             # lo que salió del cajón (positivo)
+    deuda_cancelada: object = None      # lo que dejó de deber en cuenta corriente
     renglones_stock: int = 0
     puntos: object = None               # fidelizacion.puntos.Reverso
     medios_externos: list = field(default_factory=list)
@@ -76,6 +77,8 @@ class Anulacion:
                           'asiento(s)')
         if self.efectivo:
             partes.append(f'salieron {pesos(self.efectivo)} del cajón')
+        if self.deuda_cancelada:
+            partes.append(f'se le descontaron {pesos(self.deuda_cancelada)} de la cuenta corriente')
         if self.puntos is not None and self.puntos.hubo:
             if self.puntos.acumulacion:
                 partes.append(f'se descontaron {self.puntos.acumulacion} '
@@ -214,7 +217,20 @@ def _anular(venta, solicitante, motivo, detalle, autorizante):
         resultado.efectivo = entrada.monto
     resultado.medios_externos = sorted({
         str(p.id_medio_pago) for p in venta.pagos.select_related('id_medio_pago')
-        if not p.id_medio_pago.afecta_caja})
+        if not p.id_medio_pago.afecta_caja and not p.id_medio_pago.es_cuenta_corriente})
+
+    # 2 bis. Cuenta corriente (DD-91): la deuda de esta venta se cancela
+    #    sola. Si ya se había cobrado algo, no se anula: esa plata entró y
+    #    hay que devolverla con una devolución, que deja su rastro.
+    from fidelizacion import credito
+    from fidelizacion.models import MovimientoCuenta
+
+    credito.bloquear_cliente_de(venta)
+    if MovimientoCuenta.objects.filter(id_venta=venta, tipo_movimiento='COBRO').exists():
+        raise AnulacionRechazada(
+            f'El cliente ya pagó parte de la venta N° {venta.pk}, que era fiada: no se puede anular. '
+            'Registrá una devolución.')
+    resultado.deuda_cancelada = credito.cancelar_por_venta(venta, usuario)
 
     # 3. Puntos: el DFD 9 es el único que escribe su libro (DD-37).
     if venta.id_cliente_id:

@@ -9,4 +9,5 @@ urlpatterns = [
     path('parametros/', parametros.parametros, name='parametros'),
     path('reportes/', reportes.reportes, name='reportes'),
     path('reportes/exportar/', reportes.exportar_reporte, name='exportar_reporte'),
+    path('resumen-del-mes/', reportes.resumen_del_mes, name='resumen_del_mes'),
 ]

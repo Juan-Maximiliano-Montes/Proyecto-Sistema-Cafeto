@@ -32,7 +32,8 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F, Sum
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from nucleo.modelos import es_entero
@@ -660,12 +661,19 @@ def rechazar(ajuste, autorizante, observacion):
 # ===========================================================================
 #  ALERTAS
 # ===========================================================================
-def bajo_minimo():
-    """Lo que tiene stock propio y está por debajo del mínimo."""
+def bajo_minimo(hoy=None):
+    """Lo que tiene stock propio y, sin contar lo vencido, está por debajo
+    del mínimo. Cinco medialunas vencidas no son cinco medialunas: si eso
+    es todo lo que hay, el producto está agotado y tiene que avisar."""
+    hoy = hoy or timezone.localdate()
     return (Producto.objects
-            .filter(borrado_logico=False, stock_minimo__gt=0,
-                    stock_actual__lt=F('stock_minimo'))
-            .select_related('id_marca', 'id_rubro')
+            .filter(borrado_logico=False, stock_minimo__gt=0)
+            .annotate(vencido_en_lotes=Coalesce(Sum('lotes__stock_lote', filter=Q(
+                lotes__stock_lote__gt=0, lotes__fecha_vencimiento__lt=hoy)),
+                                              Value(CERO, output_field=DecimalField(max_digits=12, decimal_places=3))))
+            .annotate(stock_apto=F('stock_actual') - F('vencido_en_lotes'))
+            .filter(stock_apto__lt=F('stock_minimo'))
+            .select_related('id_marca', 'id_rubro', 'id_proveedor')
             .order_by('id_rubro__nombre_rubro', 'nombre_producto'))
 
 

@@ -239,8 +239,8 @@ class LecturaDelRegistroTest(FotosVentaTest):
         self.assertNotIn("{'", html)
         self.assertNotIn('{&#x27;', html)
         self.assertIn('subtabla-actividad', html)
-        self.assertIn('$ 1.000,00', html)        # precio unitario
-        self.assertIn('$ 2.000,00', html)        # total de la venta
+        self.assertIn('$\xa01.000,00', html)        # precio unitario
+        self.assertIn('$\xa02.000,00', html)        # total de la venta
         self.assertNotIn('2000.00', html)
 
 
@@ -251,4 +251,4 @@ class TarjetaDeInsumoTest(Base):
         f.entrar(self.client, self.admin)
         html = self.client.get(reverse('stock:productos_lista') + '?tipo=INSUMO').content.decode()
         self.assertIn('No se vende', html)
-        self.assertNotIn('$ 0,00', html)
+        self.assertNotIn('$\xa00,00', html)

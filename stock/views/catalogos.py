@@ -5,7 +5,9 @@ de productos (``buscar_productos``) la usan los selectores de todo el
 sistema.
 """
 
+from django.db.models import Q, Sum
 from django.http import JsonResponse
+from django.utils import timezone
 
 from compras.models import Proveedor
 from nucleo.busqueda import filtrar_por_texto
@@ -109,9 +111,38 @@ def rubros_vigentes():
             for r in Rubro.objects.filter(borrado_logico=False)]
 
 
+PRIMER_CODIGO_INTERNO = 1000
+
+
+def siguiente_codigo_interno():
+    """El primer número libre de cuatro dígitos (o más, si se acabaron).
+
+    Arranca en 1000 y no en 0001: una planilla de cálculo se come los ceros
+    de adelante y el código dejaría de coincidir al reimportar.
+    """
+    usados = set(Producto.objects.filter(codigo_barras__regex=r'^[0-9]{4,6}$')
+                 .values_list('codigo_barras', flat=True))
+    numero = PRIMER_CODIGO_INTERNO
+    while str(numero) in usados:
+        numero += 1
+    return str(numero)
+
+
+def codigo_interno(request):
+    """El próximo código propio, para el botón del alta de productos."""
+    usuario = request.usuario_actual
+    if not (usuario.tiene_permiso('crear_producto') or usuario.tiene_permiso('editar_producto')):
+        registrar_acceso_denegado(request, 'crear_producto')
+        return JsonResponse({'error': 'Tu perfil no puede cargar productos.'}, status=403)
+    return JsonResponse({'codigo': siguiente_codigo_interno()})
+
+
+
 def proveedores_vigentes():
+    # Sólo los que venden mercadería: la luz o el agua no proveen productos.
     return [(p.pk, p.nombre_proveedor)
-            for p in Proveedor.objects.filter(borrado_logico=False)]
+            for p in Proveedor.objects.filter(borrado_logico=False)
+            .exclude(tipo_proveedor='SERVICIOS').order_by('nombre_proveedor')]
 
 
 def marcas_vigentes():
@@ -166,6 +197,13 @@ MARCAS = registrar(ConfiguracionCRUD(
 ))
 
 
+def con_stock_vencido(productos):
+    """Lo que hay en lotes ya vencidos, por producto y en la misma
+    consulta: eso no se vende y no cuenta como stock apto."""
+    return productos.annotate(vencido_en_lotes=Sum('lotes__stock_lote', filter=Q(
+        lotes__stock_lote__gt=0, lotes__fecha_vencimiento__lt=timezone.localdate())))
+
+
 PRODUCTOS = registrar(ConfiguracionCRUD(
     clave='productos',
     a_pedido=True,
@@ -180,7 +218,7 @@ PRODUCTOS = registrar(ConfiguracionCRUD(
     columnas=(
         Columna('Producto', 'nombre_producto'),
         Columna('Precio de venta', 'precio_para_mostrar', 'dinero'),
-        Columna('Stock', 'stock_para_mostrar', 'numero'),
+        Columna('Stock apto', 'stock_para_mostrar', 'numero', aclaracion='aclaracion_de_stock'),
         Columna('Marca', 'id_marca'),
         Columna('Presentación', 'presentacion'),
         Columna('Rubro', 'id_rubro'),
@@ -200,12 +238,16 @@ PRODUCTOS = registrar(ConfiguracionCRUD(
         Filtro('proveedor', 'Proveedor', 'id_proveedor', proveedores_vigentes),
     ),
     relaciones=('id_rubro', 'id_proveedor', 'id_marca'),
+    anotar=con_stock_vencido,
     acciones_extra=(
         ('Importar', 'bi-file-earmark-arrow-up', 'importar', ('productos',),
          'importar_productos'),
         ('Actualizar precios', 'bi-graph-up-arrow', 'stock:precios', (),
          'actualizar_precios'),
+        ('Etiquetas de góndola', 'bi-tags', 'stock:etiquetas_gondola', (),
+         'ver_productos'),
     ),
+    ficha_extra='stock/_foto_producto.html',
     orden=('id_marca__nombre_marca', 'nombre_producto'),
     # La identidad del producto es la TERNA: dos artículos con el mismo
     # nombre son distintos si cambian de marca o de presentación (DD-55).

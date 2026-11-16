@@ -23,14 +23,7 @@
     </div>
 </div>
 
-<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Tipo de alerta">
-    {% for clave, etiqueta, icono in pestanias %}
-    <a href="?ver={{ clave }}" class="btn {% if clave == pestania %}btn-primary{% else %}btn-secundario{% endif %}"{% if clave == pestania %} aria-current="page"{% endif %}>
-        <i class="bi {{ icono }} me-1"></i>{{ etiqueta }}
-        {% for k, n in cantidades.items %}{% if k == clave and n %}<span class="insignia {% if clave == pestania %}insignia-neutra{% else %}insignia-aviso{% endif %} ms-1">{{ n }}</span>{% endif %}{% endfor %}
-    </a>
-    {% endfor %}
-</nav>
+{% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Tipo de alerta' %}
 <form id="herramientas" method="get"><input type="hidden" name="ver" value="{{ pestania }}"></form>
 
 {% if filas %}
@@ -40,10 +33,10 @@
     <article class="tarjeta">
         <div class="tarjeta-cabeza">
             <div class="min-w-0"><h2 class="tarjeta-titulo">{{ p.nombre_producto }}</h2><p class="tarjeta-sub">{{ p.id_marca }} · {{ p.id_rubro }}</p></div>
-            <span class="insignia {% if p.stock_actual <= 0 %}insignia-peligro{% else %}insignia-aviso{% endif %}">{% if p.stock_actual <= 0 %}Agotado{% else %}Bajo{% endif %}</span>
+            <span class="insignia {% if p.stock_apto <= 0 %}insignia-peligro{% else %}insignia-aviso{% endif %}">{% if p.stock_apto <= 0 %}Agotado{% else %}Bajo{% endif %}</span>
         </div>
         <dl class="tarjeta-datos">
-            <dt>Hay</dt><dd>{{ p.stock_actual|cantidad }}</dd>
+            <dt>Hay apto</dt><dd>{{ p.stock_apto|cantidad }}{% if p.vencido_en_lotes %}<span class="d-block small text-peligro">y {{ p.vencido_en_lotes|cantidad }} vencida{{ p.vencido_en_lotes|pluralize }} para sacar</span>{% endif %}</dd>
             <dt>Mínimo</dt><dd>{{ p.stock_minimo|cantidad }}</dd>
             <dt>Proveedor</dt><dd>{{ p.id_proveedor|default:"—" }}</dd>
         </dl>
@@ -60,7 +53,7 @@
             {% else %}<span class="insignia insignia-aviso">{{ dias_restantes }} día{{ dias_restantes|pluralize }}</span>{% endif %}
         </div>
         <dl class="tarjeta-datos">
-            <dt>Vence</dt><dd>{{ l.fecha_vencimiento|date:"d/m/Y" }}</dd>
+            <dt>{% if dias_restantes < 0 %}Venció{% else %}Vence{% endif %}</dt><dd>{{ l.fecha_vencimiento|date:"d/m/Y" }}</dd>
             <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad }}</dd>
         </dl>
         {% if dias_restantes < 0 %}<p class="small text-peligro mb-0"><i class="bi bi-exclamation-triangle me-1"></i>No se vende: cargalo como merma.</p>{% endif %}

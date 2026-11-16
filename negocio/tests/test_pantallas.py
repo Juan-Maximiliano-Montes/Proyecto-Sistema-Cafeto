@@ -95,10 +95,10 @@ class ImportarProductosTest(Base):
         respuesta = self.subir([
             ['Nombre', 'Marca', 'Rubro', 'Precio de venta', 'Proveedor'],
             ['Alfajor', 'Havanna', 'minisuper', '1.500', '30-71234567-1'],
-            ['Turrón', 'Arcor', 'Rubro que no existe', '500', '30-71234567-1'],
+            ['Turrón', 'Arcor', 'Minisuper', '500', 'Proveedor Fantasma'],
         ])
         self.assertEqual(respuesta.context['errores'], 1)
-        self.assertContains(respuesta, 'no existe')
+        self.assertContains(respuesta, 'No hay ningún proveedor')
         self.assertNotContains(respuesta, 'Confirmar la importación')
         self.client.post(reverse('importar_confirmar', args=['productos']))
         self.assertFalse(Producto.objects.exists())
@@ -148,7 +148,7 @@ class ImportarProveedoresTest(Base):
         self.client.post(reverse('importar_confirmar', args=['proveedores']))
         self.prov.refresh_from_db()
         self.assertEqual(self.prov.telefono_proveedor, '3874123456')
-        self.assertEqual(Proveedor.objects.count(), 2)
+        self.assertEqual(Proveedor.objects.exclude(cuit_proveedor='30-00000000-7').count(), 2)
 
 
 class PreciosTest(Base):

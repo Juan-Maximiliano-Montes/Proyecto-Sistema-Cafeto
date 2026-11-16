@@ -1,0 +1,25 @@
+{% load cafeto %}
+<div class="foto-producto">
+    <h3 class="subtitulo h6">Foto</h3>
+    {% with foto=fila|foto_de %}
+    {% if foto %}<img src="{{ foto }}" alt="Foto de {{ fila }}" class="foto-producto-vista" loading="lazy">
+    {% else %}<p class="small text-secondary mb-2">Todavía no tiene foto: en el mostrador y en la app se ve el ícono.</p>{% endif %}
+    {% if 'editar_producto' in permisos_usuario %}
+    <form method="post" action="{% url 'stock:producto_foto' fila.pk %}" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end">
+        {% csrf_token %}
+        <div class="flex-grow-1">
+            <label class="form-label small" for="fotoProducto{{ fila.pk }}">{% if foto %}Cambiarla{% else %}Sacá una foto o elegí un archivo{% endif %}</label>
+            <input type="file" name="foto" id="fotoProducto{{ fila.pk }}" accept="image/*" capture="environment" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-secundario"><i class="bi bi-camera me-1"></i>Guardar la foto</button>
+    </form>
+    {% if foto %}
+    <form method="post" action="{% url 'stock:producto_foto' fila.pk %}" class="mt-2"
+          data-titulo="¿Quitamos la foto?" data-aceptar="Sí, quitar" data-confirmar="El producto vuelve a mostrarse con el ícono.">
+        {% csrf_token %}<input type="hidden" name="quitar" value="1">
+        <button type="submit" class="btn btn-link btn-sm text-secondary p-0">Quitar la foto</button>
+    </form>
+    {% endif %}
+    {% endif %}
+    {% endwith %}
+</div>

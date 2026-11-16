@@ -192,6 +192,7 @@ class RecorridoEnNavegadorTest(StaticLiveServerTestCase):
             pagina.goto(self.live_server_url + '/stock/productos/')
             pagina.click('[data-bs-target="#modalCrear"]')
             modal = pagina.locator('#modalCrear')
+            modal.locator('.mas-opciones > summary').click()     # el tipo está en "Más opciones" (DD-86)
             modal.locator('[name="tipo_producto"]').select_option('COMBO')
             caja = modal.locator('.js-renglones .select2-selection').first
             caja.scroll_into_view_if_needed()
@@ -248,6 +249,7 @@ class RecorridoEnNavegadorTest(StaticLiveServerTestCase):
             pagina.click('[data-bs-target="#modalCrear"]')
             modal = pagina.locator('#modalCrear')
             modal.locator('[name="nombre_producto"]').fill('Alfajor triple')
+            modal.locator('.mas-opciones > summary').click()     # la marca está en "Más opciones" (DD-86)
             mas = modal.locator('.js-alta-rapida[data-destino$="marca"]')
             mas.click()
             panel = modal.locator('.alta-rapida-panel:not([hidden])')

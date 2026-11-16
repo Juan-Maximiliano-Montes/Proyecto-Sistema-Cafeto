@@ -54,7 +54,7 @@
                 <thead><tr><th>Cuándo</th><th>Producto</th><th class="table-numero">Cantidad</th><th class="table-numero">Costo c/u</th><th>Quién</th></tr></thead>
                 <tbody>
                 {% for p in filas %}
-                    <tr><td class="text-nowrap">{{ p.fecha_produccion|date:"d/m H:i" }}</td><td>{{ p.id_producto }}{% if p.fecha_vencimiento %}<span class="d-block small text-tenue">vence {{ p.fecha_vencimiento|date:"d/m" }}</span>{% endif %}</td><td class="table-numero">{{ p.cantidad|cantidad }}</td><td class="table-numero">{{ p.costo_unitario|pesos }}</td><td class="small">{{ p.id_usuario.nombre }}</td></tr>
+                    <tr><td class="text-nowrap">{{ p.fecha_produccion|date:"d/m H:i" }}</td><td>{{ p.id_producto }}{% if p.fecha_vencimiento %}<span class="d-block small text-tenue">{{ p.fecha_vencimiento|vencimiento }}</span>{% endif %}</td><td class="table-numero">{{ p.cantidad|cantidad }}</td><td class="table-numero">{{ p.costo_unitario|pesos }}</td><td class="small">{{ p.id_usuario.nombre }}</td></tr>
                 {% empty %}
                     <tr><td colspan="5" class="text-center text-secondary py-4">Todavía no se cargó ninguna tanda.</td></tr>
                 {% endfor %}

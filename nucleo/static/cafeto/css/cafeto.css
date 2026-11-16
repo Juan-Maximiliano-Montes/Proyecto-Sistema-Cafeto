@@ -49,7 +49,7 @@
     --c-divisor: #2E2E52;
     --c-texto: #E2E8F0;
     --c-texto-2: #A6B0C3;
-    --c-texto-3: #6E7899;
+    --c-texto-3: #8E97B4;
     --c-titulo: #F2E2A4;
     --c-marca: #FAB41F;
     --c-marca-hover: #E9A50F;
@@ -58,7 +58,7 @@
     --c-exito: #35D97C;
     --c-exito-fondo: #152A24;
     --c-exito-borde: #2F6B55;
-    --c-peligro: #F0564A;
+    --c-peligro: #F26458;
     --c-peligro-fondo: #2A1B22;
     --c-peligro-borde: #6B4A52;
     --c-aviso: #F2D38A;
@@ -80,16 +80,16 @@
     --c-divisor: #EAECF1;
     --c-texto: #161616;
     --c-texto-2: #5B6078;
-    --c-texto-3: #8A8F9C;
+    --c-texto-3: #656A79;
     --c-titulo: #161616;
     --c-marca: #FAB41F;
     --c-marca-hover: #E9A50F;
     --c-marca-suave: #FFF3D6;
     --c-sobre-marca: #161616;
-    --c-exito: #1F9D57;
+    --c-exito: #14773F;
     --c-exito-fondo: #E9F8F0;
     --c-exito-borde: #A8DFC0;
-    --c-peligro: #D33A2E;
+    --c-peligro: #BF3227;
     --c-peligro-fondo: #FDECEC;
     --c-peligro-borde: #F3B8B3;
     --c-aviso: #8A6100;
@@ -479,7 +479,12 @@ main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
 .producto-boton .stock { font-size: .75rem; color: var(--c-texto-3); }
 .ticket { position: sticky; top: 76px; }
 .ticket .renglon { display: grid; grid-template-columns: 1fr auto; gap: .2rem .75rem; padding: .7rem 0; border-bottom: 1px dashed var(--c-divisor); }
-.ticket .total { font-family: 'Lora', Georgia, serif; font-weight: 600; font-size: 2rem; color: var(--c-titulo); }
+.ticket .total { font-family: 'Lora', Georgia, serif; font-weight: 800; font-size: clamp(2.2rem, 3.5vw, 3.2rem); line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--c-titulo); }
+.visor-vuelto { font-weight: 800; font-size: clamp(2.2rem, 3.5vw, 3.2rem); line-height: 1.05; font-variant-numeric: tabular-nums; }
+.ticket .renglon.ultimo { background: var(--c-marca-fondo, rgba(245, 180, 40, .12)); border-left: 4px solid var(--c-marca); margin-left: -.6rem; padding-left: .6rem; border-radius: .35rem; }
+.ticket .renglon.ultimo .btn-icono { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.25rem; }
+.ticket .renglon.ultimo input { font-size: 1.15rem; font-weight: 700; min-height: 2.75rem; }
+kbd { font-size: .7em; opacity: .75; }
 .renglon-carga { padding: .7rem 0; border-bottom: 1px dashed var(--c-divisor); }
 .renglon-carga:last-child { border-bottom: 0; }
 .barra-ticket {
@@ -544,3 +549,76 @@ main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
     background: var(--c-superficie-activa); border-radius: .75rem; padding: .9rem 1rem;
     user-select: all;
 }
+
+/* Fotos de productos (DD-83) */
+.producto-foto { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: .5rem; margin-bottom: .4rem; background: var(--c-fondo-2, transparent); }
+.foto-producto { margin-top: 1rem; }
+.foto-producto-vista { display: block; max-width: 14rem; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: .75rem; margin-bottom: .75rem; }
+
+/* "Más opciones" de un formulario: lo que casi nunca se toca, plegado. */
+.mas-opciones { border: 1px solid var(--c-borde); border-radius: .6rem; padding: .25rem .9rem .9rem; }
+.mas-opciones > summary { cursor: pointer; font-weight: 600; padding: .55rem 0; color: var(--c-texto); }
+.mas-opciones > summary:focus-visible { outline: 2px solid var(--c-marca); outline-offset: 2px; }
+.mas-opciones:not([open]) { padding-bottom: .25rem; }
+
+/* Mostrador: figura sin stock pero se puede contar ahí mismo. */
+.producto-boton.sin-stock { opacity: .72; border-style: dashed; }
+.producto-boton.sin-stock .stock:last-of-type { color: var(--c-peligro, #E5484D); }
+
+/* Un importe no se parte: el signo y el número van siempre juntos (DD-91). */
+.monto, .precio, .total, .subtotal, .table-numero, .visor-vuelto,
+.kpi .valor:not(.valor-texto) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kpi .valor:not(.valor-texto) { font-size: clamp(1.3rem, 5.4vw, 1.9rem); }
+
+/* Lector de códigos con la cámara. */
+.camara-capa { position: fixed; inset: 0; z-index: 2000; background: rgba(8, 9, 20, .92); display: grid; place-items: center; padding: 1rem; }
+.camara-caja { width: min(32rem, 100%); display: grid; gap: .75rem; }
+.camara-caja video { width: 100%; max-height: 62vh; border-radius: .8rem; background: #000; object-fit: cover; }
+.camara-ayuda { color: #fff; text-align: center; margin: 0; }
+.btn-camara { min-width: 3rem; min-height: 3rem; }
+
+/* Avisos en amarillo legibles en los dos temas (Bootstrap trae #ffc107, 1,6:1 sobre blanco). */
+.text-warning { color: var(--c-aviso) !important; }
+
+/* Mostrador: el radar de deudores en mora (DD-91). Discreto, pero se ve. */
+.pildora-mora { background: var(--c-peligro-fondo); color: var(--c-peligro); border: 1px solid var(--c-peligro-borde);
+                border-radius: 999px; font-weight: 600; min-height: 2.25rem; padding: .25rem .8rem; white-space: nowrap; }
+.pildora-mora:hover, .pildora-mora:focus-visible { background: var(--c-peligro-fondo); color: var(--c-peligro); border-color: var(--c-peligro); }
+.radar-fila { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+              padding: .7rem 0; border-bottom: 1px solid var(--c-borde); }
+.radar-fila:last-child { border-bottom: 0; }
+.radar-fila .btn { min-height: 2.75rem; flex-shrink: 0; }
+.fila-subtotal th { border-top: 1px solid var(--c-borde); }
+.btn-quitar-pago { min-width: 2.75rem; min-height: 2.75rem; display: inline-grid; place-items: center; }
+
+/* Tablet y celular: los botones de la caja, cómodos para el dedo (WCAG 2.5.8). */
+@media (max-width: 991.98px) {
+    .js-medio, #mixto, .renglon .btn-icono { min-height: 2.75rem; }
+    .renglon .btn-icono { min-width: 2.75rem; }
+}
+
+/* El importe de una tarjeta se achica según el ancho de SU tarjeta (no de la
+   pantalla): "$ 1.114.060,40" entra entero en una tarjeta angosta sin partirse. */
+.kpi { container-type: inline-size; }
+@supports (font-size: 1cqi) {
+    .kpi .valor:not(.valor-texto) { font-size: clamp(1.05rem, 11cqi, 1.9rem); }
+}
+
+/* Filtro de estado en píldoras: lo que hay en cada vista, con su contador. */
+.filtro-estado { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.filtro-estado a {
+    display: inline-flex; align-items: center; gap: .45rem; min-height: 44px; padding: .45rem .95rem;
+    border: 1px solid var(--c-borde); border-radius: 999px; background: var(--c-superficie);
+    color: var(--c-texto-2); font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.filtro-estado a:hover { background: var(--c-superficie-activa); color: var(--c-texto); }
+.filtro-estado a:focus-visible { outline: 3px solid var(--c-marca); outline-offset: 2px; }
+.filtro-estado a[aria-current="page"] { background: var(--c-marca); border-color: var(--c-marca); color: var(--c-sobre-marca); }
+.filtro-estado .cuenta {
+    min-width: 1.6rem; padding: 0 .4rem; border-radius: 999px; font-size: .8rem; text-align: center;
+    font-variant-numeric: tabular-nums; background: var(--c-superficie-activa); color: var(--c-texto);
+}
+.filtro-estado a[aria-current="page"] .cuenta { background: rgba(0, 0, 0, .14); color: var(--c-sobre-marca); }
+
+/* Tarjeta de algo que ya venció: el borde lo dice antes de leer. */
+.tarjeta.tarjeta-vencida { border-color: var(--c-peligro-borde); background: var(--c-peligro-fondo); }

@@ -1,4 +1,4 @@
-{% load club cafeto %}
+{% load club cafeto crud_extras %}
 <div class="d-flex flex-wrap gap-3 align-items-start border-top pt-3 mt-2">
     <div class="text-center">
         {% qr_svg fila.qr_cliente 4 %}
@@ -8,6 +8,7 @@
         <dt>Categoría</dt><dd>{{ fila.id_categoria }}</dd>
         <dt>Puntos disponibles</dt><dd>{{ fila.puntos_disponibles }}</dd>
         <dt>Puntos acumulados</dt><dd>{{ fila.puntos_acumulados }}</dd>
+        <dt>Cuenta corriente</dt><dd><span class="insignia {% if fila.estado_credito == 'HABILITADO' %}insignia-exito{% elif fila.estado_credito == 'SIN_CREDITO' %}insignia-neutra{% else %}insignia-peligro{% endif %}">{{ fila.get_estado_credito_display }}</span>{% if fila.estado_credito != 'SIN_CREDITO' and permisos_usuario|contiene:'cobrar_credito' %} <a href="{% url 'fidelizacion:cuenta' fila.pk %}" class="small">Ver la cuenta</a>{% endif %}</dd>
     </dl>
 </div>
 <h6 class="subtitulo mt-3">Últimos movimientos de puntos</h6>

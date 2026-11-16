@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load cafeto %}
+{% load cafeto l10n %}
 {% block titulo %}Cafeto · Actualizar precios{% endblock %}
 
 {% block contenido %}
@@ -18,7 +18,7 @@
         <div class="col-md-3"><label class="form-label" for="marca">Marca</label><select name="marca" id="marca" class="form-select"><option value="">Todas</option>{% for m in marcas %}<option value="{{ m.pk }}"{% if datos.marca == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
         <div class="col-md-3"><label class="form-label" for="proveedor">Proveedor</label><select name="proveedor" id="proveedor" class="form-select"><option value="">Todos</option>{% for p in proveedores %}<option value="{{ p.pk }}"{% if datos.proveedor == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></div>
         <div class="col-md-1"><label class="form-label" for="porcentaje">%</label><input type="text" inputmode="decimal" name="porcentaje" id="porcentaje" value="{{ datos.porcentaje|default:'' }}" class="form-control" placeholder="8"></div>
-        <div class="col-md-2"><label class="form-label" for="redondeo">Redondeo</label><select name="redondeo" id="redondeo" class="form-select">{% for valor, etiqueta in redondeos %}<option value="{{ valor }}"{% if valor == paso %} selected{% endif %}>{{ etiqueta }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="form-label" for="redondeo">Redondeo</label><select name="redondeo" id="redondeo" class="form-select">{% for valor, etiqueta in redondeos %}<option value="{{ valor|unlocalize }}"{% if valor == paso %} selected{% endif %}>{{ etiqueta }}</option>{% endfor %}</select></div>
         <div class="col-12"><button type="submit" class="btn btn-secundario"><i class="bi bi-eye me-1"></i>Ver cómo queda</button></div>
     </div>
 </form>
@@ -39,7 +39,7 @@
     <input type="hidden" name="token_operacion" value="{{ token }}">
     <input type="hidden" name="rubro" value="{{ datos.rubro|default:'' }}"><input type="hidden" name="marca" value="{{ datos.marca|default:'' }}">
     <input type="hidden" name="proveedor" value="{{ datos.proveedor|default:'' }}"><input type="hidden" name="porcentaje" value="{{ datos.porcentaje }}">
-    <input type="hidden" name="redondeo" value="{{ paso }}">
+    <input type="hidden" name="redondeo" value="{{ paso|unlocalize }}">
     {% if bajo_costo %}
     <div class="aviso aviso-error"><i class="bi bi-exclamation-triangle-fill"></i><span><strong>{{ bajo_costo|length }}</strong> producto(s) quedan con el precio por debajo de lo que costaron: se venderían a pérdida.</span></div>
     <div class="form-check mb-3">

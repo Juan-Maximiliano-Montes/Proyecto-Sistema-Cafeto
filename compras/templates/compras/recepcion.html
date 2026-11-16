@@ -12,10 +12,26 @@
 </div>
 {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
 
+{% if precarga %}
+<div class="aviso aviso-aviso"><i class="bi bi-robot"></i><span><strong>Esta compra la pre-cargó una automatización a partir de la factura.</strong> Todavía no se registró nada: revisá proveedor, número, cantidades y costos contra el papel antes de confirmar.
+{% if not precarga.p and not detectado %}<span class="d-block">No se reconoció al proveedor{% if precarga.n %} («{{ precarga.n }}»){% endif %} y la factura no trae un CUIT legible: elegilo de la lista o dalo de alta en Proveedores.</span>{% endif %}
+{% if precarga.s %}<span class="d-block">Renglones de la factura que no se pudieron reconocer y hay que agregar a mano: {% for linea in precarga.s %}«{{ linea }}»{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</span></div>
+{% endif %}
 <form method="post" novalidate class="row g-3"
       data-titulo="¿Guardamos la compra?" data-aceptar="Sí, guardar"
       data-confirmar="Entra el stock con estas cantidades y queda anotada la factura. Fijate bien el número, las cantidades y los costos: una compra guardada no se edita.">
     {% csrf_token %}
+    {% if testigo %}<input type="hidden" name="precarga" value="{{ testigo }}">{% endif %}
+    {% if detectado %}
+    <div class="col-12"><div class="tarjeta tarjeta-destacada">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="alta_proveedor" value="1" id="alta_proveedor"{% if datos.alta_proveedor %} checked{% endif %}>
+            <label class="form-check-label fw-semibold" for="alta_proveedor">Dar de alta a este proveedor y asignarlo a esta compra</label>
+        </div>
+        <p class="mb-0 mt-1">{{ detectado.nombre_proveedor }} · CUIT {{ detectado.cuit_proveedor }}</p>
+        <p class="small text-secondary mb-0">Es lo que se leyó de la factura y todavía no está entre tus proveedores. Compará el nombre y el CUIT con el papel. Si ya lo tenés cargado con otro nombre, destildá y elegilo de la lista.</p>
+    </div></div>
+    {% endif %}
     <input type="hidden" name="token_operacion" value="{{ token }}">
     <input type="hidden" name="renglones" id="renglones" value="{{ renglones_json }}">
     {% if orden %}<input type="hidden" name="orden" value="{{ orden.pk }}">{% endif %}
@@ -44,6 +60,10 @@
                 <div class="col-7"><label class="form-label" for="numero">Número</label><input type="text" inputmode="numeric" name="numero" id="numero" value="{{ datos.numero|default:'' }}" class="form-control" placeholder="00012345"></div>
                 <div class="col-6"><label class="form-label" for="fecha">Fecha</label><input type="date" name="fecha" id="fecha" value="{{ datos.fecha|default:hoy }}" class="form-control"></div>
                 <div class="col-6"><label class="form-label" for="vence_pago">Se paga hasta</label><input type="date" name="vence_pago" id="vence_pago" value="{{ datos.vence_pago|default:'' }}" class="form-control"></div>
+                <div class="col-12"><div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="vincular" value="1" id="vincular"{% if request.method != 'POST' or datos.vincular %} checked{% endif %}>
+                    <label class="form-check-label" for="vincular">Vincular a este proveedor los productos que todavía no tienen uno asignado</label>
+                    <div class="form-text">Los que ya tienen su proveedor habitual no cambian.</div></div></div>
                 <div class="col-12"><label class="form-label" for="otros">Otros conceptos (percepciones, flete)</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="otros" id="otros" value="{{ datos.otros|default:'' }}" class="form-control" placeholder="0"></div></div>
             </div>
         </div>

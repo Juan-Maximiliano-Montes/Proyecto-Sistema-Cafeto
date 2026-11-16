@@ -138,6 +138,11 @@ class Cotizacion:
     aplicados: list = field(default_factory=list)
     canjes: list = field(default_factory=list)
     resultado_puntos: object = None
+    # Fiado (DD-91): cuánto va a cuenta corriente, quién firmó la excepción
+    # (si hizo falta) y el asiento que quedó en la cuenta del cliente.
+    fiado: Decimal = CERO
+    firma_fiado: object = None
+    movimiento_fiado: object = None
 
     @property
     def puntos_a_canjear(self):
@@ -154,7 +159,8 @@ class Cotizacion:
 
     @property
     def pide_autorizacion(self):
-        return any(r.pide_autorizacion for r in self.renglones)
+        return (any(r.pide_autorizacion for r in self.renglones)
+                or self.firma_fiado is not None)
 
     @property
     def vuelto(self):
@@ -336,7 +342,29 @@ def cotizar(items, pagos=None, operador=None, autorizante=None,
     cotizacion.redondeo = (redondear_importe(base, parametros.redondeo_ventas)
                            - base)
     _repartir_pagos(cotizacion, pagos or [])
+    _revisar_credito(cotizacion, operador, autorizante)
     return cotizacion
+
+
+def _revisar_credito(cotizacion, operador, autorizante):
+    """El fiado y el Club ante una deuda (DD-91), ya en la cotización: así
+    el mostrador avisa y pide la autorización ANTES de cobrar.
+
+    * Con deuda vencida o la cuenta suspendida no se canjean puntos ni
+      beneficios, salvo que lo autorice quien gestiona el fiado.
+    * Lo que se paga con «Cuenta corriente» pasa por ``revisar_fiado``.
+    """
+    from fidelizacion import credito
+
+    cliente = cotizacion.cliente
+    usa_club = bool(cotizacion.canjes or cotizacion.beneficio_cabecera
+                    or any(r.beneficio for r in cotizacion.renglones))
+    if cliente is not None and usa_club:
+        credito.exigir_que_pueda_canjear(cliente, operador, autorizante)
+    cotizacion.fiado = sum((c.monto for c in cotizacion.cobros if c.medio.es_cuenta_corriente), CERO)
+    cotizacion.firma_fiado = None
+    if cotizacion.fiado > 0:
+        cotizacion.firma_fiado = credito.revisar_fiado(cliente, cotizacion.fiado, operador, autorizante)
 
 
 # ===========================================================================
@@ -514,7 +542,7 @@ def _repartir_pagos(cotizacion, pagos):
 #  REGISTRAR
 # ===========================================================================
 def registrar(turno, usuario, items, pagos, token=None, autorizante=None,
-              cliente=None, beneficios=()):
+              cliente=None, beneficios=(), vence_fiado=None):
     """Emite el ticket. Devuelve ``(venta, cotizacion)``.
 
     Si el ``token`` ya se usó, devuelve la venta existente sin tocar nada:
@@ -527,7 +555,7 @@ def registrar(turno, usuario, items, pagos, token=None, autorizante=None,
     try:
         with transaction.atomic():
             return _registrar(turno, usuario, items, pagos, token,
-                              autorizante, cliente, beneficios)
+                              autorizante, cliente, beneficios, vence_fiado)
     except IntegrityError:
         existente = Venta.objects.filter(token_operacion=token).first()
         if existente is not None:
@@ -536,7 +564,7 @@ def registrar(turno, usuario, items, pagos, token=None, autorizante=None,
 
 
 def _registrar(turno, usuario, items, pagos, token, autorizante, cliente,
-               beneficios=()):
+               beneficios=(), vence_fiado=None):
     turno = TurnoCaja.objects.select_for_update().get(pk=turno.pk)
     if not turno.abierto:
         raise ValidationError(
@@ -547,6 +575,8 @@ def _registrar(turno, usuario, items, pagos, token, autorizante, cliente,
                          cliente=cliente, beneficios=beneficios)
     if cotizacion.a_cobrar > 0 and not cotizacion.cobros:
         raise ValidationError('Indicá cómo se paga.')
+    from fidelizacion import credito
+    fiado = cotizacion.fiado
 
     venta = Venta.objects.create(
         id_turno_caja=turno, id_usuario=usuario,
@@ -586,6 +616,13 @@ def _registrar(turno, usuario, items, pagos, token, autorizante, cliente,
             turno, usuario, TipoMovimientoCaja.VENTA, efectivo,
             f'Venta N° {venta.pk}', id_venta=venta)
 
+    if fiado > 0:
+        # DD-91: lo fiado no entra al cajón (el medio no "afecta caja") y
+        # queda como deuda del cliente. Si no se le puede fiar, se cae la
+        # venta entera.
+        cotizacion.movimiento_fiado = credito.registrar_fiado(
+            venta, fiado, usuario, autorizante, vence_fiado)
+
     if cotizacion.cliente is not None:
         from fidelizacion import puntos
 
@@ -594,5 +631,7 @@ def _registrar(turno, usuario, items, pagos, token, autorizante, cliente,
         # canjes. Si el saldo no alcanza, se cae la venta entera.
         for beneficio in cotizacion.canjes:
             puntos.registrar_canje(venta, beneficio)
-        cotizacion.resultado_puntos = puntos.acumular(venta)
+        # Una compra fiada suma sus puntos cuando se paga, no antes (DD-91).
+        cotizacion.resultado_puntos = (puntos.acumular(venta) if fiado <= 0
+                                       else puntos.Resultado())
     return venta, cotizacion

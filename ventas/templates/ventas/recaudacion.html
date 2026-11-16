@@ -53,13 +53,16 @@
 <div class="centro">Recaudación por medio de pago</div>
 <table>
     <tr><th>Medio</th><th class="der">Ventas</th><th class="der">Total</th></tr>
-    {% for f in filas %}
+    {% for f in filas %}{% if not f.fiado %}
     <tr><td>{{ f.medio }}</td><td class="der">{{ f.ventas }}</td><td class="der">{{ f.total|pesos }}</td></tr>
     {% if f.cambios %}<tr><td colspan="2">&nbsp;&nbsp;incluye cambios</td><td class="der">{{ f.cambios|pesos }}</td></tr>{% endif %}
+    {% if f.cuentas %}<tr><td colspan="2">&nbsp;&nbsp;de ventas del turno</td><td class="der">{{ f.cobrado|pesos }}</td></tr>
+    <tr><td colspan="2">&nbsp;&nbsp;de cobros de cuentas corrientes</td><td class="der">{{ f.cuentas|pesos }}</td></tr>{% endif %}{% endif %}
     {% empty %}
     <tr><td colspan="3">Sin cobros en el turno.</td></tr>
     {% endfor %}
     <tr class="total"><td colspan="2">TOTAL</td><td class="der">{{ total|pesos }}</td></tr>
+    {% for f in filas %}{% if f.fiado %}<tr><td>Vendido al fiado (no se cobró)</td><td class="der">{{ f.ventas }}</td><td class="der">{{ f.total|pesos }}</td></tr>{% endif %}{% endfor %}
 </table>
 <div class="firma">Firma de quien cerró</div>
 <div class="acciones"><button onclick="window.print()">Imprimir</button><a href="{% url 'ventas:caja' %}">Volver a la caja</a></div>

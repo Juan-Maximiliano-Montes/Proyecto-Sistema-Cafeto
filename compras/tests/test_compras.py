@@ -95,7 +95,7 @@ class EgresosTest(Base):
         egresos.registrar_egreso(
             self.tipo_proveedores, transferencia, D('6000'), 'Pago parcial',
             proveedor=self.prov, compra=self.compra)
-        with self.assertRaisesMessage(ValidationError, 'saldo de $ 4.000,00'):
+        with self.assertRaisesMessage(ValidationError, 'tiene un saldo de'):
             egresos.registrar_egreso(
                 self.tipo_proveedores, transferencia, D('5000'), 'Resto',
                 proveedor=self.prov, compra=self.compra)

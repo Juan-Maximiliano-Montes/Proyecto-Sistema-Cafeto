@@ -1,4 +1,5 @@
-"""Las tres pantallas de cualquier importación: subir, revisar y confirmar.
+"""Las pantallas de cualquier importación: subir, revisar, confirmar y
+bajar la cuarentena.
 
 El importador concreto (productos, proveedores...) se elige por la URL y
 trae su propio permiso, que se controla acá en el servidor.
@@ -11,6 +12,14 @@ from django.views.decorators.http import require_POST
 
 from nucleo.importar import CLAVE_SESION, IMPORTADORES
 from seguridad.servicios import registrar_acceso_denegado, registrar_auditoria
+
+
+#  Cuántas filas listas se dibujan: con miles, la tabla entera tarda más en
+#  pintarse que en leerse. Las de la cuarentena se muestran siempre todas.
+MUESTRA_DE_LISTAS = 200
+#  Hasta cuántas filas se guarda la foto de cada una en el Registro de
+#  Actividad. Más allá, queda el resumen: las altas están en la tabla misma.
+FOTOS_EN_AUDITORIA = 300
 
 
 def _importador(request, clave):
@@ -53,9 +62,16 @@ def importar(request, clave):
     contexto = {'importador': importador, 'pendiente': pendiente}
     if pendiente:
         resultados = importador.revisar(pendiente['filas'])
+        cuarentena = [r for r in resultados if not r.ok]
+        listas = [r for r in resultados if r.ok]
         contexto.update({
-            'resultados': resultados,
-            'errores': sum(1 for r in resultados if not r.ok),
+            'cuarentena': cuarentena,
+            'listas': listas[:MUESTRA_DE_LISTAS],
+            'listas_total': len(listas),
+            'listas_con_aviso': [r for r in listas[MUESTRA_DE_LISTAS:] if r.avisos],
+            'por_aplicar': sum(1 for r in listas if r.accion != 'SIN CAMBIOS'),
+            'resumen': importador.resumen(resultados),
+            'errores': len(cuarentena),
             'altas': sum(1 for r in resultados if r.ok and r.accion == 'ALTA'),
             'cambios': sum(1 for r in resultados if r.ok and r.accion == 'CAMBIO'),
             'iguales': sum(1 for r in resultados if r.ok and r.accion == 'SIN CAMBIOS'),
@@ -74,20 +90,66 @@ def confirmar(request, clave):
         messages.info(request, 'No hay ninguna planilla pendiente: ya se importó o se descartó.')
         return redirect('importar', clave=clave)
     try:
-        resultados = importador.confirmar(pendiente['filas'], request.usuario_actual)
+        resultados = importador.confirmar(
+            pendiente['filas'], request.usuario_actual,
+            solo_validas=request.POST.get('solo_validas') == '1',
+            opciones={o.clave: request.POST.get(o.clave) == '1' for o in importador.opciones})
     except ValidationError as error:
         messages.error(request, ' '.join(error.messages))
         return redirect('importar', clave=clave)
-    request.session.pop(clave_sesion, None)
-    altas = sum(1 for r in resultados if r.accion == 'ALTA')
-    cambios = sum(1 for r in resultados if r.accion == 'CAMBIO')
+    altas = sum(1 for r in resultados if r.ok and r.accion == 'ALTA')
+    cambios = sum(1 for r in resultados if r.ok and r.accion == 'CAMBIO')
+    afuera = [r for r in resultados if not r.ok]
+    aplicadas = [r for r in resultados if r.ok and r.foto_nueva]
+    con_foto = aplicadas if len(aplicadas) <= FOTOS_EN_AUDITORIA else [
+        r for r in aplicadas if r.foto_anterior][:FOTOS_EN_AUDITORIA]
+    detalle = f'Importó «{pendiente["archivo"]}»: {altas} alta(s) y {cambios} cambio(s).'
+    if afuera:
+        detalle += f' {len(afuera)} fila(s) quedaron en cuarentena y no se importaron.'
+    if len(con_foto) < len(aplicadas):
+        detalle += ' Por el tamaño, el registro guarda el detalle de los cambios y no el de cada alta.'
+    for nota in getattr(importador, 'notas', None) or []:
+        messages.info(request, nota)
+        detalle += ' ' + nota
     registrar_auditoria(
         request, 'IMPORTACION', importador.titulo.upper(), modulo=importador.modulo,
-        anterior=[r.foto_anterior for r in resultados if r.foto_anterior],
-        nuevo=[r.foto_nueva for r in resultados if r.foto_nueva],
-        detalle=f'Importó «{pendiente["archivo"]}»: {altas} alta(s) y {cambios} cambio(s).')
-    messages.success(request, f'Listo: {altas} alta(s) y {cambios} cambio(s).')
+        anterior=[r.foto_anterior for r in con_foto if r.foto_anterior],
+        nuevo=[r.foto_nueva for r in con_foto],
+        detalle=detalle)
+    if afuera:
+        # La cuarentena queda a la vista para bajarla, corregirla y resubirla.
+        numeros = {r.numero for r in afuera}
+        request.session[clave_sesion] = {
+            'archivo': pendiente['archivo'],
+            'filas': [f for f in pendiente['filas'] if f.get('_fila') in numeros],
+            'importadas': altas + cambios}
+        messages.success(
+            request, f'Listo: {altas} alta(s) y {cambios} cambio(s). '
+                     f'Quedaron {len(afuera)} fila(s) en cuarentena: bajalas, corregilas y volvé a subirlas.')
+    else:
+        request.session.pop(clave_sesion, None)
+        messages.success(request, f'Listo: {altas} alta(s) y {cambios} cambio(s).')
     return redirect('importar', clave=clave)
+
+
+def errores(request, clave):
+    """El Excel de la cuarentena: las filas que no entran y por qué."""
+    importador = _importador(request, clave)
+    if importador is None:
+        return _denegado(request)
+    pendiente = request.session.get(CLAVE_SESION.format(clave))
+    if not pendiente:
+        messages.info(request, 'No hay ninguna planilla pendiente.')
+        return redirect('importar', clave=clave)
+    resultados = [r for r in importador.revisar(pendiente['filas']) if not r.ok]
+    if not resultados:
+        messages.info(request, 'No quedó ninguna fila con error.')
+        return redirect('importar', clave=clave)
+    respuesta = HttpResponse(
+        importador.planilla_de_errores(resultados),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    respuesta['Content-Disposition'] = f'attachment; filename="cafeto-{clave}-para-corregir.xlsx"'
+    return respuesta
 
 
 @require_POST

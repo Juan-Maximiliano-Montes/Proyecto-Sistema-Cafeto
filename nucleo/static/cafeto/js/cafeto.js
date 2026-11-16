@@ -143,7 +143,8 @@
             titulo: origen.dataset.titulo || '¿Confirmás?',
             texto: origen.dataset.confirmar,
             aceptar: origen.dataset.aceptar,
-            peligro: origen.dataset.peligro === '1'
+            // data-peligro (sin valor) o data-peligro="1": botón rojo.
+            peligro: origen.dataset.peligro !== undefined && origen.dataset.peligro !== '0'
         }).then(function (ok) {
             if (!ok) { return; }
             form.dataset.confirmado = '1';
@@ -720,5 +721,130 @@
         if (!panel || evento.target.tagName === 'TEXTAREA') { return; }
         evento.preventDefault();
         guardarAltaRapida(panel);
+    });
+    // ---------------------------------------------------------------------
+    //  Calculadora del alta de productos (DD-86): [data-calculo] en costo,
+    //  iva, utilidad y precio.  Precio = Costo × (1 + IVA) × (1 + Utilidad).
+    //  Va en los dos sentidos: se cambia la utilidad y sale el precio; se
+    //  cambia el precio y sale la utilidad. El servidor guarda el precio.
+    // ---------------------------------------------------------------------
+    function numeroDe(control) {
+        if (!control || control.value === '') { return null; }
+        var valor = parseFloat(String(control.value).replace(',', '.'));
+        return isNaN(valor) ? null : valor;
+    }
+    function recalcular(origen) {
+        var formulario = origen.form;
+        if (!formulario) { return; }
+        var campo = function (nombre) { return formulario.querySelector('[data-calculo="' + nombre + '"]'); };
+        var precio = campo('precio'), utilidad = campo('utilidad');
+        if (!precio || !utilidad) { return; }
+        var costo = numeroDe(campo('costo')), iva = numeroDe(campo('iva')) || 0;
+        if (costo === null || costo <= 0) { return; }
+        var base = costo * (1 + iva / 100);
+        var queCambio = origen.dataset.calculo;
+        if (queCambio === 'precio' || (queCambio !== 'utilidad' && utilidad.value === '')) {
+            var p = numeroDe(precio);
+            if (p !== null && p > 0) { utilidad.value = ((p / base - 1) * 100).toFixed(2); }
+            return;
+        }
+        var u = numeroDe(utilidad);
+        if (u !== null) { precio.value = (base * (1 + u / 100)).toFixed(2); }
+    }
+    ['input', 'change'].forEach(function (tipo) {
+        document.addEventListener(tipo, function (evento) {
+            var control = evento.target.closest && evento.target.closest('[data-calculo]');
+            if (control) { recalcular(control); }
+        });
+    });
+    document.addEventListener('click', function (evento) {
+        var paso = evento.target.closest('.js-redondeo [data-paso]');
+        if (paso) {
+            var precio = document.getElementById(paso.closest('.js-redondeo').dataset.destino);
+            var valor = numeroDe(precio), salto = parseFloat(paso.dataset.paso);
+            if (precio && valor !== null && valor > 0) {
+                precio.value = (Math.max(salto, Math.round(valor / salto) * salto)).toFixed(2);
+                recalcular(precio);
+            }
+            return;
+        }
+        var generar = evento.target.closest('.js-codigo-interno');
+        if (!generar) { return; }
+        var destino = document.getElementById(generar.dataset.destino);
+        generar.disabled = true;
+        fetch(generar.dataset.url, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (respuesta) { return respuesta.json(); })
+            .then(function (datos) { if (datos.codigo && destino) { destino.value = datos.codigo; destino.focus(); } })
+            .catch(function () {})
+            .then(function () { generar.disabled = false; });
+    });
+    // Las casillas de una importación viajan en el formulario de confirmar.
+    document.addEventListener('change', function (evento) {
+        var casilla = evento.target.closest && evento.target.closest('.js-opcion-importar');
+        if (!casilla) { return; }
+        document.querySelectorAll('input[type="hidden"][data-opcion="' + casilla.dataset.opcion + '"]')
+            .forEach(function (oculto) { oculto.value = casilla.checked ? '1' : ''; });
+    });
+    // ---------------------------------------------------------------------
+    //  Leer un código con la cámara (DD-91): botones .js-camara[data-destino].
+    //  Usa el lector de códigos del propio navegador (BarcodeDetector). Donde
+    //  no existe, o la página no está en una conexión segura (la cámara sólo
+    //  se presta con https o en localhost), el botón directamente no aparece.
+    // ---------------------------------------------------------------------
+    var puedeCamara = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    document.querySelectorAll('.js-camara').forEach(function (boton) { boton.hidden = !puedeCamara; });
+    function leerConCamara(destino) {
+        var capa = document.createElement('div');
+        capa.className = 'camara-capa';
+        capa.setAttribute('role', 'dialog');
+        capa.setAttribute('aria-modal', 'true');
+        capa.setAttribute('aria-label', 'Leer un código con la cámara');
+        capa.innerHTML = '<div class="camara-caja"><video playsinline muted></video>' +
+            '<p class="camara-ayuda" role="status">Apuntá al código de barras.</p>' +
+            '<button type="button" class="btn btn-secundario btn-xl w-100">Cancelar</button></div>';
+        document.body.appendChild(capa);
+        var video = capa.querySelector('video'), ayuda = capa.querySelector('.camara-ayuda');
+        var cancelar = capa.querySelector('button'), flujo = null, reloj = null, cerrado = false;
+        function cerrar(codigo) {
+            if (cerrado) { return; }
+            cerrado = true;
+            window.clearInterval(reloj);
+            if (flujo) { flujo.getTracks().forEach(function (pista) { pista.stop(); }); }
+            capa.remove();
+            destino.focus();
+            if (codigo) {
+                destino.value = codigo;
+                destino.dispatchEvent(new Event('input', {bubbles: true}));
+                destino.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+            }
+        }
+        cancelar.addEventListener('click', function () { cerrar(null); });
+        capa.addEventListener('keydown', function (e) { if (e.key === 'Escape') { cerrar(null); } });
+        cancelar.focus();
+        var formatos = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf'];
+        Promise.resolve(window.BarcodeDetector.getSupportedFormats ? window.BarcodeDetector.getSupportedFormats() : formatos)
+            .then(function (hay) {
+                var lector = new window.BarcodeDetector({formats: formatos.filter(function (f) { return hay.indexOf(f) !== -1; })});
+                return navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}}, audio: false})
+                    .then(function (camara) {
+                        if (cerrado) { camara.getTracks().forEach(function (pista) { pista.stop(); }); return; }
+                        flujo = camara; video.srcObject = camara;
+                        return video.play().then(function () {
+                            reloj = window.setInterval(function () {
+                                lector.detect(video).then(function (codigos) {
+                                    if (codigos.length && codigos[0].rawValue) { cerrar(codigos[0].rawValue); }
+                                }).catch(function () { /* un cuadro que no se pudo leer: se prueba el siguiente */ });
+                            }, 250);
+                        });
+                    });
+            })
+            .catch(function () {
+                ayuda.textContent = 'No se pudo usar la cámara. Fijate que el navegador tenga permiso, o escribí el código.';
+            });
+    }
+    document.addEventListener('click', function (evento) {
+        var boton = evento.target.closest && evento.target.closest('.js-camara');
+        var destino = boton && document.querySelector(boton.dataset.destino);
+        if (destino) { leerConCamara(destino); }
     });
 })();

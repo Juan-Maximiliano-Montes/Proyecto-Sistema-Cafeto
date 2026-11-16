@@ -3,7 +3,7 @@ from django.urls import path
 
 from nucleo.crud import rutas_crud
 
-from .views import cambios, caja, consultas, mostrador
+from .views import autorizaciones, cambios, caja, consultas, mostrador
 
 app_name = 'ventas'
 
@@ -20,14 +20,23 @@ urlpatterns = [
     path('mostrador/', mostrador.mostrador, name='mostrador'),
     path('mostrador/catalogo/', mostrador.catalogo, name='catalogo'),
     path('mostrador/cotizar/', mostrador.cotizar, name='cotizar'),
+    path('mostrador/ajuste-express/', mostrador.ajuste_express, name='ajuste_express'),
     path('mostrador/cobrar/', mostrador.cobrar, name='cobrar'),
     path('mostrador/cliente/', mostrador.identificar_cliente, name='identificar_cliente'),
     path('mostrador/cliente/alta/', mostrador.alta_cliente, name='alta_cliente'),
     path('ventas/<int:pk>/ticket/', mostrador.ticket, name='ticket'),
+    # Autorización a distancia (DD-94)
+    path('mostrador/autorizacion/', autorizaciones.pedir, name='pedir_autorizacion'),
+    path('mostrador/autorizacion/<int:pk>/', autorizaciones.estado, name='estado_autorizacion'),
+    path('mostrador/autorizacion/<int:pk>/pin/', autorizaciones.pin, name='pin_autorizacion'),
+    path('mostrador/autorizacion/<int:pk>/cancelar/', autorizaciones.cancelar, name='cancelar_autorizacion'),
+    path('autorizaciones/', autorizaciones.bandeja, name='autorizaciones'),
+    path('autorizar/<str:token>/', autorizaciones.enlace, name='autorizar_a_distancia'),
     path('cambios/', cambios.cambios, name='cambios'),
     # Consultas
     path('ventas/', consultas.ventas, name='ventas'),
     path('ventas/exportar/', consultas.exportar_ventas, name='exportar_ventas'),
+    path('ventas/exportar-renglones/', consultas.exportar_renglones, name='exportar_renglones'),
     path('ventas/<int:pk>/', consultas.ficha_venta, name='ficha_venta'),
     path('ventas/<int:pk>/anular/', consultas.anular_venta, name='anular_venta'),
     # Supervisión

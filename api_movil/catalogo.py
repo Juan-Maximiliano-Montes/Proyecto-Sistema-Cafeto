@@ -213,6 +213,21 @@ def marca(producto):
     return {'id': producto.id_marca_id, 'nombre': producto.id_marca.nombre_marca}
 
 
+def imagen(producto):
+    """La foto como dirección completa, o None.
+
+    Una foto de otro servidor ya es ``https://…``. Una subida al sistema
+    necesita el dominio adelante: la app no comparte origen con el servidor,
+    así que se arma con ``CAFETO_URL_PUBLICA``."""
+    from django.conf import settings
+    from stock import imagenes
+
+    url = imagenes.url_de(producto)
+    if url and url.startswith('/'):
+        url = settings.CAFETO_URL_PUBLICA + url
+    return url
+
+
 def a_json(producto, hoy, motivo=None):
     """Un producto como lo muestra el catálogo de la app."""
     precio_oferta, porcentaje = oferta(producto, hoy)
@@ -229,8 +244,8 @@ def a_json(producto, hoy, motivo=None):
         'rubro': {'id': producto.id_rubro_id,
                   'nombre': producto.id_rubro.nombre_rubro},
         'marca': marca(producto),
-        # ``Producto`` no tiene foto: la app muestra el ícono.
-        'imagen': None,
+        # Una dirección completa o None; con None la app muestra el ícono.
+        'imagen': imagen(producto),
         'icono': ICONOS.get(producto.tipo_producto),
         'disponible': disponible(producto, hoy),
     }

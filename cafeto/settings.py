@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     # La API de la app móvil (/api/movil/): no tiene tablas propias, usa
     # las de los módulos de arriba con sus mismas reglas.
     'api_movil',
+    'api_servicio',
 ]
 
 MIDDLEWARE = [
@@ -254,6 +255,17 @@ STATIC_URL = 'static/'
 # sistema corre en el NAS del local y tiene que verse igual sin internet.
 STATIC_ROOT = BASE_DIR / 'estaticos'
 
+# Lo que suben los usuarios: hoy, las fotos de los productos (DD-83). Va
+# fuera de la base y fuera de la imagen de Docker: en un volumen, para que
+# no se pierda al reconstruir el contenedor.
+MEDIA_URL = '/media/'
+MEDIA_ROOT = Path(os.environ.get('CAFETO_MEDIA_ROOT') or BASE_DIR / 'media')
+# Una foto de celular pasa de los 2,5 MB que Django guarda en memoria.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+# La dirección con la que se llega al sistema desde afuera, sin la barra
+# final (https://cafeto.ejemplo.com). La usa la app para las fotos subidas.
+CAFETO_URL_PUBLICA = os.environ.get('CAFETO_URL_PUBLICA', '').rstrip('/')
+
 # En producción los archivos van comprimidos y con un hash en el nombre
 # (cafeto.3f2a1b.css): el navegador los guarda para siempre y, cuando
 # cambian, el nombre cambia solo. Necesita haber corrido collectstatic,
@@ -299,13 +311,25 @@ MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 # En desarrollo cada correo se guarda como archivo en .correos/ (no sale a
 # internet): se abre con cualquier editor para copiar el enlace. En el local
 # se usa un servidor SMTP real; los datos van en el .env (ver .env.example).
-if os.environ.get('DJANGO_CORREO_SERVIDOR'):
+#
+# Cada dato se puede dar con el nombre nuevo (CAFETO_SMTP_*) o con el
+# anterior (DJANGO_CORREO_*); si están los dos, manda el nuevo. Sirve
+# cualquier SMTP: Resend (smtp.resend.com, usuario "resend", la clave es la
+# API key), Gmail con contraseña de aplicación, el del proveedor de internet.
+def _correo(nuevo, anterior, por_defecto=''):
+    return os.environ.get(nuevo) or os.environ.get(anterior) or por_defecto
+
+
+if _correo('CAFETO_SMTP_HOST', 'DJANGO_CORREO_SERVIDOR'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = os.environ['DJANGO_CORREO_SERVIDOR']
-    EMAIL_PORT = int(os.environ.get('DJANGO_CORREO_PUERTO', '587'))
-    EMAIL_HOST_USER = os.environ.get('DJANGO_CORREO_USUARIO', '')
-    EMAIL_HOST_PASSWORD = os.environ.get('DJANGO_CORREO_CLAVE', '')
-    EMAIL_USE_TLS = _bool('DJANGO_CORREO_TLS', True)
+    EMAIL_HOST = _correo('CAFETO_SMTP_HOST', 'DJANGO_CORREO_SERVIDOR')
+    EMAIL_PORT = int(_correo('CAFETO_SMTP_PORT', 'DJANGO_CORREO_PUERTO', '587'))
+    EMAIL_HOST_USER = _correo('CAFETO_SMTP_USER', 'DJANGO_CORREO_USUARIO')
+    EMAIL_HOST_PASSWORD = _correo('CAFETO_SMTP_PASSWORD', 'DJANGO_CORREO_CLAVE')
+    # El 465 habla SSL desde el primer byte; el 587 arranca en claro y pasa
+    # a TLS (STARTTLS). Django no admite las dos cosas a la vez.
+    EMAIL_USE_SSL = EMAIL_PORT == 465
+    EMAIL_USE_TLS = not EMAIL_USE_SSL and _bool('DJANGO_CORREO_TLS', True)
     EMAIL_TIMEOUT = 15
 elif DEBUG:
     EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
@@ -316,8 +340,20 @@ else:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'correo-no-configurado.invalid'
     EMAIL_TIMEOUT = 5
-DEFAULT_FROM_EMAIL = os.environ.get(
-    'DJANGO_CORREO_REMITENTE', 'Sistema Cafeto <no-responder@cafeto.local>')
+DEFAULT_FROM_EMAIL = _correo(
+    'CAFETO_DEFAULT_FROM_EMAIL', 'DJANGO_CORREO_REMITENTE',
+    'Sistema Cafeto <no-responder@cafeto.local>')
+
+# ---------------------------------------------------------------------------
+#  API de servicio para automatizaciones (api_servicio/, DD-84)
+# ---------------------------------------------------------------------------
+# Vacía = la API no existe (responde 503). Para habilitarla, una credencial
+# larga y al azar:  python -c "import secrets; print(secrets.token_urlsafe(48))"
+CAFETO_N8N_TOKEN = os.environ.get('CAFETO_N8N_TOKEN', '')
+# Adónde avisa el sistema cuando la caja pide una autorización a distancia
+# (DD-94): el webhook de n8n que la manda por WhatsApp a la titular.
+# Vacío = sólo el correo. Dentro de Docker: http://n8n:5678/webhook/cafeto-autorizacion
+CAFETO_N8N_WEBHOOK_AUTORIZACION = os.environ.get('CAFETO_N8N_WEBHOOK_AUTORIZACION', '')
 
 # ---------------------------------------------------------------------------
 #  App móvil: las cuentas de los clientes (api_movil/firebase.py)

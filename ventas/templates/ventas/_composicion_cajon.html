@@ -1,0 +1,4 @@
+{% load cafeto %}{% if composicion %}
+<h2 class="subtitulo h6 mt-3">Cómo se forma lo que tiene que haber</h2>
+<dl class="ficha mb-3">{% for etiqueta, monto in composicion %}<dt>{{ etiqueta }}</dt><dd class="monto{% if monto < 0 %} text-peligro{% endif %}">{{ monto|pesos }}</dd>{% endfor %}</dl>
+{% endif %}

@@ -189,11 +189,12 @@ class InterfazTest(BaseMaestros):
 
     def test_la_tarjeta_del_producto_se_lee_de_un_vistazo(self):
         """Título = el nombre; primero lo que se mira en el mostrador
-        (precio y stock), después marca y presentación."""
+        (precio y stock apto: lo vencido va aparte, DD-95), después marca y
+        presentación."""
         from stock.views import PRODUCTOS
 
         etiquetas = [columna.etiqueta for columna in PRODUCTOS.columnas]
-        self.assertEqual(etiquetas[:5], ['Producto', 'Precio de venta', 'Stock',
+        self.assertEqual(etiquetas[:5], ['Producto', 'Precio de venta', 'Stock apto',
                                          'Marca', 'Presentación'])
 
     def test_todas_las_entidades_ponen_el_nombre_primero(self):

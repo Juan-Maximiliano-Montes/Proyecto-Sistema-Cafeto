@@ -86,7 +86,7 @@
                     <option value="">Elegí el motivo…</option>
                     {% for valor, etiqueta in motivos %}<option value="{{ valor }}"{% if datos.motivo == valor %} selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
                 </select>
-                <input type="text" name="detalle_motivo" value="{{ datos.detalle_motivo|default:'' }}" class="form-control" maxlength="120" placeholder="Detalle (obligatorio si es «Otro»)">
+                <input type="text" name="detalle_motivo" value="{{ datos.detalle_motivo|default:'' }}" class="form-control" maxlength="120" aria-label="Detalle del motivo" placeholder="Detalle (obligatorio si es «Otro»)">
 
                 {% if calculado %}
                 <dl class="tarjeta-datos">

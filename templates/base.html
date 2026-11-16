@@ -114,6 +114,12 @@
                     <span class="punto"></span>{{ caja_de_la_sesion }}
                 </a>
                 {% endif %}
+                {% if autorizaciones_pendientes %}
+                <a href="{% url 'ventas:autorizaciones' %}" class="btn btn-primary btn-sm text-nowrap" title="La caja espera una autorización"
+                   aria-label="{{ autorizaciones_pendientes }} pedido{{ autorizaciones_pendientes|pluralize }} de autorización esperando">
+                    <i class="bi bi-phone-vibrate" aria-hidden="true"></i> {{ autorizaciones_pendientes }}<span class="d-none d-md-inline"> por autorizar</span>
+                </a>
+                {% endif %}
                 <button type="button" class="btn btn-icono btn-secundario" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
                     <i class="bi bi-circle-half"></i>
                 </button>

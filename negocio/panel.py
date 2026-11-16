@@ -18,6 +18,7 @@ from django.db.models import Count, Sum
 from django.utils import timezone
 
 from negocio.models import ParametrosNegocio
+from nucleo.templatetags.cafeto import pesos
 
 
 DIAS_DE_RECONTEOS = 7
@@ -99,11 +100,33 @@ def del_dia(usuario, hoy=None):
 
     if puede('ver_egresos'):
         from compras import egresos
-        proximos = egresos.vencimientos_proximos(hoy + timedelta(days=7))
+        vencidos = egresos.vencidos(hoy)
+        if vencidos['cantidad']:
+            # Lo que ya venció va primero y en rojo: no es lo mismo que lo
+            # que vence la semana que viene.
+            avisos.insert(0, {'clave': 'PAGOS_VENCIDOS', 'tipo': 'error',
+                              'texto': f"{vencidos['cantidad']} pago(s) a proveedores o servicios ya "
+                                       f"vencieron (por {pesos(vencidos['monto'])})."})
+        proximos = egresos.vencimientos_proximos(hoy + timedelta(days=7), desde=hoy)
         cantidad = proximos['obligaciones'].count() + proximos['compras'].count()
         if cantidad:
             avisos.append({'clave': 'PAGOS', 'tipo': 'aviso',
                            'texto': f'{cantidad} pago(s) vencen en los próximos 7 días.'})
+        sin_confirmar = egresos.sin_confirmar(hoy).count()
+        if sin_confirmar:
+            avisos.append({'clave': 'SIN_ACREDITAR', 'tipo': 'aviso',
+                           'texto': f'{sin_confirmar} pago(s) enviados hace más de {egresos.DIAS_SIN_CONFIRMAR} '
+                                    'días siguen sin confirmar ni rechazar: miralos con el resumen del banco.'})
+
+    if puede('cobrar_credito'):
+        from fidelizacion import credito
+        atrasados = [c for c in credito.deudores(hoy, solo_en_mora=True) if c.vencido > 0]
+        if atrasados:
+            # Rojo también, después de los pagos vencidos (que son plata que sale).
+            delante = 1 if avisos and avisos[0]['clave'] == 'PAGOS_VENCIDOS' else 0
+            avisos.insert(delante, {'clave': 'FIADO_VENCIDO', 'tipo': 'error',
+                              'texto': f'{len(atrasados)} cliente(s) tienen deuda en cuenta corriente vencida '
+                                       f'(por {pesos(sum((c.vencido for c in atrasados), Decimal("0")))}).'})
 
     if puede('ver_clientes'):
         from fidelizacion.models import Cliente

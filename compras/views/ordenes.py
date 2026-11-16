@@ -126,14 +126,12 @@ def cambiar_estado(request, pk):
     return redirect('compras:orden', pk=pk)
 
 
-@requiere_permiso('gestionar_ordenes', redirigir_a='home')
-def orden_pdf(request, pk):
-    """La orden para mandarle al proveedor."""
+def pdf_de_la_orden(orden):
+    """Los bytes del PDF de una orden. Lo usan la pantalla y la API de servicio."""
     from weasyprint import HTML
 
-    from nucleo.exportar import _respuesta, _ruta_estatica
+    from nucleo.exportar import _ruta_estatica
 
-    orden = get_object_or_404(OrdenCompra.objects.select_related('id_proveedor'), pk=pk)
     html = render_to_string('compras/orden_pdf.html', {
         'orden': orden, 'renglones': orden.detalles.select_related('id_producto'),
         'negocio': ParametrosNegocio.vigentes(),
@@ -141,7 +139,16 @@ def orden_pdf(request, pk):
         'fuente_inter': _ruta_estatica('cafeto/fuentes/inter-latin-400-normal.woff2'),
         'fuente_lora': _ruta_estatica('cafeto/fuentes/lora-latin-600-normal.woff2'),
     })
-    respuesta = _respuesta(HTML(string=html).write_pdf(), 'application/pdf',
+    return HTML(string=html).write_pdf()
+
+
+@requiere_permiso('gestionar_ordenes', redirigir_a='home')
+def orden_pdf(request, pk):
+    """La orden para mandarle al proveedor."""
+    from nucleo.exportar import _respuesta
+
+    orden = get_object_or_404(OrdenCompra.objects.select_related('id_proveedor'), pk=pk)
+    respuesta = _respuesta(pdf_de_la_orden(orden), 'application/pdf',
                            f'orden-de-compra-{orden.pk}.pdf')
     respuesta['Content-Disposition'] = respuesta['Content-Disposition'].replace('attachment', 'inline')
     return respuesta

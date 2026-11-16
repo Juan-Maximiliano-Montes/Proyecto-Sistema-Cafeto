@@ -53,6 +53,9 @@ class Columna:
     # False = va en la ficha y en lo exportado, pero no en la tarjeta: una
     # tarjeta de producto con diez renglones ya no se lee de un vistazo.
     en_tarjeta: bool = True
+    # Atributo con una aclaración que va debajo del valor, en rojo (lo que
+    # el número no cuenta: "5 vencidas, no se venden").
+    aclaracion: str = ''
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,9 @@ class ConfiguracionCRUD:
     filtros: tuple = ()
     tiene_baja: bool = True
     relaciones: tuple = ()
+    # Función queryset -> queryset que agrega lo que la lista necesita
+    # calcular de una vez para todas las filas (sin una consulta por fila).
+    anotar: object = None
     orden: tuple = ()
     # Campos que ACOMPAÑAN al nombre en la regla de unicidad. Una localidad
     # es única dentro de su provincia; un producto, dentro de su marca y su
@@ -231,6 +237,8 @@ def _queryset(configuracion):
     consulta = configuracion.modelo.objects.all()
     if configuracion.relaciones:
         consulta = consulta.select_related(*configuracion.relaciones)
+    if configuracion.anotar:
+        consulta = configuracion.anotar(consulta)
     if configuracion.orden:
         consulta = consulta.order_by(*configuracion.orden)
     return consulta

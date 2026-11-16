@@ -20,7 +20,10 @@ dice que no se pudo, sin inventar un ticket.
 """
 import json
 import uuid
+from stock.models import MARCA_GENERICA
+from nucleo.validaciones import sanear_codigo
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
@@ -41,7 +44,8 @@ from seguridad.servicios import (
     registrar_acceso_denegado,
     registrar_auditoria,
 )
-from stock.models import TIPOS_VENDIBLES, Producto
+from stock import imagenes
+from stock.models import TIPOS_VENDIBLES, Lote, Producto
 from ventas import puesto
 from ventas import servicios as ventas
 from ventas.models import MedioPago, MotivoDescuento, Venta
@@ -59,20 +63,43 @@ def _texto(error):
     return ' '.join(getattr(error, 'messages', [str(error)]))
 
 
-def _producto_json(p):
+def _vencidos_de(productos):
+    """Lo que está en lotes ya vencidos, por producto, en una consulta:
+    eso no se vende, así que no cuenta como stock apto."""
+    ids = [p.pk for p in productos if p.controla_vencimiento]
+    if not ids:
+        return {}
+    return dict(Lote.objects.filter(id_producto__in=ids, stock_lote__gt=0,
+                                    fecha_vencimiento__lt=timezone.localdate())
+                .values('id_producto').annotate(t=Sum('stock_lote')).values_list('id_producto', 't'))
+
+
+def _producto_json(p, vencidos=None):
+    vencido = (vencidos or {}).get(p.pk) or Decimal('0')
+    apto = max(p.stock_actual - vencido, Decimal('0')) if p.tiene_stock_propio else None
+    # Un combo o un elaborado no tiene stock propio: alcanza lo que permitan
+    # sus componentes aptos (con todas las medialunas vencidas, el desayuno
+    # con medialunas tampoco se puede vender).
+    from stock.servicios import disponible
+    sin_componentes = not p.tiene_stock_propio and disponible(p) == 0
     return {
         'id': p.pk,
         'codigo': p.codigo_barras or '',
         'nombre': p.nombre_producto,
         'detalle': ' · '.join(x for x in (
-            p.id_marca.nombre_marca if p.id_marca_id else '', p.presentacion) if x),
+            p.id_marca.nombre_marca if p.id_marca_id and p.id_marca.nombre_marca != MARCA_GENERICA else '',
+            p.presentacion) if x),
         'precio': str(p.precio_venta),
         'rubro': p.id_rubro.nombre_rubro if p.id_rubro_id else '',
         'fraccionable': not p.exige_cantidad_entera,
         'unidad': p.unidad_medida if not p.exige_cantidad_entera else 'u.',
-        'stock': (str(p.stock_actual) if p.tiene_stock_propio else None),
-        'agotado': bool(p.tiene_stock_propio and p.stock_actual <= 0),
-        'rebaja': bool(p.controla_vencimiento and p.rebaja_vigente()),
+        'stock': (str(apto) if p.tiene_stock_propio else None),
+        'vencido': str(vencido) if vencido else None,
+        'agotado': bool(p.tiene_stock_propio and apto <= 0) or sin_componentes,
+        'sin_componentes': sin_componentes,
+        'ajustable': bool(p.tiene_stock_propio and p.stock_actual <= 0 and not p.controla_vencimiento),
+        'rebaja': bool(p.controla_vencimiento and (apto is None or apto > 0) and p.rebaja_vigente()),
+        'imagen': imagenes.url_de(p),
     }
 
 
@@ -86,11 +113,14 @@ def mostrador(request):
         return redirect('ventas:caja')
     medios = MedioPago.objects.filter(borrado_logico=False).order_by(
         '-afecta_caja', 'nombre_medio_pago')
+    from stock.servicios import puede_aprobar_lo_propio
     return render(request, 'ventas/mostrador.html', {
         'turno': turno,
+        'ajusta_sola': puede_aprobar_lo_propio(request.usuario_actual),
         'medios': [{'id': m.pk, 'nombre': m.nombre_medio_pago,
                     'recargo': str(m.recargo_porcentaje or 0),
-                    'efectivo': m.afecta_caja} for m in medios],
+                    'efectivo': m.afecta_caja, 'fiado': m.es_cuenta_corriente} for m in medios],
+        'morosos': _cantidad_de_morosos(),
         'motivos': [(v, e) for v, e in MotivoDescuento.choices
                     if v not in (MotivoDescuento.VENCIMIENTO,
                                  MotivoDescuento.BENEFICIO)],
@@ -126,7 +156,10 @@ def catalogo(request):
                  .order_by('nombre_producto'))
     busqueda = request.GET.get('q', '').strip()
     sector = request.GET.get('sector', '')
-    por_codigo = productos.filter(codigo_barras=busqueda) if busqueda else None
+    # Lo que deja el lector alrededor del código (un "|", el mismo código
+    # leído dos veces) se limpia igual que al cargarlo (DD-86).
+    codigo = sanear_codigo(busqueda) if busqueda else None
+    por_codigo = productos.filter(codigo_barras=codigo) if codigo and codigo.isdigit() else None
     if por_codigo is not None and por_codigo.exists():
         productos = por_codigo          # lo leyó el lector de códigos
     elif busqueda:
@@ -141,7 +174,8 @@ def catalogo(request):
     elif sector == 'mas_vendidos':
         vendidos = _mas_vendidos(productos)
         if vendidos:
-            return JsonResponse({'productos': [_producto_json(p) for p in vendidos],
+            vencidos = _vencidos_de(vendidos)
+            return JsonResponse({'productos': [_producto_json(p, vencidos) for p in vendidos],
                                  'hay_mas': False, 'pagina': 1})
         # Local recién abierto, sin ventas todavía: se muestra el catálogo.
     try:
@@ -150,8 +184,9 @@ def catalogo(request):
         pagina = 1
     desde = (pagina - 1) * POR_PAGINA
     tanda = list(productos[desde:desde + POR_PAGINA + 1])
+    vencidos = _vencidos_de(tanda[:POR_PAGINA])
     return JsonResponse({
-        'productos': [_producto_json(p) for p in tanda[:POR_PAGINA]],
+        'productos': [_producto_json(p, vencidos) for p in tanda[:POR_PAGINA]],
         'hay_mas': len(tanda) > POR_PAGINA,
         'pagina': pagina,
     })
@@ -166,6 +201,14 @@ def _leer_pedido(request):
         datos = json.loads(request.body or b'{}')
     except (ValueError, UnicodeDecodeError):
         raise ValidationError('El pedido llegó mal armado. Recargá la página.')
+    if not isinstance(datos, dict):
+        raise ValidationError('El pedido llegó mal armado. Recargá la página.')
+    return leer_datos(datos)
+
+
+def leer_datos(datos):
+    """Un pedido ya decodificado -> (items, pagos, datos). Lo usa también la
+    autorización a distancia, que guarda el ticket y lo vuelve a cotizar."""
     renglones = datos.get('items') or []
     if not isinstance(renglones, list) or len(renglones) > MAXIMO_DE_RENGLONES:
         raise ValidationError('El ticket tiene demasiados renglones.')
@@ -207,6 +250,25 @@ def _leer_pedido(request):
     return items, pagos, datos
 
 
+def _huella(items, pagos, cliente, beneficios, datos):
+    from ventas import a_distancia
+
+    return a_distancia.huella(items, pagos, cliente, beneficios, _vence_fiado(datos))
+
+
+def _vence_fiado(datos):
+    """La fecha en que el cliente dijo que paga lo fiado (o None)."""
+    from datetime import date
+
+    texto = datos.get('vence_fiado')
+    if not texto:
+        return None
+    try:
+        return date.fromisoformat(str(texto))
+    except ValueError:
+        raise ValidationError('La fecha en que va a pagar no es válida.')
+
+
 def _fidelizacion(datos):
     """El cliente identificado y los beneficios elegidos del pedido.
 
@@ -237,7 +299,26 @@ def _cliente_json(cliente):
         'categoria': str(cliente.id_categoria),
         'disponibles': cliente.puntos_disponibles,
         'acumulados': cliente.puntos_acumulados,
+        'credito': _credito_json(cliente),
     }
+
+
+def _cantidad_de_morosos():
+    from fidelizacion import credito
+
+    return len(credito.deudores(solo_en_mora=True))
+
+
+def _credito_json(cliente):
+    """Lo que la caja necesita saber del fiado de este cliente (DD-91)."""
+    from fidelizacion import credito
+
+    s = credito.situacion(cliente)
+    return {'estado': s['estado'], 'debe': str(s['saldo']), 'vencido': str(s['vencido']),
+            'dias': s['dias_de_atraso'], 'nota': s['nota'], 'limite': str(s['limite']),
+            'en_mora': s['en_mora'], 'aviso': credito.aviso_de_mora(cliente, s=s),
+            'plazo': cliente.plazo_credito_dias,
+            'cuenta': reverse('fidelizacion:cuenta', args=[cliente.pk])}
 
 
 def _beneficio_json(b, aplicados, cabecera):
@@ -255,7 +336,18 @@ def _beneficio_json(b, aplicados, cabecera):
     }
 
 
-def _autorizante(request, datos, para, auditar=True):
+def _autorizante(request, datos, para, auditar=True, huella=None, bloquear=False):
+    """Quien autoriza este ticket: el que puso su clave en la caja o el que
+    aprobó a distancia (DD-94). La solicitud usada queda en
+    ``request.solicitud_remota`` para marcarla con la venta."""
+    from ventas import a_distancia
+
+    request.solicitud_remota = None
+    if datos.get('remota') not in (None, ''):
+        solicitud = a_distancia.aprobada_para(datos.get('remota'), request.usuario_actual, huella,
+                                              bloquear=bloquear)
+        request.solicitud_remota = solicitud
+        return solicitud.id_usuario_autorizante
     autoriza = datos.get('autoriza') or {}
     if not isinstance(autoriza, dict) or not autoriza.get('usuario'):
         return None
@@ -312,6 +404,79 @@ def _cotizacion_json(cotizacion):
 # ===========================================================================
 #  COTIZAR Y COBRAR
 # ===========================================================================
+def _producto_para_ajuste(datos):
+    """El producto y la cantidad de un ajuste desde el mostrador, con sus
+    controles: lo usan el ajuste y el pedido de autorización a distancia."""
+    producto = Producto.objects.filter(pk=datos.get('producto') or 0, borrado_logico=False).first()
+    cantidad = leer_numero(str(datos.get('cantidad') or ''), 3)
+    if producto is None or not producto.tiene_stock_propio:
+        raise ValidationError('Ese producto no lleva stock.')
+    if producto.stock_actual > 0:
+        raise ValidationError(f'{producto} ya tiene stock: actualizá la pantalla.')
+    if producto.controla_vencimiento:
+        raise ValidationError('Ese producto va por lote con vencimiento: cargalo desde el conteo de stock.')
+    if cantidad is None or cantidad <= 0:
+        raise ValidationError('Escribí cuántas unidades hay.')
+    return producto, cantidad
+
+
+@require_POST
+@requiere_permiso('vender', redirigir_a='ventas:caja')
+def ajuste_express(request):
+    """El producto figura en 0 pero está en la mano del cliente (DD-90).
+
+    Se cuenta lo que hay en la góndola y queda asentado como un conteo de
+    una sola línea, aprobado en el acto. Lo aprueba quien puede autorizar
+    ajustes: la titular con su sesión, o cualquier otra persona con el
+    permiso poniendo su clave (nunca la misma que está en la caja, salvo la
+    titular: el mismo control que cualquier ajuste, DD-80).
+    """
+    from django.db import transaction
+
+    from stock import servicios as stock
+    from stock.models import MotivoAjuste
+
+    try:
+        datos = json.loads(request.body or b'{}')
+        producto, cantidad = _producto_para_ajuste(datos)
+        operador = request.usuario_actual
+        solicitud = None
+        if stock.puede_aprobar_lo_propio(operador):
+            autorizante = operador
+        elif datos.get('remota'):
+            # Lo aprobó a distancia quien puede aprobar ajustes (DD-94).
+            from ventas import a_distancia
+            solicitud = a_distancia.aprobada_para(
+                datos.get('remota'), operador, a_distancia.huella_ajuste(producto, cantidad), bloquear=True)
+            autorizante = solicitud.id_usuario_autorizante
+        else:
+            autoriza = datos.get('autoriza') or {}
+            autorizante = autorizar_con_clave(
+                request, autoriza.get('usuario'), autoriza.get('clave'), 'autorizar_ajustes',
+                distinto_de=operador, para=f'ajustar el stock de {producto} desde el mostrador')
+        with transaction.atomic():
+            conteo = stock.iniciar_conteo(operador, MotivoAjuste.DIFERENCIA_CONTEO)
+            stock.cargar_conteo(conteo, producto, cantidad)
+            stock.enviar_conteo(conteo)
+            stock.aprobar(conteo, autorizante, 'Ajuste desde el mostrador: figuraba sin stock y había en la góndola.')
+            if solicitud is not None:
+                from ventas import a_distancia
+                a_distancia.marcar_usada(solicitud)
+        registrar_auditoria(
+            request, 'APROBACION', 'AJUSTE DE STOCK', instancia=conteo, modulo='STOCK',
+            anterior={'id_producto': producto.pk, 'stock_actual': '0'},
+            nuevo={'id_producto': producto.pk, 'stock_actual': str(cantidad), 'autorizo': str(autorizante)},
+            detalle=f'Ajuste desde el mostrador: {producto} pasó de 0 a '
+                    f'{producto.cantidad_con_unidad(cantidad)}. Lo autorizó {autorizante}'
+                    + (f' a distancia ({solicitud.get_via_aprobacion_display().lower()}, pedido N° {solicitud.pk})'
+                       if solicitud is not None else '') + '.')
+        return JsonResponse({'ok': True, 'stock': str(cantidad)})
+    except (ValueError, TypeError):
+        return JsonResponse({'ok': False, 'error': 'No se entendió el pedido.'})
+    except ValidationError as error:
+        return JsonResponse({'ok': False, 'error': ' '.join(error.messages)})
+
+
 @require_POST
 @requiere_permiso('vender', redirigir_a='ventas:caja')
 def cotizar(request):
@@ -321,9 +486,9 @@ def cotizar(request):
             return JsonResponse({'ok': True, 'vacio': True})
         # La vista previa se recalcula con cada cambio del ticket: el
         # rechazo que cuenta para la auditoría es el del cobro (DD-62).
-        autorizante = _autorizante(request, datos, 'autorizar el descuento',
-                                   auditar=False)
         cliente, beneficios = _fidelizacion(datos)
+        autorizante = _autorizante(request, datos, 'autorizar el descuento', auditar=False,
+                                   huella=_huella(items, pagos, cliente, beneficios, datos))
         cotizacion = ventas.cotizar(items, pagos, operador=request.usuario_actual,
                                     autorizante=autorizante, cliente=cliente,
                                     beneficios=beneficios)
@@ -345,23 +510,45 @@ def cobrar(request):
             token = uuid.UUID(str(datos.get('token')))
         except ValueError:
             raise ValidationError('El ticket no tiene un identificador válido. Recargá la página.')
-        autorizante = _autorizante(request, datos, 'autorizar el descuento')
         cliente, beneficios = _fidelizacion(datos)
+        # Un reintento del mismo ticket (se perdió la respuesta) devuelve la
+        # venta que ya existe: no se vuelve a pedir ni a gastar la autorización.
+        request.solicitud_remota = None
+        autorizante = None if Venta.objects.filter(token_operacion=token).exists() else _autorizante(
+            request, datos, 'autorizar la venta (descuento o fiado)',
+            huella=_huella(items, pagos, cliente, beneficios, datos), bloquear=True)
         cliente_antes = instantanea(cliente) if cliente is not None else None
         venta, cotizacion = ventas.registrar(
             turno, request.usuario_actual, items, pagos, token=token,
-            autorizante=autorizante, cliente=cliente, beneficios=beneficios)
+            autorizante=autorizante, cliente=cliente, beneficios=beneficios,
+            vence_fiado=_vence_fiado(datos))
     except ValidationError as error:
         return _error(_texto(error))
+    remota = getattr(request, 'solicitud_remota', None)
+    if cotizacion is not None and remota is not None:
+        from ventas import a_distancia
+
+        a_distancia.marcar_usada(remota, venta)
     if cotizacion is not None:
         # Sólo la venta nueva: la repetida (mismo token) ya quedó asentada.
         registrar_auditoria(
             request, 'ALTA', 'VENTA', instancia=venta,
             nuevo=foto(venta, renglones=venta.detalles.all(), pagos=venta.pagos.all()),
             detalle=(f'Venta N° {venta.pk} por {pesos(venta.total_venta)}'
-                     + (f', descuento autorizado por {autorizante}'
+                     + (f', autorizada por {autorizante}'
+                        + (f' a distancia ({remota.get_via_aprobacion_display().lower()}, '
+                           f'pedido N° {remota.pk})' if remota is not None else '')
                         if autorizante is not None and cotizacion.pide_autorizacion
-                        else '') + '.'))
+                        else '')
+                     + (f'. Fiado a {cotizacion.cliente}: {pesos(cotizacion.fiado)}, paga el '
+                        f'{cotizacion.movimiento_fiado.fecha_vencimiento:%d/%m/%Y}'
+                        if cotizacion.movimiento_fiado else '') + '.'))
+        if cotizacion.movimiento_fiado and getattr(venta, 'credito_habilitado', False):
+            registrar_auditoria(
+                request, 'MODIFICACION', 'CUENTA CORRIENTE', instancia=cotizacion.cliente, modulo='FIDELIZACION',
+                anterior={'estado_credito': 'SIN_CREDITO'}, nuevo={'estado_credito': 'HABILITADO'},
+                detalle=f'{cotizacion.cliente} queda habilitado para llevar fiado: lo autorizó '
+                        f'{venta.credito_firmado_por} en la venta N° {venta.pk}.')
     puntos = None
     if cotizacion is not None and cotizacion.cliente is not None:
         puntos = _asentar_fidelizacion(request, venta, cotizacion, cliente_antes)
@@ -373,6 +560,10 @@ def cobrar(request):
         'total': str(venta.total_venta),
         'vuelto': str(venta.monto_vuelto),
         'ticket': reverse('ventas:ticket', args=[venta.pk]),
+        'fiado': ({'monto': str(cotizacion.fiado),
+                   'vence': cotizacion.movimiento_fiado.fecha_vencimiento.isoformat(),
+                   'cliente': f'{cotizacion.cliente.nombre_cliente} {cotizacion.cliente.apellido_cliente}'}
+                  if cotizacion is not None and cotizacion.movimiento_fiado else None),
     })
 
 
@@ -399,13 +590,18 @@ def _asentar_fidelizacion(request, venta, cotizacion, cliente_antes=None):
             nuevo=instantanea(Cliente.objects.get(pk=cliente.pk)),
             detalle=(f'{cliente} pasa de {resultado.categoria_anterior} a '
                      f'{resultado.categoria_nueva} con la venta N° {venta.pk}.'))
+    diferidos = bool(cotizacion.movimiento_fiado)
+    if diferidos:
+        # Compra fiada: los puntos llegan al pagarla; se informa lo que tiene hoy.
+        cliente.refresh_from_db()
     return {
         'cliente': f'{cliente.nombre_cliente} {cliente.apellido_cliente}',
         'ganados': resultado.puntos,
         'canjeados': cotizacion.puntos_a_canjear,
-        'disponibles': resultado.disponibles,
-        'categoria': str(resultado.categoria_nueva),
+        'disponibles': cliente.puntos_disponibles if diferidos else resultado.disponibles,
+        'categoria': str(cliente.id_categoria if diferidos else resultado.categoria_nueva),
         'ascendio': resultado.ascendio,
+        'diferidos': diferidos,
     }
 
 

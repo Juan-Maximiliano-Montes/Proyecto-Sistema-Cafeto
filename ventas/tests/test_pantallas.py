@@ -310,7 +310,7 @@ class MostradorTest(Base):
                                      'pagos': [{'medio': f.efectivo().pk}]})
         respuesta = self.client.get(venta['ticket'])
         self.assertContains(respuesta, 'Alfajor')
-        self.assertContains(respuesta, '$ 1.200,00')
+        self.assertContains(respuesta, '$\xa01.200,00')
 
 
 class CambiosTest(Base):

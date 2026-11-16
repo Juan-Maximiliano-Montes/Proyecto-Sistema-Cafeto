@@ -15,6 +15,7 @@ from datetime import date
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -132,18 +133,36 @@ def recepcion(request):
             pk=request.GET['orden'],
             estado_orden__in=('EMITIDA', 'CON_DIFERENCIAS')).first()
     datos = request.POST if request.method == 'POST' else {}
+    from compras import precarga
+    precargados, borrador = None, None
+    testigo = request.GET.get('precarga') or request.POST.get('precarga') or ''
+    if testigo:
+        borrador = precarga.leer(testigo)
+        if borrador is None and request.method == 'GET':
+            messages.warning(request, 'Ese enlace de pre-carga venció o no es válido: cargá la compra a mano.')
+        elif borrador is not None and request.method == 'GET':
+            datos, precargados = precarga.para_la_pantalla(borrador)
+    detectado = precarga.proveedor_detectado(borrador) if borrador else None
     contexto = {
+        'precarga': borrador, 'testigo': testigo if borrador else '', 'detectado': detectado,
         'proveedores': proveedores, 'tipos': TipoComprobante.choices,
         'orden': orden, 'datos': datos, 'hoy': timezone.localdate().isoformat(),
         'catalogo': reverse('stock:buscar_productos') + '?tipos=REVENTA,INSUMO',
         'renglones_json': datos.get('renglones') or json.dumps(
-            _renglones_de_la_orden(orden) if orden else []),
+            precargados if precargados is not None
+            else _renglones_de_la_orden(orden) if orden else []),
     }
 
     if request.method == 'POST':
         token = request.POST.get('token_operacion')
         try:
             proveedor = proveedores.filter(pk=request.POST.get('proveedor') or 0).first()
+            alta = proveedor is None and detectado is not None and request.POST.get('alta_proveedor') == '1'
+            if alta:
+                if not request.usuario_actual.tiene_permiso('crear_proveedor'):
+                    raise ValidationError('Tu perfil no puede dar de alta proveedores: elegí uno de la lista.')
+                detectado.full_clean()
+                proveedor = detectado
             if proveedor is None:
                 raise ValidationError('Elegí el proveedor.')
             if request.POST.get('orden', '').isdigit():
@@ -165,22 +184,56 @@ def recepcion(request):
             if not idempotencia.consumir(request, token):
                 messages.info(request, 'Esa compra ya se había cargado.')
                 return redirect('compras:compras')
-            compra = servicios.recepcionar(
-                proveedor, request.usuario_actual, request.POST.get('tipo_comprobante'),
-                punto, numero, renglones,
-                fecha_compra=_fecha(request.POST.get('fecha'), 'la fecha de la factura'),
-                importe_otros_conceptos=otros, orden=orden,
-                fecha_vencimiento_pago=_fecha(request.POST.get('vence_pago'), 'el vencimiento del pago'))
+            marcas_puestas = []
+            with transaction.atomic():
+                if alta:
+                    proveedor.save()
+                compra = servicios.recepcionar(
+                    proveedor, request.usuario_actual, request.POST.get('tipo_comprobante'),
+                    punto, numero, renglones,
+                    fecha_compra=_fecha(request.POST.get('fecha'), 'la fecha de la factura'),
+                    importe_otros_conceptos=otros, orden=orden,
+                    fecha_vencimiento_pago=_fecha(request.POST.get('vence_pago'), 'el vencimiento del pago'),
+                    vincular_sin_proveedor=request.POST.get('vincular') == '1')
+                if borrador:
+                    from stock.reservados import asignar_marca
+                    marcas = precarga.marcas_detectadas(borrador)
+                    for renglon in renglones:
+                        if renglon.producto.pk in marcas and asignar_marca(
+                                renglon.producto, marcas[renglon.producto.pk])[0]:
+                            marcas_puestas.append(renglon.producto)
         except ValidationError as error:
             idempotencia.devolver(request, token)
             contexto['error'] = _texto(error)
         else:
+            if alta:
+                registrar_auditoria(
+                    request, 'ALTA', 'PROVEEDOR', instancia=proveedor, nuevo=foto(proveedor),
+                    detalle=f'Alta de {proveedor} al confirmar una compra pre-cargada por una automatización.')
+                messages.info(request, f'Se dio de alta al proveedor {proveedor}. Completale el teléfono '
+                                       'y la condición de pago cuando puedas.')
+            for producto, anterior, motivo in compra.rotados:
+                messages.info(request, (
+                    f'Se actualizó el proveedor habitual de {producto} a {proveedor}: '
+                    + ('son tres compras seguidas a este proveedor.' if motivo == 'FRECUENCIA'
+                       else f'a {anterior} no se le compra hace más de seis meses.')))
+            if marcas_puestas:
+                messages.info(request, f'{len(marcas_puestas)} producto(s) que estaban sin marca '
+                                       'quedaron con la que figura en la factura.')
             registrar_auditoria(
                 request, 'ALTA', 'COMPRA', instancia=compra,
                 nuevo=foto(compra, renglones=compra.detalles.all()),
                 detalle=f'{compra.get_tipo_comprobante_display()} {compra.numero_formateado} '
-                        f'de {proveedor}: {pesos(compra.total_compra)}, {len(renglones)} renglón(es).')
+                        f'de {proveedor}: {pesos(compra.total_compra)}, {len(renglones)} renglón(es).'
+                        + (f' {compra.vinculados} producto(s) sin proveedor quedaron vinculados a éste.'
+                           if compra.vinculados else '')
+                        + (' Pasó a ser el proveedor habitual de: '
+                           + ', '.join(f'{p} (antes {a})' for p, a, _ in compra.rotados) + '.'
+                           if compra.rotados else ''))
             messages.success(request, f'Compra cargada: entró la mercadería de {proveedor}.')
+            if getattr(compra, 'vinculados', 0):
+                messages.info(request, f'{compra.vinculados} producto(s) que no tenían proveedor '
+                                       f'quedaron a nombre de {proveedor}.')
             if orden is not None:
                 orden.refresh_from_db()
                 if orden.estado_orden == 'CON_DIFERENCIAS':
@@ -215,9 +268,9 @@ def _compras_filtradas(request):
 @requiere_alguno('ver_compras', 'registrar_compra')
 def compras(request):
     consulta = _compras_filtradas(request)
-    contexto = paginar(request, consulta, TAMANIOS_TABLA, por_defecto=25)
+    contexto = paginar(request, Compra.con_pagado(consulta), TAMANIOS_TABLA, por_defecto=25)
     contexto.update({
-        'filtro': request.GET, 'estados': Compra.ESTADOS,
+        'filtro': request.GET, 'estados': Compra.ESTADOS, 'hoy': timezone.localdate(),
         'proveedores': Proveedor.objects.filter(compras__isnull=False).distinct()
                                          .order_by('nombre_proveedor'),
         # 'total' es del paginador (cuántas filas): con la suma en pesos el
@@ -250,7 +303,7 @@ def exportar_compras(request):
               f'{c.get_tipo_comprobante_display()} {c.numero_formateado}',
               c.total_compra, c.saldo_pendiente, c.fecha_vencimiento_pago,
               c.get_estado_compra_display()]
-             for c in _compras_filtradas(request))
+             for c in Compra.con_pagado(_compras_filtradas(request)).iterator(chunk_size=500))
     formato = request.GET.get('formato')
     respuesta = exportar(formato, 'Compras', columnas, filas)
     registrar_auditoria(request, 'EXPORTACION', 'COMPRAS', modulo='COMPRAS',

@@ -49,7 +49,7 @@
     {% for renglon in renglones %}
         <tr>
         {% for formato, valor in renglon %}
-            {% if formato == 'dinero' %}<td class="num">{% if valor is not None %}$ {{ valor|floatformat:"2g" }}{% endif %}</td>
+            {% if formato == 'dinero' %}<td class="num">{% if valor is not None %}$&nbsp;{{ valor|floatformat:"2g" }}{% endif %}</td>
             {% elif formato == 'numero' %}<td class="num">{% if valor is not None %}{{ valor|floatformat:"-3g" }}{% endif %}</td>
             {% elif formato == 'fecha' %}<td>{{ valor|date:"d/m/Y" }}</td>
             {% elif formato == 'fecha_hora' %}<td>{{ valor|date:"d/m/Y H:i" }}</td>

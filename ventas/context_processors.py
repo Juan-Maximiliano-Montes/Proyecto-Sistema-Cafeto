@@ -25,4 +25,9 @@ def caja_del_puesto(request):
                  .order_by('nombre_caja_registradora')]
         contexto['cajas_del_local'] = cajas
         contexto['cajas_abiertas'] = sum(1 for _c, t in cajas if t)
+    from ventas import a_distancia
+    if a_distancia.puede_contestar(usuario):
+        # Lo que la caja está esperando que alguien apruebe (DD-94).
+
+        contexto['autorizaciones_pendientes'] = a_distancia.pendientes().count()
     return contexto

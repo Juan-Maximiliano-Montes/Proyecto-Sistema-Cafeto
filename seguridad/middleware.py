@@ -55,8 +55,14 @@ class SeguridadMiddleware:
         estaticos = settings.STATIC_URL or '/static/'
         # El enlace del correo se abre sin sesión: el token es la credencial.
         elegir = reverse('seguridad:elegir_clave', args=['x', 'y']).rsplit('x/', 1)[0]
+        fotos = (settings.MEDIA_URL or '/media/') + 'productos/'
+        # Lo mismo el enlace con que la dueña aprueba desde el celular (DD-94).
+        autorizar = reverse('ventas:autorizar_a_distancia', args=['x']).rsplit('x/', 1)[0]
         if (ruta in exentas or ruta.startswith(estaticos) or ruta.startswith(elegir)
+                or ruta.startswith(autorizar)
+                or ruta.startswith(fotos)
                 or ruta.startswith(PREFIJO_API_MOVIL)
+                or ruta.startswith('/api/servicio/')
                 or (settings.DEBUG and ruta.startswith('/admin'))):
             return self.get_response(request)
 

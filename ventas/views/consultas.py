@@ -29,6 +29,7 @@ from seguridad.servicios import (
     registrar_auditoria,
     registrar_rechazo,
 )
+from negocio import ganancia
 from ventas import anulacion
 from ventas.models import (
     CajaRegistradora,
@@ -102,7 +103,13 @@ def ventas(request):
         'facturado': totales['total'] or Decimal('0'),
         'promedio': ((totales['total'] or Decimal('0')) / totales['cantidad']
                      if totales['cantidad'] else None),
+        'periodos': [(etiqueta, d.isoformat(), h.isoformat())
+                     for etiqueta, d, h in ganancia.periodos(timezone.localdate())],
     })
+    # La ganancia deja ver los costos: es de quien mira los reportes, no de
+    # cualquiera que consulte ventas.
+    if request.usuario_actual.tiene_permiso('ver_reportes'):
+        contexto['ganancia'] = ganancia.de_ventas(Venta.objects.filter(pk__in=consulta.values('pk')))
     return render(request, 'ventas/ventas.html', contexto)
 
 
@@ -250,4 +257,36 @@ def exportar_ventas(request):
     respuesta = exportar(formato, 'Ventas', columnas, filas)
     registrar_auditoria(request, 'EXPORTACION', 'VENTAS',
                         detalle='Exportó el listado de ventas.', modulo='VENTAS')
+    return respuesta
+
+
+@requiere_permiso('ver_reportes', redirigir_a='home')
+def exportar_renglones(request):
+    """Los renglones vendidos con su ganancia, uno por fila: la planilla que
+    la dueña sacaba del sistema anterior para mirar el día."""
+    columnas = [
+        ColumnaExportable('Fecha', 'fecha'), ColumnaExportable('Hora'),
+        ColumnaExportable('Ticket', 'numero'), ColumnaExportable('Caja'),
+        ColumnaExportable('Código'), ColumnaExportable('Descripción'), ColumnaExportable('Rubro'),
+        ColumnaExportable('Cantidad', 'numero'), ColumnaExportable('Unitario', 'dinero'),
+        ColumnaExportable('Subtotal', 'dinero'), ColumnaExportable('Costo', 'dinero'),
+        ColumnaExportable('% Margen', 'numero'), ColumnaExportable('Ganancia', 'dinero'),
+    ]
+
+    def filas():
+        consulta = Venta.objects.filter(pk__in=ventas_filtradas(request).values('pk'))
+        for r in ganancia.renglones(consulta).iterator(chunk_size=500):
+            costo = (r.cantidad * r.costo_unitario).quantize(Decimal('0.01'))
+            utilidad = r.subtotal - costo
+            producto = r.id_producto
+            yield [r.id_venta.fecha_venta, r.id_venta.hora_venta.strftime('%H:%M'), r.id_venta_id,
+                   str(r.id_venta.id_turno_caja.id_caja_registradora),
+                   (producto.codigo_barras or '') if producto else '', r.descripcion_item,
+                   str(producto.id_rubro) if producto else '', r.cantidad, r.precio_unitario,
+                   r.subtotal, costo,
+                   (utilidad / costo * 100).quantize(Decimal('0.1')) if costo else '', utilidad]
+
+    respuesta = exportar('xlsx', 'Renglones con ganancia', columnas, filas())
+    registrar_auditoria(request, 'EXPORTACION', 'VENTAS', modulo='VENTAS',
+                        detalle='Exportó los renglones vendidos con su ganancia.')
     return respuesta

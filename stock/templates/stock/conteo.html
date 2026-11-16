@@ -26,10 +26,43 @@
 {% else %}
 <div class="row g-3">
     <div class="col-lg-5">
+        <form method="post" class="tarjeta tarjeta-destacada mb-3" id="rafaga" novalidate autocomplete="off"
+              data-buscar="{% url 'stock:conteo_buscar' %}">
+            {% csrf_token %}
+            <input type="hidden" name="accion" value="cargar">
+            <input type="hidden" name="producto" id="rafagaProducto">
+            <input type="hidden" name="sumar" id="rafagaSumar" value="1">
+            <h2 class="subtitulo h5 mb-0"><i class="bi bi-upc-scan me-1"></i>Con el lector</h2>
+            <div>
+                <label class="form-label" for="escaner">Código</label>
+                <div class="d-flex gap-2">
+                    <input type="text" inputmode="numeric" id="escaner" class="form-control form-control-lg" placeholder="Pasá el lector o escribí el código" autofocus enterkeyhint="search">
+                    <button type="button" class="btn btn-secundario btn-camara js-camara" data-destino="#escaner" hidden aria-label="Leer el código con la cámara"><i class="bi bi-camera" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div id="rafagaEncontrado" class="d-none">
+                <p class="fw-semibold mb-1" id="rafagaNombre"></p>
+                <p class="small text-secondary mb-2" id="rafagaAnotado"></p>
+                <div id="rafagaBloqueLote" class="d-none mb-2">
+                    <label class="form-label" for="rafagaLote">Lote</label>
+                    <select name="lote" id="rafagaLote" class="form-select"></select>
+                </div>
+                <label class="form-label" for="rafagaContada">¿Cuánto hay?</label>
+                <div class="input-group input-group-lg"><input type="text" inputmode="decimal" name="contada" id="rafagaContada" class="form-control" enterkeyhint="done"><span class="input-group-text" id="rafagaUnidad">u.</span></div>
+                <button type="submit" class="btn btn-primary w-100 mt-2" data-requiere-red><i class="bi bi-plus-lg me-1"></i>Anotar y seguir</button>
+            </div>
+            <p class="small text-peligro mb-0 d-none" id="rafagaAviso" role="alert"></p>
+        </form>
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" role="switch" id="sumarRepetidos" checked>
+            <label class="form-check-label" for="sumarRepetidos">Sumar a lo ya contado si repito el producto</label>
+            <div class="form-text">Para contar la góndola y después el depósito. Destildalo para corregir un número mal anotado.</div>
+        </div>
         <form method="post" class="tarjeta" novalidate>
             {% csrf_token %}
             <input type="hidden" name="accion" value="cargar">
-            <h2 class="subtitulo h5 mb-0">Anotar</h2>
+            <input type="hidden" name="sumar" value="1" class="js-sumar">
+            <h2 class="subtitulo h5 mb-0">Buscando por nombre</h2>
             <div>
                 <label class="form-label" for="producto">Producto</label>
                 <select name="producto" id="producto" class="form-select js-catalogo" data-catalogo="{{ catalogo }}"
@@ -55,14 +88,14 @@
     <div class="col-lg-7">
         <div class="tarjeta p-0 overflow-hidden">
             <div class="d-flex justify-content-between align-items-center px-3 pt-3">
-                <h2 class="subtitulo h5 mb-0">Conteo N° {{ conteo.pk }} · {{ renglones|length }} renglón{{ renglones|length|pluralize:"es" }}</h2>
+                <h2 class="subtitulo h5 mb-0">Conteo N° {{ conteo.pk }} · {{ renglones|length }} {{ renglones|length|pluralize:"renglón,renglones" }}</h2>
             </div>
             <div class="table-responsive">
             <table class="table align-middle mb-0">
                 <thead><tr><th>Producto</th><th>Lote</th><th class="table-numero">Contado</th></tr></thead>
                 <tbody>
                 {% for r in renglones %}
-                    <tr><td>{{ r.id_producto }}</td><td class="small">{% if r.id_lote %}vence {{ r.id_lote.fecha_vencimiento|date:"d/m/Y" }}{% else %}—{% endif %}</td><td class="table-numero">{{ r.cantidad_contada|cantidad }}</td></tr>
+                    <tr><td>{{ r.id_producto }}</td><td class="small">{% if r.id_lote %}{{ r.id_lote.fecha_vencimiento|vencimiento }}{% else %}—{% endif %}</td><td class="table-numero">{{ r.cantidad_contada|cantidad }}</td></tr>
                 {% empty %}
                     <tr><td colspan="3" class="text-center text-secondary py-4">Todavía no anotaste nada.</td></tr>
                 {% endfor %}
@@ -80,5 +113,135 @@
         {% endif %}
     </div>
 </div>
+<div class="modal fade" id="modalAltaRapida" tabindex="-1" aria-labelledby="tituloAltaRapida" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" class="modal-content" novalidate autocomplete="off">
+            {% csrf_token %}
+            <input type="hidden" name="accion" value="alta_rapida">
+            <input type="hidden" name="codigo" id="altaCodigo">
+            <input type="hidden" name="marca" id="altaMarca">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="tituloAltaRapida">Producto no registrado · alta rápida y conteo</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                {% if puede_crear %}
+                <p class="mb-2">El código <strong id="altaCodigoTexto"></strong> no está cargado. Completá lo mínimo y queda anotado en este conteo.</p>
+                <p class="small text-secondary d-none" id="altaSugerido"></p>
+                <div class="mb-2"><label class="form-label" for="altaNombre">Nombre</label><input type="text" name="nombre" id="altaNombre" class="form-control" maxlength="100"></div>
+                <div class="mb-2"><label class="form-label" for="altaRubro">Rubro</label>
+                    <select name="rubro" id="altaRubro" class="form-select"><option value="">— Elegí —</option>{% for r in rubros %}<option value="{{ r.pk }}">{{ r }}</option>{% endfor %}</select></div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6"><label class="form-label" for="altaPrecio">Precio de venta</label><input type="text" inputmode="decimal" name="precio" id="altaPrecio" class="form-control"></div>
+                    <div class="col-6"><label class="form-label" for="altaCosto">Costo (opcional)</label><input type="text" inputmode="decimal" name="costo" id="altaCosto" class="form-control"></div>
+                </div>
+                <div><label class="form-label" for="altaContada">¿Cuánto hay?</label><input type="text" inputmode="decimal" name="contada" id="altaContada" class="form-control form-control-lg"></div>
+                <p class="small text-secondary mt-2 mb-0">Queda con «Proveedor General» y, si no se encontró la marca, «Genérica»: se completan al recibir la primera compra.</p>
+                {% else %}
+                <p class="mb-0">El código <strong id="altaCodigoTexto"></strong> no está cargado y tu perfil no puede dar de alta productos. Dejalo aparte y avisale a quien pueda cargarlo.</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Ahora no</button>
+                {% if puede_crear %}<button type="submit" class="btn btn-primary" data-requiere-red>Dar de alta y anotar</button>{% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+(function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var rafaga = $('rafaga'), escaner = $('escaner'), aviso = $('rafagaAviso');
+    var CLAVE = 'cafeto.conteo.sumar';
+    var casilla = $('sumarRepetidos');
+    try { casilla.checked = window.localStorage.getItem(CLAVE) !== '0'; } catch (e) { /* nada */ }
+    function reflejarSuma() {
+        var valor = casilla.checked ? '1' : '';
+        $('rafagaSumar').value = valor;
+        document.querySelectorAll('.js-sumar').forEach(function (campo) { campo.value = valor; });
+    }
+    casilla.addEventListener('change', function () {
+        try { window.localStorage.setItem(CLAVE, casilla.checked ? '1' : '0'); } catch (e) { /* nada */ }
+        reflejarSuma();
+    });
+    reflejarSuma();
+
+    function avisar(texto) { aviso.textContent = texto; aviso.classList.toggle('d-none', !texto); }
+    function limpiar() { $('rafagaEncontrado').classList.add('d-none'); $('rafagaProducto').value = ''; }
+
+    function sugerirDesdeInternet(codigo) {
+        if (!window.AbortController || !/^[0-9]{8,14}$/.test(codigo)) { return; }
+        var corte = new AbortController();
+        var reloj = window.setTimeout(function () { corte.abort(); }, 2000);
+        fetch('https://world.openfoodfacts.org/api/v2/product/' + codigo + '.json?fields=product_name,brands,quantity',
+              {signal: corte.signal, credentials: 'omit', referrerPolicy: 'no-referrer'})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || d.status !== 1 || !d.product || $('altaCodigo').value !== codigo) { return; }
+                var nombre = [d.product.product_name, d.product.quantity].filter(Boolean).join(' ').trim();
+                var marca = (d.product.brands || '').split(',')[0].trim();
+                if (nombre && !$('altaNombre').value) { $('altaNombre').value = nombre.slice(0, 100); }
+                $('altaMarca').value = marca.slice(0, 50);
+                if (nombre || marca) {
+                    $('altaSugerido').textContent = 'Encontrado en internet' + (marca ? ' (marca ' + marca + ')' : '') + ': revisá que el nombre sea el del envase.';
+                    $('altaSugerido').classList.remove('d-none');
+                }
+            })
+            .catch(function () { /* sin internet o sin datos: se carga a mano */ })
+            .then(function () { window.clearTimeout(reloj); });
+    }
+
+    function ofrecerAlta(codigo) {
+        $('altaCodigo').value = codigo;
+        document.querySelectorAll('#altaCodigoTexto').forEach(function (e) { e.textContent = codigo; });
+        ['altaNombre', 'altaPrecio', 'altaCosto', 'altaContada', 'altaMarca'].forEach(function (id) { if ($(id)) { $(id).value = ''; } });
+        if ($('altaSugerido')) { $('altaSugerido').classList.add('d-none'); }
+        bootstrap.Modal.getOrCreateInstance($('modalAltaRapida')).show();
+        if ($('altaNombre')) { sugerirDesdeInternet(codigo); }
+    }
+    $('modalAltaRapida').addEventListener('shown.bs.modal', function () { if ($('altaNombre')) { $('altaNombre').focus(); } });
+    $('modalAltaRapida').addEventListener('hidden.bs.modal', function () { escaner.value = ''; escaner.focus(); });
+
+    function buscar() {
+        var leido = escaner.value.trim();
+        if (!leido) { return; }
+        avisar(''); limpiar();
+        fetch(rafaga.dataset.buscar + '?codigo=' + encodeURIComponent(leido), {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.existe) {
+                    if (d.valido) { ofrecerAlta(d.codigo); }
+                    else { avisar('Eso no parece un código: van sólo números, de 3 a 30. Para buscar por nombre usá el formulario de abajo.'); escaner.select(); }
+                    return;
+                }
+                if (!d.contable) { avisar(d.nombre + ': ' + d.motivo); escaner.select(); return; }
+                $('rafagaProducto').value = d.id;
+                $('rafagaNombre').textContent = d.nombre;
+                $('rafagaUnidad').textContent = d.unidad;
+                $('rafagaContada').inputMode = d.entera ? 'numeric' : 'decimal';
+                var lote = $('rafagaLote');
+                lote.innerHTML = '';
+                d.lotes.forEach(function (l) {
+                    var o = document.createElement('option');
+                    o.value = l.id; o.textContent = l.texto + (l.anotado ? ' · anotado ' + l.anotado : '');
+                    lote.appendChild(o);
+                });
+                $('rafagaBloqueLote').classList.toggle('d-none', !d.por_lote);
+                lote.disabled = !d.por_lote;
+                if (d.por_lote && !d.lotes.length) { avisar(d.nombre + ' va por lote y no tiene ninguno: anotalo con el formulario de abajo, eligiendo «lote nuevo».'); return; }
+                $('rafagaAnotado').textContent = d.anotado ? 'En este conteo ya lleva anotado ' + d.anotado + ' ' + d.unidad + (casilla.checked ? ': lo que pongas se suma.' : ': lo que pongas lo reemplaza.') : '';
+                $('rafagaEncontrado').classList.remove('d-none');
+                $('rafagaContada').value = ''; $('rafagaContada').focus();
+            })
+            .catch(function () { avisar('No se pudo buscar: revisá la conexión y probá de nuevo.'); });
+    }
+    escaner.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); buscar(); } });
+    rafaga.addEventListener('submit', function (e) {
+        if (!$('rafagaProducto').value) { e.preventDefault(); buscar(); }
+        else if (!$('rafagaContada').value.trim()) { e.preventDefault(); $('rafagaContada').focus(); }
+    });
+})();
+</script>
 {% endif %}
 {% endblock %}

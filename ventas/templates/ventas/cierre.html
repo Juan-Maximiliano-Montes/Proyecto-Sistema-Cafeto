@@ -18,6 +18,7 @@
                 <dt>Contaste</dt><dd class="monto">{{ contado|pesos }}</dd>
                 <dt>Según el libro</dt><dd class="monto">{{ esperado|pesos }}</dd>
             </dl>
+            {% include 'ventas/_composicion_cajon.html' %}
             <div class="pt-2 border-top">
                 {% if diferencia == 0 %}
                 <div class="aviso aviso-exito mb-0"><i class="bi bi-check-circle-fill"></i><span>La caja cierra justa.</span></div>
@@ -93,7 +94,8 @@
 {% else %}
 <div class="tarjeta p-4" style="max-width: 40rem">
     <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i>
-        <span><strong>Tu conteo coincide con el libro.</strong> Los números salen en el documento de cierre.</span></div>
+        <span><strong>Tu conteo coincide con el libro.</strong> Los números completos salen en el documento de cierre.</span></div>
+    {% include 'ventas/_composicion_cajon.html' %}
     <form method="post" novalidate
           data-titulo="{% if relevo %}¿Hacemos el relevo?{% else %}¿Cerramos la caja?{% endif %}" data-aceptar="{% if relevo %}Sí, hacer el relevo{% else %}Sí, cerrar{% endif %}"
           data-confirmar="{% if relevo %}Tu turno se cierra con lo que contaste y el cajón pasa a la otra persona.{% else %}El turno se cierra con lo que contaste. Un turno cerrado no se vuelve a abrir.{% endif %}">

@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Autorizaciones{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-phone me-1" aria-hidden="true"></i>A distancia</span>
+        <h1 class="titulo-pantalla mb-0">Pedidos de autorización</h1>
+        <p class="bajada">Lo que la caja está esperando que apruebes. Cada pedido vale 10 minutos y sólo para ese ticket.</p>
+    </div>
+    <a href="{% url 'ventas:autorizaciones' %}" class="btn btn-secundario"><i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Actualizar</a>
+</div>
+
+{% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Qué pedidos ver' %}
+
+{% if ver == 'pendientes' %}
+{% if pendientes %}
+<div class="row g-3 mb-4">
+    {% for p in pendientes %}
+    <div class="col-md-6 col-xl-4">
+        <div class="tarjeta h-100 d-flex flex-column">
+            <span class="eyebrow">{{ p.caja }} · pidió {{ p.pidio }} a las {{ p.cuando|date:"H:i" }}</span>
+            <p class="fw-semibold mb-2">{{ p.motivo|pesos_juntos }}.</p>
+            <dl class="tarjeta-datos mb-2">
+                {% if p.es_ajuste %}<dt>Qué es</dt><dd>Ajuste de stock</dd>{% else %}<dt>Total del ticket</dt><dd class="monto">{{ p.total }}</dd>{% endif %}
+                <dt>Vale hasta las</dt><dd>{{ p.vence|date:"H:i" }}</dd>
+            </dl>
+            {% if p.renglones %}<ul class="small text-secondary ps-3 mb-3">{% for r in p.renglones %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+            <form method="post" class="d-flex gap-2 mt-auto">
+                {% csrf_token %}
+                <input type="hidden" name="solicitud" value="{{ p.id }}">
+                <button type="submit" name="accion" value="aprobar" class="btn btn-primary flex-grow-1"><i class="bi bi-check2-circle me-1" aria-hidden="true"></i>Aprobar</button>
+                <button type="submit" name="accion" value="rechazar" class="btn btn-outline-secondary">Rechazar</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="aviso aviso-info"><i class="bi bi-inbox"></i><span>No hay nada esperando. Cuando la caja pida una autorización, aparece acá (y te llega por correo).</span></div>
+{% endif %}
+{% endif %}
+
+{% if recientes %}
+{% if ver == 'pendientes' %}<h2 class="subtitulo h6 mt-4">Últimos contestados</h2>{% endif %}
+<div class="table-responsive">
+<table class="table table-sm align-middle">
+    <thead><tr><th>Pedido</th><th>Qué se pidió</th><th class="table-numero">Total</th><th>Resultado</th></tr></thead>
+    <tbody>
+    {% for s in recientes %}
+    <tr>
+        <td class="text-nowrap">N° {{ s.pk }}<span class="d-block small text-secondary">{{ s.fecha_solicitud|date:"d/m H:i" }}</span></td>
+        <td>{{ s.motivo_solicitud|pesos_juntos }}</td>
+        <td class="table-numero">{% if s.monto_solicitud %}{{ s.monto_solicitud|pesos }}{% else %}<span class="small text-secondary">Ajuste</span>{% endif %}</td>
+        <td>{% if s.estado_solicitud == 'ANULADA' and s.fecha_resolucion >= s.fecha_vencimiento %}<span class="insignia insignia-neutra">Venció sin respuesta</span>{% elif s.estado_solicitud == 'ANULADA' %}<span class="insignia insignia-neutra">Anulada por la caja</span>{% elif s.estado_solicitud == 'RECHAZADA' %}<span class="insignia insignia-peligro">Rechazada</span>{% elif s.estado_solicitud == 'PENDIENTE' %}<span class="insignia insignia-aviso">Esperando respuesta</span>{% else %}<span class="insignia insignia-exito">{{ s.get_estado_solicitud_display }}</span>{% endif %}{% if s.id_usuario_autorizante %}<span class="d-block small text-secondary">{{ s.id_usuario_autorizante.nombre }} · {{ s.get_via_aprobacion_display|lower }}</span>{% endif %}{% if s.id_venta %}<a class="d-block small" href="{% url 'ventas:ficha_venta' s.id_venta_id %}">Venta N° {{ s.id_venta_id }}</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% elif ver != 'pendientes' %}
+<div class="aviso aviso-info"><i class="bi bi-inbox"></i><span>No hay pedidos en esta vista.</span></div>
+{% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-"""Importación desde Excel con vista previa: todo o nada.
+"""Importación desde Excel con vista previa y cuarentena.
 
 El circuito es siempre el mismo, para cualquier entidad:
 
@@ -6,11 +6,15 @@ El circuito es siempre el mismo, para cualquier entidad:
    columnas por su título (sin importar mayúsculas, acentos ni el orden) y
    se guarda lo leído en la sesión. Todavía no se escribe nada.
 2. **Vista previa**: cada fila dice qué va a pasar (alta, cambio, sin
-   cambios) o, en rojo, por qué no se puede. Si hay UN error, no se puede
-   confirmar: se corrige la planilla y se vuelve a subir.
+   cambios) o por qué no se puede. Las que no se pueden quedan EN
+   CUARENTENA, separadas de las listas.
 3. **Confirmar**: se vuelve a validar todo (pudo cambiar algo entre la
-   vista previa y el clic) y se aplica en UNA transacción. Si algo falla a
-   mitad de camino, no queda nada a medias.
+   vista previa y el clic) y se aplican las filas válidas en UNA
+   transacción: o entran todas las válidas o ninguna. Las de la cuarentena
+   no se tocan; se descargan en un Excel con el motivo al lado, se corrigen
+   y se vuelven a subir (DD-86). Con miles de artículos reales, frenar todo
+   por tres filas mal obligaba a arreglar a ciegas antes de ver nada
+   cargado.
 
 Cada entidad aporta un ``Importador``: sus columnas y cómo validar y
 aplicar una fila. La lectura, la sesión, los límites y la planilla modelo
@@ -25,9 +29,17 @@ from django.db import transaction
 
 from nucleo.validaciones import clave_normalizada
 
-MAXIMO_DE_FILAS = 2000
+MAXIMO_DE_FILAS = 5000
 MAXIMO_DE_BYTES = 2 * 1024 * 1024
 CLAVE_SESION = 'cafeto_importacion_{}'
+
+
+@dataclass(frozen=True)
+class Opcion:
+    clave: str
+    etiqueta: str
+    ayuda: str = ''
+    tildada: bool = True
 
 
 @dataclass(frozen=True)
@@ -115,6 +127,9 @@ class Importador:
         except Exception:
             raise ValidationError('No se pudo abrir el archivo como Excel. ¿Es un .xlsx?')
         hoja = libro.worksheets[0]
+        # Hay programas que exportan el .xlsx declarando que la hoja mide una
+        # sola celda (Fácil Virtual, entre otros): sin esto se leía sólo A1.
+        hoja.reset_dimensions()
         crudas = [[self._texto(c) for c in fila] for fila in hoja.iter_rows(values_only=True)]
         libro.close()
         return self._mapear(crudas)
@@ -190,28 +205,91 @@ class Importador:
             resultados.append(resultado)
         return resultados
 
-    def confirmar(self, filas, usuario):
-        """Vuelve a validar y aplica todo junto. Devuelve los resultados."""
+    #  Casillas que se ofrecen al confirmar: Opcion(clave, etiqueta, ayuda,
+    #  tildada de entrada). Llegan a ``despues_de_aplicar`` como un dict.
+    opciones = ()
+
+    def resumen(self, resultados):
+        """Frases para la vista previa sobre el conjunto (no sobre una fila)."""
+        return []
+
+    def despues_de_aplicar(self, resultados, usuario, opciones):
+        """Lo que se hace una vez, con todas las filas ya aplicadas y dentro
+        de la misma transacción. Devuelve frases para mostrar."""
+        return []
+
+    def confirmar(self, filas, usuario, solo_validas=False, opciones=None):
+        """Vuelve a validar y aplica. Devuelve los resultados.
+
+        Sin ``solo_validas`` alcanza una fila con error para no importar
+        nada. Con ``solo_validas`` entran las que están bien —todas juntas,
+        en una transacción— y las otras vuelven marcadas con su error.
+        """
         resultados = self.revisar(filas)
-        if any(not r.ok for r in resultados):
+        if not solo_validas and any(not r.ok for r in resultados):
             raise ValidationError('La planilla tiene errores: no se importó nada.')
+        if not any(r.ok for r in resultados):
+            raise ValidationError('Ninguna fila está en condiciones: no se importó nada.')
+        from django.db import IntegrityError
         from seguridad.servicios import instantanea
 
         with transaction.atomic():
             for resultado in resultados:
-                if resultado.accion != 'SIN CAMBIOS':
-                    fila = self.instancia_de(resultado)
-                    if fila is not None and fila.pk is not None:
-                        resultado.foto_anterior = instantanea(
-                            type(fila).objects.get(pk=fila.pk))
-                    try:
+                if not resultado.ok or resultado.accion == 'SIN CAMBIOS':
+                    continue
+                fila = self.instancia_de(resultado)
+                if fila is not None and fila.pk is not None:
+                    resultado.foto_anterior = instantanea(
+                        type(fila).objects.get(pk=fila.pk))
+                try:
+                    with transaction.atomic():
                         self.aplicar(resultado, usuario)
-                    except ValidationError as error:
+                except ValidationError as error:
+                    if not solo_validas:
                         raise ValidationError(
                             f'Fila {resultado.numero}: {" ".join(error.messages)} '
                             'No se importó nada.')
-                    resultado.foto_nueva = instantanea(fila)
+                    resultado.errores.extend(error.messages)
+                    resultado.foto_anterior = None
+                    continue
+                except IntegrityError:
+                    mensaje = 'Choca con otro registro que ya existe (el mismo código o el mismo nombre).'
+                    if not solo_validas:
+                        raise ValidationError(f'Fila {resultado.numero}: {mensaje} No se importó nada.')
+                    resultado.errores.append(mensaje)
+                    resultado.foto_anterior = None
+                    continue
+                resultado.foto_nueva = instantanea(fila)
+            self.notas = self.despues_de_aplicar(resultados, usuario, opciones or {})
         return resultados
+
+    def planilla_de_errores(self, resultados):
+        """Las filas en cuarentena, con las mismas columnas y el motivo al
+        lado: se corrigen ahí mismo y se vuelven a subir."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+
+        libro = Workbook()
+        hoja = libro.active
+        hoja.title = 'En cuarentena'
+        usadas = [c for c in self.columnas
+                  if any((r.datos.get(c.clave) or '') != '' for r in resultados)]
+        hoja.append([c.titulo for c in usadas] + ['Fila original', 'Por qué no entró'])
+        for celda in hoja[1]:
+            celda.font = Font(bold=True)
+            celda.fill = PatternFill('solid', fgColor='FFF3D6')
+        for resultado in resultados:
+            if resultado.ok:
+                continue
+            hoja.append([resultado.datos.get(c.clave, '') for c in usadas]
+                        + [resultado.numero, ' '.join(resultado.errores)])
+        for columna in hoja.columns:
+            hoja.column_dimensions[columna[0].column_letter].width = 22
+        hoja.column_dimensions[hoja.cell(row=1, column=len(usadas) + 2).column_letter].width = 90
+        hoja.freeze_panes = 'A2'
+        salida = io.BytesIO()
+        libro.save(salida)
+        return salida.getvalue()
 
     def instancia_de(self, resultado):
         """La fila que ``aplicar`` va a guardar, para fotografiarla antes

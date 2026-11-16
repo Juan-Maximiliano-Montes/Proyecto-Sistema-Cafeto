@@ -107,7 +107,9 @@ class PreciosBajoElCostoTest(TestCase):
 class ConciliacionTest(TestCase):
     def setUp(self):
         self.tipo = TipoEgreso.objects.filter(borrado_logico=False).first()
-        self.banco = MedioPago.objects.filter(afecta_caja=False, borrado_logico=False).first()
+        # Un medio bancario de verdad: la cuenta corriente es el fiado de los
+        # clientes y con eso no se paga nada (DD-96).
+        self.banco = MedioPago.objects.get(nombre_medio_pago='Transferencia')
         self.egreso = egresos.registrar_egreso(
             self.tipo, self.banco, D('1000'), 'Internet de prueba',
             destinatario='Proveedor de internet')

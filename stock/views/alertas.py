@@ -47,13 +47,16 @@ def alertas(request):
     contexto = paginar(request, consulta, TAMANIOS_TABLA, por_defecto=25)
     contexto.update({
         'pestania': pestania, 'pestanias': PESTANIAS, 'hoy': hoy, 'dias': dias,
-        'cantidades': {
-            'faltantes': servicios.bajo_minimo().count(),
-            'vencimientos': servicios.proximos_a_vencer(
-                ParametrosNegocio.vigentes().dias_aviso_vencimiento, hoy=hoy).count(),
-            'ofertas': len(servicios.en_oferta(hoy=hoy)),
-        },
     })
+    cantidades = {
+        'faltantes': servicios.bajo_minimo().count(),
+        'vencimientos': servicios.proximos_a_vencer(
+            ParametrosNegocio.vigentes().dias_aviso_vencimiento, hoy=hoy).count(),
+        'ofertas': len(servicios.en_oferta(hoy=hoy)),
+    }
+    contexto['vistas'] = [{'clave': clave, 'etiqueta': etiqueta, 'cantidad': cantidades[clave],
+                           'activa': clave == pestania, 'url': f'?ver={clave}'}
+                          for clave, etiqueta, _icono in PESTANIAS]
     return render(request, 'stock/alertas.html', contexto)
 
 
@@ -88,8 +91,8 @@ def exportar_alertas(request):
         columnas = [ColumnaExportable('Producto'), ColumnaExportable('Rubro'),
                     ColumnaExportable('Stock', 'numero'), ColumnaExportable('Mínimo', 'numero'),
                     ColumnaExportable('Faltan', 'numero')]
-        filas = ([str(p), str(p.id_rubro), p.stock_actual, p.stock_minimo,
-                  p.stock_minimo - p.stock_actual] for p in consulta)
+        filas = ([str(p), str(p.id_rubro), p.stock_apto, p.stock_minimo,
+                  p.stock_minimo - p.stock_apto] for p in consulta)
     formato = request.GET.get('formato')
     respuesta = exportar(formato, titulo, columnas, filas)
     registrar_auditoria(request, 'EXPORTACION', titulo, modulo='STOCK',
@@ -145,4 +148,43 @@ def lotes_de_producto(request):
                    + f' · quedan {l.stock_lote.normalize():f}'
                    + (' · VENCIDO' if l.fecha_vencimiento < hoy else '')}
                   for l in lotes],
+    })
+
+
+MAXIMO_DE_ETIQUETAS = 300
+
+
+@requiere_permiso('ver_productos', redirigir_a='home')
+def etiquetas_de_gondola(request):
+    """Los precios para pegar en la góndola: una hoja A4 para recortar.
+
+    Se eligen por rubro, por lo que se tocó hoy o en la semana (el precio u
+    otro dato: es la fecha de última modificación del producto) o buscando.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Q
+
+    from stock.models import TIPOS_VENDIBLES, Producto, Rubro
+
+    filtro = request.GET
+    productos = (Producto.objects.filter(borrado_logico=False, tipo_producto__in=TIPOS_VENDIBLES)
+                 .select_related('id_marca', 'id_rubro').order_by('id_rubro__nombre_rubro', 'nombre_producto'))
+    elegido = any(filtro.get(clave) for clave in ('rubro', 'cambios', 'q'))
+    if filtro.get('rubro', '').isdigit():
+        productos = productos.filter(id_rubro_id=filtro['rubro'])
+    if filtro.get('cambios') in ('1', '7'):
+        desde = timezone.localdate() - timedelta(days=int(filtro['cambios']) - 1)
+        productos = productos.filter(fecha_modificacion__date__gte=desde)
+    busqueda = filtro.get('q', '').strip()
+    if busqueda:
+        productos = productos.filter(Q(nombre_producto__icontains=busqueda)
+                                     | Q(codigo_barras__startswith=busqueda)
+                                     | Q(id_marca__nombre_marca__icontains=busqueda))
+    total = productos.count() if elegido else 0
+    return render(request, 'stock/etiquetas_gondola.html', {
+        'filtro': filtro, 'elegido': elegido, 'total': total, 'maximo': MAXIMO_DE_ETIQUETAS,
+        'productos': productos[:MAXIMO_DE_ETIQUETAS] if elegido else [],
+        'rubros': Rubro.objects.filter(borrado_logico=False).order_by('nombre_rubro'),
+        'hoy': timezone.localdate(),
     })

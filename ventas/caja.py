@@ -29,6 +29,7 @@ from django.utils import timezone
 from negocio.models import ParametrosNegocio
 from ventas.models import (
     CajaRegistradora,
+    MedioPago,
     MovimientoCaja,
     TipoCierre,
     TipoMovimientoCaja,
@@ -55,12 +56,20 @@ def turno_abierto(caja):
                                     estado_turno='ABIERTA').first()
 
 
+# En el resumen del cajón se dice de dónde vino cada peso: lo vendido en
+# el turno y lo que pagaron de cuentas viejas no se mezclan (DD-94).
+ETIQUETAS_DEL_RESUMEN = {
+    TipoMovimientoCaja.VENTA: 'Ventas en efectivo del turno',
+    TipoMovimientoCaja.COBRO_CUENTA: 'Cobros de cuentas corrientes en efectivo',
+}
+
+
 def resumen(turno):
     """Lo que entró y salió del cajón, por tipo de movimiento."""
     filas = (MovimientoCaja.objects.filter(id_turno_caja=turno)
              .values('tipo_movimiento').annotate(total=Sum('monto')))
     por_tipo = {f['tipo_movimiento']: f['total'] for f in filas}
-    return [(etiqueta, por_tipo.get(valor, CERO))
+    return [(ETIQUETAS_DEL_RESUMEN.get(valor, etiqueta), por_tipo.get(valor, CERO))
             for valor, etiqueta in TipoMovimientoCaja.choices]
 
 
@@ -99,9 +108,20 @@ def recaudacion(turno):
     for c in cambios:
         f = fila(c['id_medio_pago__nombre_medio_pago'])
         f['cambios'] = (c['cobrado'] or CERO) - (c['devuelto'] or CERO)
+    # Fiado (DD-91): lo que se cobró en este turno de cuentas corrientes
+    # entra por su medio; lo vendido "a cuenta" no entró: va en su fila.
+    from fidelizacion.models import MovimientoCuenta
+
+    cuentas = (MovimientoCuenta.objects.filter(id_turno_caja=turno, tipo_movimiento__in=('COBRO', 'INTERES'))
+               .values('id_medio_pago__nombre_medio_pago').annotate(total=Sum('monto')))
+    for c in cuentas:
+        f = fila(c['id_medio_pago__nombre_medio_pago'])
+        f['cuentas'] = f.get('cuentas', CERO) + (c['total'] or CERO)
     for f in filas.values():
-        f['total'] = f['cobrado'] + f['cambios']
-    return sorted(filas.values(), key=lambda f: f['medio'])
+        f['cuentas'] = f.get('cuentas', CERO)
+        f['total'] = f['cobrado'] + f['cambios'] + f['cuentas']
+        f['fiado'] = f['medio'] == MedioPago.NOMBRE_CUENTA_CORRIENTE
+    return sorted(filas.values(), key=lambda f: (f['fiado'], f['medio']))
 
 
 # ===========================================================================

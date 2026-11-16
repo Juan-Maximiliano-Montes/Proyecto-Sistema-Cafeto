@@ -17,6 +17,9 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
      data-catalogo="{% url 'ventas:catalogo' %}"
      data-cotizar="{% url 'ventas:cotizar' %}"
      data-cobrar="{% url 'ventas:cobrar' %}"
+     data-pedir-autorizacion="{% url 'ventas:pedir_autorizacion' %}" data-autorizacion="{% url 'ventas:estado_autorizacion' 0 %}"
+     data-ajuste="{% url 'ventas:ajuste_express' %}" data-ajusta-sola="{% if ajusta_sola %}1{% endif %}"
+     data-morosos="{% url 'fidelizacion:morosos' %}" data-parecidos="{% url 'fidelizacion:parecidos' %}" data-cuentas="{% url 'fidelizacion:cuentas' %}"
      data-cliente="{% url 'ventas:identificar_cliente' %}"
      data-alta-cliente="{% url 'ventas:alta_cliente' %}"
      data-turno="{{ turno.pk }}"
@@ -30,6 +33,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 <i class="bi bi-search"></i>
                 <input type="search" id="buscar" class="form-control form-control-lg" placeholder="Buscar producto…" autocomplete="off" autofocus aria-label="Buscar producto">
             </div>
+            <button type="button" class="btn btn-secundario btn-camara js-camara" data-destino="#buscar" hidden aria-label="Leer el código con la cámara"><i class="bi bi-camera" aria-hidden="true"></i></button>
         </div>
         <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Qué mostrar">
             <button type="button" class="btn btn-sm btn-primary js-sector" data-sector="mas_vendidos" aria-pressed="true"><i class="bi bi-star me-1"></i>Más vendidos</button>
@@ -45,9 +49,12 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
     {# ------------------------------- TICKET ------------------------------- #}
     <aside class="ticket" id="ticket" aria-label="Ticket">
         <div class="tarjeta">
-            <div class="d-flex justify-content-between align-items-center">
-                <h2 class="subtitulo h5 mb-0"><i class="bi bi-receipt me-1"></i>Ticket</h2>
-                <button type="button" class="btn btn-sm btn-link text-secondary" id="vaciar">Vaciar</button>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <h2 class="subtitulo h5 mb-0 text-nowrap"><i class="bi bi-receipt me-1" aria-hidden="true"></i>Ticket</h2>
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    {% if morosos %}<button type="button" class="btn btn-sm pildora-mora" id="radar" aria-haspopup="dialog"><i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Deudores en mora ({{ morosos }})</button>{% endif %}
+                    <button type="button" class="btn btn-sm btn-link text-secondary" id="vaciar">Vaciar</button>
+                </div>
             </div>
 
             <div id="renglones"></div>
@@ -69,6 +76,8 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                         <div><div class="fw-semibold" id="clubNombre"></div><div class="small text-secondary" id="clubDatos"></div></div>
                         <button type="button" class="btn btn-sm btn-link text-secondary p-0" id="clubQuitar">Quitar</button>
                     </div>
+                    <div class="aviso aviso-error d-none mt-2 mb-0" id="clubMora" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span></span></div>
+                    <div class="small text-secondary d-none mt-2" id="clubCuenta"></div>
                     <div id="clubBeneficios" class="d-flex flex-column gap-1 mt-1"></div>
                 </div>
             </div>
@@ -91,31 +100,54 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 <span class="eyebrow">¿Cómo paga?</span>
                 <div class="d-flex flex-wrap gap-2 mt-1" id="medios">
                     {% for m in medios %}
-                    <button type="button" class="btn btn-secundario js-medio" data-medio="{{ m.id }}" data-efectivo="{{ m.efectivo|yesno:'1,0' }}">
+                    <button type="button" class="btn btn-secundario js-medio" data-medio="{{ m.id }}" data-efectivo="{{ m.efectivo|yesno:'1,0' }}" data-fiado="{{ m.fiado|yesno:'1,0' }}">
                         {{ m.nombre }}{% if m.recargo != '0' and m.recargo != '0.00' %} <span class="small text-tenue">+{{ m.recargo|cantidad }}%</span>{% endif %}
                     </button>
                     {% endfor %}
                 </div>
                 <div id="pagos" class="mt-2 d-flex flex-column gap-2"></div>
                 <button type="button" class="btn btn-link btn-sm p-0 mt-1 d-none" id="mixto"><i class="bi bi-plus-circle me-1"></i>Pagar con dos medios</button>
+                <div id="fiado" class="d-none mt-2">
+                    <div class="aviso aviso-error mb-2 d-none" id="fiadoSinCliente" role="alert"><i class="bi bi-person-x-fill"></i><span>Para fiar hay que saber a quién: identificá al cliente del Club (o dalo de alta) antes de cobrar.</span></div>
+                    <label class="form-label small mb-1" for="venceFiado">¿Hasta cuándo tiene para pagar?</label>
+                    <input type="date" id="venceFiado" class="form-control">
+                    <div class="form-text" id="venceAyuda">Se propone en 30 días. Cambiala si acordaron otra fecha.</div>
+                </div>
                 <div class="d-flex justify-content-between align-items-baseline mt-2 d-none" id="filaVuelto">
                     <span class="text-secondary">Vuelto</span>
-                    <span class="monto fs-3 text-exito" id="tVuelto"></span>
+                    <span class="monto visor-vuelto text-exito" id="tVuelto"></span>
                 </div>
             </div>
 
             {# --------------- AUTORIZACIÓN (descuento sobre el tope) --------------- #}
             <div id="autorizacion" class="d-none border-top pt-2">
-                <span class="eyebrow text-marca"><i class="bi bi-shield-check me-1"></i>Autoriza el descuento</span>
+                <span class="eyebrow text-marca"><i class="bi bi-shield-check me-1" aria-hidden="true"></i><span id="autorizacionTitulo">Autoriza el descuento</span></span>
                 <div class="row g-2 mt-1">
-                    <div class="col-6"><input type="text" class="form-control" id="autorizaUsuario" placeholder="Usuario o DNI" autocomplete="off" data-lpignore="true" data-1p-ignore></div>
-                    <div class="col-6"><input type="password" class="form-control" id="autorizaClave" placeholder="Clave" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore></div>
+                    <div class="col-6"><input type="text" class="form-control" id="autorizaUsuario" placeholder="Usuario o DNI" aria-label="Usuario o DNI de quien autoriza" autocomplete="off" data-lpignore="true" data-1p-ignore></div>
+                    <div class="col-6"><input type="password" class="form-control" id="autorizaClave" placeholder="Clave" aria-label="Clave de quien autoriza" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore></div>
+                </div>
+                <button type="button" class="btn btn-secundario w-100 mt-2" id="remotaPedir"><i class="bi bi-phone me-1" aria-hidden="true"></i>¿No está? Pedir autorización a distancia</button>
+                <div id="remota" class="d-none mt-2 aviso aviso-info" role="status" aria-live="polite">
+                    <i class="bi bi-hourglass-split" id="remotaIcono" aria-hidden="true"></i>
+                    <div class="flex-grow-1 min-w-0">
+                        <span id="remotaTexto"></span>
+                        <div class="input-group mt-2" id="remotaPinGrupo">
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="form-control" id="remotaPin" placeholder="PIN de 4 números" aria-label="PIN que te dictó la dueña" autocomplete="one-time-code">
+                            <button type="button" class="btn btn-primary" id="remotaPinOk">Validar PIN</button>
+                        </div>
+                        <button type="button" class="btn btn-link btn-sm p-0 mt-1" id="remotaCancelar">Cancelar el pedido</button>
+                    </div>
                 </div>
             </div>
 
+            <div class="form-check form-switch small mb-1">
+                <input class="form-check-input" type="checkbox" role="switch" id="autoTicket">
+                <label class="form-check-label text-secondary" for="autoTicket">Imprimir el ticket al cobrar</label>
+            </div>
             <button type="button" class="btn btn-primary btn-xl w-100" id="cobrar" disabled data-requiere-red>
                 <i class="bi bi-check2-circle me-1"></i>Cobrar
             </button>
+            <p class="small text-tenue text-center mb-0 mt-1 d-none d-lg-block"><kbd>F2</kbd> buscar · <kbd>F4</kbd> efectivo · <kbd>F9</kbd> cobrar</p>
         </div>
     </aside>
 </div>
@@ -127,11 +159,11 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
 </a>
 
 {# ------------------------------ DESCUENTO ------------------------------ #}
-<div class="modal fade" id="modalDescuento" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modalDescuento" tabindex="-1" aria-labelledby="tituloDescuento" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-percent me-2"></i>Descuento</h5>
+                <h2 class="modal-title h5" id="tituloDescuento"><i class="bi bi-percent me-2" aria-hidden="true"></i>Descuento</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
@@ -144,7 +176,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                     <option value="">Elegí el motivo…</option>
                     {% for valor, etiqueta in motivos %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
                 </select>
-                <input type="text" class="form-control" id="descuentoDetalle" maxlength="120" placeholder="Detalle (obligatorio si es «Otro»)">
+                <input type="text" class="form-control" id="descuentoDetalle" maxlength="120" aria-label="Detalle del descuento" placeholder="Detalle (obligatorio si es «Otro»)">
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-link text-peligro me-auto" id="quitarDescuento">Quitar descuento</button>
@@ -156,15 +188,25 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
 </div>
 
 {# ------------------------- CLIENTE NUEVO (DFD 9) ------------------------- #}
-<div class="modal fade" id="modalCliente" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modalRadar" tabindex="-1" aria-labelledby="tituloRadar" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h5" id="tituloRadar"><i class="bi bi-exclamation-triangle-fill me-2"></i>Deudores en mora</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body">
+            <p class="small text-secondary">Clientes con deuda vencida o con la cuenta suspendida. Si reconocés a alguno en la caja, podés cobrarle.</p>
+            <div id="radarLista" aria-live="polite"></div>
+        </div>
+    </div></div>
+</div>
+<div class="modal fade" id="modalCliente" tabindex="-1" aria-labelledby="tituloCliente" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Cliente nuevo del club</h5>
+                <h2 class="modal-title h5" id="tituloCliente"><i class="bi bi-person-plus me-2" aria-hidden="true"></i>Cliente nuevo del club</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
                 <div class="aviso aviso-error d-none" id="clienteError" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span></span></div>
+                <div class="aviso aviso-aviso d-none" id="clienteParecidos" role="status"><i class="bi bi-person-exclamation"></i><span></span></div>
                 <div class="row g-2">
                     <div class="col-6"><label class="form-label" for="ncApellido">Apellido</label><input type="text" class="form-control" id="ncApellido" maxlength="50"></div>
                     <div class="col-6"><label class="form-label" for="ncNombre">Nombre</label><input type="text" class="form-control" id="ncNombre" maxlength="50"></div>
@@ -185,22 +227,57 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
 </div>
 
 {# ------------------------------ COBRADO ------------------------------ #}
-<div class="modal fade" id="modalCobrado" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+<div class="modal fade" id="modalAjuste" tabindex="-1" aria-labelledby="tituloAjuste" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title h5" id="tituloAjuste">Figura sin stock</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-body">
+            <p class="fw-semibold mb-1" id="ajusteNombre"></p>
+            <p class="small text-secondary">El sistema lo tiene en 0. Si lo tenés en la mano, contá cuántas hay ahora en la góndola (contando ésta) y queda asentado.</p>
+            <label class="form-label" for="ajusteCantidad">¿Cuántas hay en la góndola?</label>
+            <div class="input-group input-group-lg mb-2"><input type="text" inputmode="decimal" id="ajusteCantidad" class="form-control" autocomplete="off"><span class="input-group-text" id="ajusteUnidad">u.</span></div>
+            <div id="ajusteAutoriza"{% if ajusta_sola %} class="d-none"{% endif %}>
+                <p class="small mb-1">Lo tiene que autorizar alguien que pueda aprobar ajustes de stock (otra persona, no quien está en la caja).</p>
+                <div class="row g-2">
+                    <div class="col-6"><input type="text" id="ajusteUsuario" class="form-control" placeholder="DNI o usuario" autocomplete="off" aria-label="Usuario de quien autoriza"></div>
+                    <div class="col-6"><input type="password" id="ajusteClave" class="form-control" placeholder="Clave" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore aria-label="Clave de quien autoriza"></div>
+                </div>
+                <button type="button" class="btn btn-secundario w-100 mt-2" id="ajusteRemotaPedir"><i class="bi bi-phone me-1" aria-hidden="true"></i>¿No está? Pedir autorización a distancia</button>
+                <div id="ajusteRemota" class="d-none mt-2 aviso aviso-info" role="status" aria-live="polite">
+                    <i class="bi bi-hourglass-split" id="ajusteRemotaIcono" aria-hidden="true"></i>
+                    <div class="flex-grow-1">
+                        <span id="ajusteRemotaTexto"></span>
+                        <div class="input-group mt-2" id="ajusteRemotaPinGrupo">
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="form-control" id="ajusteRemotaPin" placeholder="PIN de 4 números" aria-label="PIN que te dictaron">
+                            <button type="button" class="btn btn-primary" id="ajusteRemotaPinOk">Validar PIN</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="small text-peligro mt-2 mb-0 d-none" id="ajusteError" role="alert"></p>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="ajusteConfirmar" data-requiere-red>Ajustar el stock y agregar al ticket</button>
+        </div>
+    </div></div>
+</div>
+<div class="modal fade" id="modalCobrado" tabindex="-1" aria-labelledby="tituloCobrado" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content text-center">
             <div class="modal-body py-4">
                 <i class="bi bi-check-circle-fill text-exito" style="font-size:3rem"></i>
-                <h2 class="titulo-pantalla mt-2 mb-0">¡Listo!</h2>
+                <h2 class="titulo-pantalla mt-2 mb-0" id="tituloCobrado">¡Listo!</h2>
                 <p class="text-secondary mb-3" id="cobradoNumero"></p>
                 <div class="d-flex justify-content-around">
                     <div><span class="eyebrow d-block">Total</span><span class="monto fs-3" id="cobradoTotal"></span></div>
-                    <div id="cobradoBloqueVuelto"><span class="eyebrow d-block">Vuelto</span><span class="monto fs-1 text-exito" id="cobradoVuelto"></span></div>
+                    <div id="cobradoBloqueVuelto"><span class="eyebrow d-block">Vuelto</span><span class="monto visor-vuelto text-exito" id="cobradoVuelto"></span></div>
                 </div>
+                <p class="mt-3 mb-0 d-none" id="cobradoFiado"></p>
                 <p class="mt-3 mb-0 d-none" id="cobradoPuntos"></p>
             </div>
             <div class="modal-footer justify-content-center">
-                <a href="#" target="_blank" rel="noopener" class="btn btn-secundario" id="cobradoTicket"><i class="bi bi-printer me-1"></i>Imprimir ticket</a>
-                <button type="button" class="btn btn-primary btn-xl" id="nuevaVenta">Nueva venta</button>
+                <a href="#" target="_blank" rel="noopener" class="btn btn-secundario" id="cobradoTicket"><i class="bi bi-printer me-1"></i>Imprimir ticket <kbd>P</kbd></a>
+                <button type="button" class="btn btn-primary btn-xl" id="nuevaVenta">Nueva venta <kbd>Enter</kbd></button>
             </div>
         </div>
     </div>
@@ -266,12 +343,22 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                     var boton = el('button', 'producto-boton');
                     boton.type = 'button';
                     boton.dataset.producto = p.id;
-                    boton.disabled = p.agotado;
+                    boton.disabled = p.agotado && !p.ajustable;
+                    if (p.agotado && p.ajustable) { boton.dataset.sinStock = '1'; boton.classList.add('sin-stock'); }
+                    if (p.imagen) {
+                        var foto = el('img', 'producto-foto');
+                        foto.src = p.imagen; foto.alt = ''; foto.loading = 'lazy';
+                        foto.addEventListener('error', function () { this.remove(); });
+                        boton.appendChild(foto);
+                    }
                     boton.appendChild(el('span', 'nombre', p.nombre));
                     if (p.detalle) { boton.appendChild(el('span', 'stock', p.detalle)); }
                     if (p.rebaja) { boton.appendChild(el('span', 'insignia insignia-aviso align-self-start', 'Oferta por vencer')); }
                     if (p.stock !== null) {
-                        boton.appendChild(el('span', 'stock', p.agotado ? 'Sin stock' : 'Stock: ' + numero.format(Number(p.stock)) + ' ' + p.unidad));
+                        boton.appendChild(el('span', 'stock', p.agotado ? (p.vencido ? 'Sin stock apto' : 'Sin stock') : (p.vencido ? 'Aptas: ' : 'Stock: ') + numero.format(Number(p.stock)) + ' ' + p.unidad));
+                        if (p.vencido) { boton.appendChild(el('span', 'stock text-peligro', 'Vencidas: ' + numero.format(Number(p.vencido)) + ' ' + p.unidad + ' (no se venden)')); }
+                    } else if (p.sin_componentes) {
+                        boton.appendChild(el('span', 'stock', 'Sin stock apto de lo que lleva'));
                     }
                     boton.appendChild(el('span', 'precio', plata(p.precio) + (p.fraccionable ? ' / ' + p.unidad : '')));
                     grilla.appendChild(boton);
@@ -303,6 +390,8 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             .then(function (datos) {
                 var vendibles = datos.productos.filter(function (p) { return !p.agotado; });
                 var exacto = vendibles.find(function (p) { return p.codigo && p.codigo === q; });
+                var sinStock = !exacto && datos.productos.length === 1 && datos.productos[0].ajustable ? datos.productos[0] : null;
+                if (sinStock) { nombres[sinStock.id] = {nombre: sinStock.nombre, detalle: sinStock.detalle, fraccionable: sinStock.fraccionable, unidad: sinStock.unidad}; $('buscar').value = ''; pedirAjuste(sinStock.id); }
                 var elegido = exacto || (vendibles.length === 1 ? vendibles[0] : null);
                 datos.productos.forEach(function (p) {
                     nombres[p.id] = {nombre: p.nombre, detalle: p.detalle, fraccionable: p.fraccionable, unidad: p.unidad};
@@ -325,19 +414,126 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
     $('masProductos').addEventListener('click', function () { filtro.pagina += 1; cargarCatalogo(true); });
     $('catalogo').addEventListener('click', function (e) {
         var b = e.target.closest('.producto-boton');
-        if (b && !b.disabled) { agregar(Number(b.dataset.producto)); }
+        if (b && !b.disabled) {
+            if (b.dataset.sinStock) { pedirAjuste(Number(b.dataset.producto)); } else { agregar(Number(b.dataset.producto)); }
+        }
     });
 
     // ------------------------------------------------------------------
     //  Ticket
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    //  Figura en 0 pero está en la mano: se cuenta ahí mismo (DD-90).
+    // ------------------------------------------------------------------
+    var porAjustar = null;
+    function pedirAjuste(id) {
+        porAjustar = id;
+        var info = nombres[id] || {};
+        $('ajusteNombre').textContent = info.nombre || '';
+        $('ajusteUnidad').textContent = info.unidad || 'u.';
+        ['ajusteCantidad', 'ajusteUsuario', 'ajusteClave'].forEach(function (c) { $(c).value = ''; });
+        $('ajusteError').classList.add('d-none');
+        bootstrap.Modal.getOrCreateInstance($('modalAjuste')).show();
+    }
+    $('modalAjuste').addEventListener('shown.bs.modal', function () { $('ajusteCantidad').focus(); });
+    $('modalAjuste').addEventListener('hidden.bs.modal', function () { $('buscar').focus(); });
+    function confirmarAjuste() {
+        var boton = $('ajusteConfirmar');
+        if (boton.disabled || porAjustar === null) { return; }
+        boton.disabled = true;
+        enviar(raiz.dataset.ajuste, {producto: porAjustar, cantidad: $('ajusteCantidad').value,
+                                     remota: ajusteRemota.id,
+                                     autoriza: {usuario: $('ajusteUsuario').value, clave: $('ajusteClave').value}})
+            .then(function (r) {
+                if (!r.ok) { $('ajusteError').textContent = r.error; $('ajusteError').classList.remove('d-none'); return; }
+                ajusteRemota.id = null;
+                var id = porAjustar; porAjustar = null;
+                bootstrap.Modal.getInstance($('modalAjuste')).hide();
+                agregar(id); cargarCatalogo(false);
+            })
+            .catch(function () { $('ajusteError').textContent = 'No se pudo guardar: revisá la conexión.'; $('ajusteError').classList.remove('d-none'); })
+            .then(function () { boton.disabled = false; });
+    }
+    // Quien aprueba ajustes no está: se le pide a distancia (DD-94). Al
+    // aprobarse, el ajuste se hace solo con la cantidad que se pidió.
+    var ajusteRemota = {id: null, reloj: null, cantidad: null};
+    function pintarAjusteRemota(texto, tipo, conPin) {
+        var caja = $('ajusteRemota');
+        caja.classList.remove('d-none', 'aviso-info', 'aviso-exito', 'aviso-error', 'aviso-aviso');
+        caja.classList.add('aviso-' + (tipo || 'info'));
+        $('ajusteRemotaIcono').className = 'bi ' + ({exito: 'bi-check-circle-fill', error: 'bi-x-circle-fill', aviso: 'bi-exclamation-triangle-fill'}[tipo] || 'bi-hourglass-split');
+        $('ajusteRemotaTexto').textContent = texto;
+        $('ajusteRemotaPinGrupo').classList.toggle('d-none', !conPin);
+        $('ajusteRemotaPedir').classList.toggle('d-none', !!conPin);
+    }
+    function pararAjusteRemota() { clearInterval(ajusteRemota.reloj); ajusteRemota.reloj = null; }
+    function seguirAjusteRemota(r) {
+        if (r.estado === 'PENDIENTE') {
+            pintarAjusteRemota('Esperando respuesta. Vence en ' + minutos(r.restan) + ' min. Si te dictan el PIN, escribilo acá.', 'info', true);
+        } else if (r.estado === 'APROBADA') {
+            pararAjusteRemota();
+            pintarAjusteRemota('Lo autorizó ' + r.autorizo + ' (' + (r.via || '').toLowerCase() + '). Ajustando…', 'exito', false);
+            $('ajusteCantidad').value = ajusteRemota.cantidad;
+            confirmarAjuste();
+        } else if (r.estado === 'RECHAZADA') {
+            pararAjusteRemota(); ajusteRemota.id = null;
+            pintarAjusteRemota('Rechazaron el pedido: no se ajusta el stock.', 'error', false);
+        } else if (r.estado === 'ANULADA') {
+            pararAjusteRemota(); ajusteRemota.id = null;
+            pintarAjusteRemota('El pedido venció sin respuesta. Podés pedirlo de nuevo.', 'aviso', false);
+        }
+    }
+    function urlAjusteRemota(sufijo) { return raiz.dataset.autorizacion.replace('/0/', '/' + ajusteRemota.id + '/') + (sufijo || ''); }
+    function preguntarAjusteRemota() {
+        if (!ajusteRemota.id) { return; }
+        fetch(urlAjusteRemota(), {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (r) { if (r.ok && ajusteRemota.id) { seguirAjusteRemota(r); } })
+            .catch(function () { /* sin red: se vuelve a preguntar en 2 segundos */ });
+    }
+    $('ajusteRemotaPedir').addEventListener('click', function () {
+        var boton = $('ajusteRemotaPedir');
+        if (porAjustar === null) { return; }
+        boton.disabled = true;
+        var cantidad = $('ajusteCantidad').value;
+        enviar(raiz.dataset.pedirAutorizacion, {tipo: 'ajuste', producto: porAjustar, cantidad: cantidad}).then(function (r) {
+            boton.disabled = false;
+            if (!r.ok) { $('ajusteError').textContent = r.error; $('ajusteError').classList.remove('d-none'); return; }
+            $('ajusteError').classList.add('d-none');
+            ajusteRemota = {id: r.id, reloj: setInterval(preguntarAjusteRemota, 2000), cantidad: cantidad};
+            seguirAjusteRemota(r);
+            $('ajusteRemotaPin').value = ''; $('ajusteRemotaPin').focus();
+        }).catch(function () { boton.disabled = false; $('ajusteError').textContent = 'No se pudo pedir la autorización. Revisá la conexión.'; $('ajusteError').classList.remove('d-none'); });
+    });
+    $('ajusteRemotaPinOk').addEventListener('click', function () {
+        if (!ajusteRemota.id) { return; }
+        enviar(urlAjusteRemota('pin/'), {pin: $('ajusteRemotaPin').value}).then(function (r) {
+            if (!r.ok) { $('ajusteError').textContent = r.error; $('ajusteError').classList.remove('d-none'); if (r.estado && r.estado !== 'PENDIENTE') { seguirAjusteRemota(r); } return; }
+            $('ajusteError').classList.add('d-none'); seguirAjusteRemota(r);
+        }).catch(function () { $('ajusteError').textContent = 'No se pudo validar el PIN. Revisá la conexión.'; $('ajusteError').classList.remove('d-none'); });
+    });
+    $('ajusteRemotaPin').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); $('ajusteRemotaPinOk').click(); } });
+    $('modalAjuste').addEventListener('hidden.bs.modal', function () {
+        if (ajusteRemota.id) { enviar(urlAjusteRemota('cancelar/'), {}).catch(function () {}); }
+        pararAjusteRemota(); ajusteRemota = {id: null, reloj: null, cantidad: null};
+        $('ajusteRemota').classList.add('d-none'); $('ajusteRemotaPedir').classList.remove('d-none');
+    });
+    $('ajusteConfirmar').addEventListener('click', confirmarAjuste);
+    $('modalAjuste').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); confirmarAjuste(); } });
+
+    var ultimoAgregado = null;
     function agregar(id) {
+        ultimoAgregado = id;
         var item = estado.items.find(function (i) { return i.producto === id; });
         if (item) { item.cantidad = String(Number(item.cantidad.replace(',', '.')) + 1); }
         else { estado.items.push({producto: id, cantidad: '1', descuento: '', motivo: '', detalle: '', info: nombres[id]}); }
         cambio();
     }
-    function cambio() { persistir(); dibujarRenglones(); cotizarPronto(); }
+    function cambio() {
+        // Lo aprobado a distancia es ESTE ticket: si cambia, el pedido no sirve.
+        if (remota && remota.id && !remota.cobrarAlAprobar) { olvidarRemota('El ticket cambió: se canceló el pedido de autorización a distancia.'); }
+        persistir(); dibujarRenglones(); cotizarPronto();
+    }
 
     function dibujarRenglones(cotizados) {
         var lista = $('renglones');
@@ -360,7 +556,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         estado.items.forEach(function (item, i) {
             var info = item.info || nombres[item.producto] || {};
             var calc = porProducto[item.producto];
-            var fila = el('div', 'renglon');
+            var fila = el('div', 'renglon' + (item.producto === ultimoAgregado ? ' ultimo' : ''));
             var izq = el('div', 'min-w-0');
             izq.appendChild(el('div', 'fw-semibold text-truncate', info.nombre || ('Producto ' + item.producto)));
             if (info.detalle) { izq.appendChild(el('div', 'small text-tenue text-truncate', info.detalle)); }
@@ -429,13 +625,15 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 recibido.addEventListener('change', function () { pago.recibido = recibido.value.trim(); persistir(); cotizarPronto(); });
                 fila.appendChild(recibido);
             }
-            var quitar = el('button', 'btn btn-sm btn-link text-peligro p-0'); quitar.type = 'button';
-            quitar.innerHTML = '<i class="bi bi-x-circle"></i>'; quitar.title = 'Quitar este medio';
+            var quitar = el('button', 'btn btn-sm btn-link text-peligro p-0 btn-quitar-pago'); quitar.type = 'button';
+            quitar.innerHTML = '<i class="bi bi-x-circle" aria-hidden="true"></i>'; quitar.title = 'Quitar este medio';
+            quitar.setAttribute('aria-label', 'Quitar ' + (boton ? boton.childNodes[0].textContent.trim() : 'este medio'));
             quitar.addEventListener('click', function () { estado.pagos.splice(i, 1); persistir(); dibujarPagos(); cotizarPronto(); });
             fila.appendChild(quitar);
             cont.appendChild(fila);
         });
         $('mixto').classList.toggle('d-none', estado.pagos.length !== 1);
+        pintarFiado();
     }
     var mixtoActivo = false;
     $('mixto').addEventListener('click', function () { mixtoActivo = true; });
@@ -483,10 +681,193 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         var c = estado.cliente;
         $('clubBuscar').classList.toggle('d-none', !!c);
         $('clubCliente').classList.toggle('d-none', !c);
-        if (!c) { $('clubBeneficios').textContent = ''; return; }
+        if (!c) {
+            $('clubBeneficios').textContent = '';
+            $('clubMora').classList.add('d-none'); $('clubCuenta').classList.add('d-none');
+            pintarFiado();
+            return;
+        }
         $('clubNombre').textContent = c.nombre;
         $('clubDatos').textContent = c.categoria + ' · ' + numero.format(c.disponibles) + ' puntos disponibles';
+        var cr = c.credito || {};
+        $('clubMora').classList.toggle('d-none', !cr.aviso);
+        $('clubMora').querySelector('span').textContent = cr.aviso ? cr.aviso + ' Para fiarle o que use puntos, lo tiene que autorizar la dueña.' : '';
+        var cuenta = '';
+        if (Number(cr.debe) > 0 && !cr.aviso) { cuenta = 'Debe ' + plata(cr.debe) + ' en cuenta corriente.'; }
+        if (cr.nota) { cuenta += (cuenta ? ' ' : '') + 'Nota: ' + cr.nota; }
+        $('clubCuenta').textContent = cuenta;
+        $('clubCuenta').classList.toggle('d-none', !cuenta);
+        pintarFiado();
     }
+    // ------------------------------------------------------------------
+    //  Fiado (DD-91): la fecha en que va a pagar, y el radar de morosos.
+    // ------------------------------------------------------------------
+    function hayFiado() {
+        return estado.pagos.some(function (p) {
+            var b = document.querySelector('.js-medio[data-medio="' + p.medio + '"]');
+            return b && b.dataset.fiado === '1';
+        });
+    }
+    function mostrarAutorizacion(motivo) {
+        $('autorizacionTitulo').textContent = /fia|cuenta corriente|puntos|beneficio/i.test(motivo || '')
+            ? 'Autoriza quien maneja el fiado' : 'Autoriza el descuento';
+        $('autorizacion').classList.remove('d-none');
+    }
+    // El plazo lo propone la ficha del cliente (lo configura la dueña); si
+    // la cajera eligió otra fecha, se respeta.
+    var venceAutomatico = true;
+    $('venceFiado').addEventListener('change', function () { venceAutomatico = false; });
+    function pintarFiado() {
+        var hay = hayFiado();
+        $('fiado').classList.toggle('d-none', !hay);
+        var plazo = (estado.cliente && estado.cliente.credito && Number(estado.cliente.credito.plazo)) || 30;
+        if (hay && (venceAutomatico || !$('venceFiado').value)) {
+            var d = new Date(); d.setDate(d.getDate() + plazo);
+            $('venceFiado').value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+            venceAutomatico = true;
+        }
+        $('venceAyuda').textContent = 'Se propone en ' + plazo + (plazo === 1 ? ' día' : ' días') +
+            (estado.cliente && estado.cliente.credito && estado.cliente.credito.plazo ? ' (lo que tiene acordado)' : '') +
+            '. Cambiala si acordaron otra fecha.';
+        $('fiadoSinCliente').classList.toggle('d-none', !hay || !!estado.cliente);
+    }
+
+    // ------------------------------------------------------------------
+    //  Autorización a distancia (DD-94): la caja pide, la dueña contesta
+    //  del celular (enlace, bandeja o PIN) y el mismo ticket se cobra.
+    // ------------------------------------------------------------------
+    var remota = {id: null, estado: null, reloj: null, cobrarAlAprobar: false};
+    function urlRemota(sufijo) { return raiz.dataset.autorizacion.replace('/0/', '/' + remota.id + '/') + (sufijo || ''); }
+    function pintarRemota(texto, tipo, conPin) {
+        var caja = $('remota');
+        caja.classList.remove('d-none', 'aviso-info', 'aviso-exito', 'aviso-error', 'aviso-aviso');
+        caja.classList.add('aviso-' + (tipo || 'info'));
+        $('remotaIcono').className = 'bi ' + ({exito: 'bi-check-circle-fill', error: 'bi-x-circle-fill', aviso: 'bi-exclamation-triangle-fill'}[tipo] || 'bi-hourglass-split');
+        $('remotaTexto').textContent = texto;
+        $('remotaPinGrupo').classList.toggle('d-none', !conPin);
+        $('remotaCancelar').classList.toggle('d-none', !conPin);
+        $('remotaPedir').classList.toggle('d-none', !!conPin);
+    }
+    function minutos(seg) { var m = Math.floor(seg / 60), s = seg % 60; return m + ':' + ('0' + s).slice(-2); }
+    function pararRemota() { clearInterval(remota.reloj); remota.reloj = null; }
+    function olvidarRemota(avisar) {
+        if (remota.id && (remota.estado === 'PENDIENTE' || remota.estado === 'APROBADA')) {
+            enviar(urlRemota('cancelar/'), {}).catch(function () {});
+        }
+        pararRemota();
+        remota = {id: null, estado: null, reloj: null, cobrarAlAprobar: false};
+        if (estado.remota) { delete estado.remota; persistir(); }
+        $('remota').classList.add('d-none');
+        $('remotaPedir').classList.remove('d-none');
+        if (avisar) { mostrarError(avisar); }
+    }
+    function seguirRemota(r) {
+        remota.estado = r.estado;
+        if (r.estado === 'PENDIENTE') {
+            pintarRemota('Esperando respuesta. Le avisamos por ' + (remota.avisos || 'la bandeja del sistema') + '. Vence en ' + minutos(r.restan) + ' min. Si te dictan el PIN, escribilo acá.', 'info', true);
+        } else if (r.estado === 'APROBADA') {
+            pararRemota();
+            pintarRemota('Lo autorizó ' + r.autorizo + ' (' + (r.via || '').toLowerCase() + '). Cobrando…', 'exito', false);
+            remota.cobrarAlAprobar = true;
+            cotizar();
+        } else if (r.estado === 'RECHAZADA') {
+            pararRemota();
+            pintarRemota('Rechazaron el pedido. Cambiá el ticket o cobralo de otra forma.', 'error', false);
+            remota.id = null;
+        } else if (r.estado === 'ANULADA') {
+            pararRemota();
+            pintarRemota('El pedido venció sin respuesta. Podés pedirlo de nuevo.', 'aviso', false);
+            remota.id = null;
+        }
+    }
+    function preguntarRemota() {
+        if (!remota.id) { return; }
+        fetch(urlRemota(), {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (r) { if (r.ok && remota.id) { seguirRemota(r); } })
+            .catch(function () { /* sin red: se vuelve a preguntar en 2 segundos */ });
+    }
+    $('remotaPedir').addEventListener('click', function () {
+        var boton = $('remotaPedir');
+        boton.disabled = true;
+        enviar(raiz.dataset.pedirAutorizacion, pedido()).then(function (r) {
+            boton.disabled = false;
+            if (!r.ok) { mostrarError(r.error); return; }
+            mostrarError('');
+            remota = {id: r.id, estado: r.estado, reloj: null, cobrarAlAprobar: false,
+                      avisos: (r.avisos || []).join(' y ') || 'la bandeja del sistema'};
+            estado.remota = {id: r.id, avisos: remota.avisos}; persistir();
+            seguirRemota(r);
+            remota.reloj = setInterval(preguntarRemota, 2000);
+            $('remotaPin').value = ''; $('remotaPin').focus();
+        }).catch(function () { boton.disabled = false; mostrarError('No se pudo pedir la autorización. Revisá la conexión.'); });
+    });
+    $('remotaPinOk').addEventListener('click', function () {
+        if (!remota.id) { return; }
+        enviar(urlRemota('pin/'), {pin: $('remotaPin').value}).then(function (r) {
+            if (!r.ok) { mostrarError(r.error); if (r.estado && r.estado !== 'PENDIENTE') { seguirRemota(r); } return; }
+            mostrarError(''); seguirRemota(r);
+        }).catch(function () { mostrarError('No se pudo validar el PIN. Revisá la conexión.'); });
+    });
+    $('remotaPin').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('remotaPinOk').click(); } });
+    $('remotaCancelar').addEventListener('click', function () { olvidarRemota(''); });
+    // Se recargó la página (o se cambió de usuario y se volvió) con un
+    // pedido en curso: se lo sigue esperando con el mismo ticket.
+    function retomarRemota() {
+        if (!estado.remota || !estado.remota.id) { return; }
+        remota = {id: estado.remota.id, estado: 'PENDIENTE', reloj: null, cobrarAlAprobar: false,
+                  avisos: estado.remota.avisos};
+        $('autorizacion').classList.remove('d-none');
+        pintarRemota('Retomando el pedido de autorización…', 'info', true);
+        preguntarRemota();
+        remota.reloj = setInterval(preguntarRemota, 2000);
+    }
+    if ($('radar')) {
+        $('radar').addEventListener('click', function () {
+            var cuerpo = $('radarLista');
+            cuerpo.textContent = 'Buscando…';
+            bootstrap.Modal.getOrCreateInstance($('modalRadar')).show();
+            fetch(raiz.dataset.morosos, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    cuerpo.textContent = '';
+                    if (!d.morosos.length) { cuerpo.textContent = 'Nadie está en mora.'; return; }
+                    d.morosos.forEach(function (m) {
+                        var fila = el('div', 'radar-fila');
+                        var izq = el('div', 'min-w-0');
+                        izq.appendChild(el('div', 'fw-semibold', m.nombre + (m.suspendido ? ' · suspendido' : '')));
+                        if (m.nota) { izq.appendChild(el('div', 'small', m.nota)); }
+                        izq.appendChild(el('div', 'small text-secondary', Number(m.vencido) > 0
+                            ? 'Debe ' + plata(m.debe) + ' · ' + m.dias + (m.dias === 1 ? ' día' : ' días') + ' de atraso' : 'Debe ' + plata(m.debe)));
+                        var ir = el('a', 'btn btn-sm btn-primary', 'Cobrarle');
+                        ir.href = raiz.dataset.cuentas + m.id + '/';
+                        fila.appendChild(izq); fila.appendChild(ir); cuerpo.appendChild(fila);
+                    });
+                })
+                .catch(function () { cuerpo.textContent = 'No se pudo cargar la lista. Probá de nuevo.'; });
+        });
+    }
+    var esperaParecidos = null;
+    function buscarParecidos() {
+        clearTimeout(esperaParecidos);
+        esperaParecidos = setTimeout(function () {
+            var q = 'dni=' + encodeURIComponent($('ncDni').value) + '&telefono=' + encodeURIComponent($('ncTelefono').value)
+                  + '&apellido=' + encodeURIComponent($('ncApellido').value) + '&nombre=' + encodeURIComponent($('ncNombre').value);
+            fetch(raiz.dataset.parecidos + '?' + q, {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    var caja = $('clienteParecidos');
+                    caja.classList.toggle('d-none', !d.parecidos.length);
+                    caja.querySelector('span').textContent = d.parecidos.map(function (p) {
+                        return 'Ojo: ya hay un cliente con ' + p.por + ': ' + p.nombre + (p.de_baja ? ' (dado de baja)' : '')
+                            + (p.aviso ? '. ' + p.aviso : (Number(p.debe) > 0 ? '. Debe ' + plata(p.debe) + '.' : '.'))
+                            + (p.nota ? ' Nota: ' + p.nota + '.' : '');
+                    }).join(' ') + (d.parecidos.length ? ' Si es la misma persona, cerrá esto e identificalo con su DNI o su teléfono.' : '');
+                })
+                .catch(function () { /* sin red: el alta valida igual */ });
+        }, 350);
+    }
+    ['ncDni', 'ncTelefono', 'ncApellido', 'ncNombre'].forEach(function (id) { $(id).addEventListener('input', buscarParecidos); });
     function pintarBeneficios(lista) {
         var cont = $('clubBeneficios');
         cont.textContent = '';
@@ -499,8 +880,12 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             } else {
                 var elegido = estado.beneficios.indexOf(b.id) !== -1;
                 fila.appendChild(el('span', 'me-auto', texto + (b.puntos ? ' · ' + numero.format(b.puntos) + ' pts' : ' · regalo de la categoría')));
-                var boton = el('button', 'btn btn-sm ' + (elegido ? 'btn-primary' : 'btn-secundario'), elegido ? 'Quitar' : (b.puntos ? 'Canjear' : 'Aplicar'));
+                var tiene = estado.cliente ? Number(estado.cliente.disponibles || 0) : 0;
+                var falta = !elegido && b.puntos ? b.puntos - tiene : 0;
+                var boton = el('button', 'btn btn-sm ' + (elegido ? 'btn-primary' : 'btn-secundario'),
+                               elegido ? 'Quitar' : (falta > 0 ? 'Faltan ' + numero.format(falta) : (b.puntos ? 'Canjear' : 'Aplicar')));
                 boton.type = 'button';
+                if (falta > 0) { boton.disabled = true; boton.title = 'Tiene ' + numero.format(tiene) + ' puntos'; }
                 boton.addEventListener('click', function () {
                     var i = estado.beneficios.indexOf(b.id);
                     if (i === -1) { estado.beneficios.push(b.id); } else { estado.beneficios.splice(i, 1); }
@@ -573,7 +958,10 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             items: estado.items.map(function (i) { return {producto: i.producto, cantidad: i.cantidad, descuento: i.descuento, motivo: i.motivo, detalle: i.detalle}; }),
             pagos: estado.pagos
         };
-        if (!$('autorizacion').classList.contains('d-none') && $('autorizaUsuario').value) {
+        if (hayFiado() && $('venceFiado').value) { cuerpo.vence_fiado = $('venceFiado').value; }
+        if (remota && remota.id && remota.estado === 'APROBADA') {
+            cuerpo.remota = remota.id;
+        } else if (!$('autorizacion').classList.contains('d-none') && $('autorizaUsuario').value) {
             cuerpo.autoriza = {usuario: $('autorizaUsuario').value, clave: $('autorizaClave').value};
         }
         return cuerpo;
@@ -606,8 +994,9 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         enviar(raiz.dataset.cotizar, pedido(), enCurso.signal).then(function (r) {
             if (!r.ok) {
                 ultima = null;
+                if (remota) { remota.cobrarAlAprobar = false; }
                 mostrarError(r.error);
-                if (/autoriz|tope/i.test(r.error)) { $('autorizacion').classList.remove('d-none'); }
+                if (/autoriz|tope/i.test(r.error)) { mostrarAutorizacion(r.error); }
                 $('cobrar').disabled = true;
                 return;
             }
@@ -615,10 +1004,11 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             ultima = r;
             if (r.cliente) { estado.cliente = r.cliente; pintarCliente(); }
             pintarBeneficios(r.beneficios);
-            if (r.pide_autorizacion) { $('autorizacion').classList.remove('d-none'); }
+            if (r.pide_autorizacion) { mostrarAutorizacion(hayFiado() ? 'fiado' : ''); }
             dibujarRenglones(r.renglones);
             dibujarPagos(r.cobros);
             pintarTotales(r);
+            if (remota && remota.cobrarAlAprobar && !$('cobrar').disabled) { remota.cobrarAlAprobar = false; $('cobrar').click(); }
         }).catch(function (e) {
             if (e.name !== 'AbortError') { mostrarError('No se pudo calcular el ticket. Revisá la conexión.'); $('cobrar').disabled = true; }
         });
@@ -649,20 +1039,33 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         enviar(raiz.dataset.cobrar, pedido()).then(function (r) {
             boton.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Cobrar';
             if (!r.ok) { mostrarError(r.error); boton.disabled = false; return; }
+            pararRemota(); remota = {id: null, estado: null, reloj: null, cobrarAlAprobar: false};
+            delete estado.remota;
+            $('remota').classList.add('d-none'); $('remotaPedir').classList.remove('d-none');
             $('cobradoNumero').textContent = 'Venta N° ' + r.venta + (r.repetida ? ' (ya estaba registrada)' : '');
             $('cobradoTotal').textContent = plata(r.total);
             $('cobradoVuelto').textContent = plata(r.vuelto);
             $('cobradoBloqueVuelto').classList.toggle('d-none', Number(r.vuelto) <= 0);
             $('cobradoTicket').href = r.ticket;
+            var f = r.fiado;
+            $('cobradoFiado').classList.toggle('d-none', !f);
+            if (f) {
+                var vence = f.vence.split('-');
+                $('cobradoFiado').textContent = 'Quedó anotado en la cuenta de ' + f.cliente + ': ' + plata(f.monto) +
+                    ', paga hasta el ' + vence[2] + '/' + vence[1] + '/' + vence[0] + '.';
+            }
             var p = r.puntos;
             $('cobradoPuntos').classList.toggle('d-none', !p);
             if (p) {
-                $('cobradoPuntos').textContent = p.cliente + ': +' + numero.format(p.ganados) + ' puntos' +
-                    (p.canjeados ? ' (canjeó ' + numero.format(p.canjeados) + ')' : '') +
-                    '. Le quedan ' + numero.format(p.disponibles) + '.' +
-                    (p.ascendio ? ' ¡Subió a ' + p.categoria + '!' : '');
+                $('cobradoPuntos').textContent = p.diferidos
+                    ? p.cliente + ': los puntos de esta compra se suman cuando la pague.'
+                    : p.cliente + ': +' + numero.format(p.ganados) + ' puntos' +
+                      (p.canjeados ? ' (canjeó ' + numero.format(p.canjeados) + ')' : '') +
+                      '. Le quedan ' + numero.format(p.disponibles) + '.' +
+                      (p.ascendio ? ' ¡Subió a ' + p.categoria + '!' : '');
             }
             bootstrap.Modal.getOrCreateInstance($('modalCobrado')).show();
+            if ($('autoTicket').checked && r.ticket) { window.open(r.ticket, '_blank', 'noopener'); }
             // Lo vendido ya bajó el stock: la grilla tiene que mostrarlo.
             cargarCatalogo(false);
         }).catch(function () {
@@ -677,13 +1080,51 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         estado = {items: [], pagos: [], cliente: null, beneficios: [], token: (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : ''};
         if (!estado.token) { location.reload(); return; }
         $('autorizaUsuario').value = ''; $('autorizaClave').value = '';
+        olvidarRemota('');
         $('autorizacion').classList.add('d-none');
+        $('venceFiado').value = ''; venceAutomatico = true;
         persistir(); ultima = null; mostrarError('');
         dibujarRenglones(); dibujarPagos(); pintarTotales(null); pintarCliente();
         $('buscar').value = ''; $('buscar').focus();
         filtro.q = ''; filtro.pagina = 1; cargarCatalogo(false);
     }
     $('nuevaVenta').addEventListener('click', function () { bootstrap.Modal.getInstance($('modalCobrado')).hide(); nuevaVenta(); });
+
+    // ------------------------------------------------------------------
+    //  Teclado de caja: F2 buscar, F4 efectivo, F9 cobrar. Con la venta
+    //  cobrada a la vista: Enter o espacio = nueva venta, P = ticket.
+    // ------------------------------------------------------------------
+    var CLAVE_TICKET = 'cafeto.mostrador.ticket-automatico';
+    try { $('autoTicket').checked = window.localStorage.getItem(CLAVE_TICKET) === '1'; } catch (e) { /* nada */ }
+    $('autoTicket').addEventListener('change', function () {
+        try { window.localStorage.setItem(CLAVE_TICKET, this.checked ? '1' : '0'); } catch (e) { /* nada */ }
+    });
+    $('modalCobrado').addEventListener('shown.bs.modal', function () { $('nuevaVenta').focus(); });
+    $('modalCobrado').addEventListener('hidden.bs.modal', function () { $('buscar').focus(); });
+    document.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.altKey || e.metaKey) { return; }
+        var cobrado = $('modalCobrado').classList.contains('show');
+        if (cobrado) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('nuevaVenta').click(); }
+            else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); window.open($('cobradoTicket').href, '_blank', 'noopener'); }
+            return;
+        }
+        if (document.querySelector('.modal.show')) { return; }
+        if (e.key === 'F2') { e.preventDefault(); $('buscar').focus(); $('buscar').select(); }
+        else if (e.key === 'F4') {
+            e.preventDefault();
+            var efectivo = document.querySelector('.js-medio[data-efectivo="1"]');
+            if (!efectivo) { return; }
+            var id = Number(efectivo.dataset.medio);
+            if (!(estado.pagos.length === 1 && estado.pagos[0].medio === id)) {
+                estado.pagos = [{medio: id, monto: '', recibido: ''}];
+                persistir(); dibujarPagos(); cotizarPronto();
+            }
+            var teDa = document.querySelector('#pagos input[aria-label="Efectivo recibido"]');
+            if (teDa) { teDa.focus(); teDa.select(); }
+        }
+        else if (e.key === 'F9') { e.preventDefault(); if (!$('cobrar').disabled) { $('cobrar').click(); } }
+    });
     $('vaciar').addEventListener('click', function () {
         if (!estado.items.length) { return; }
         Cafeto.confirmar({titulo: '¿Vaciar el ticket?', texto: 'Se quitan todos los productos cargados.', aceptar: 'Sí, vaciar', peligro: true})
@@ -703,6 +1144,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
     document.addEventListener('visibilitychange', refrescarCatalogo);
     dibujarRenglones(); dibujarPagos(); pintarCliente();
     if (estado.items.length) { cotizar(); }
+    retomarRemota();
 })();
 </script>
 {% endblock %}

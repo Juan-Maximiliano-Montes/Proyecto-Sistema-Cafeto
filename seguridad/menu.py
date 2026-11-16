@@ -45,6 +45,8 @@ GRUPOS = [
         ('ruta:ventas:ventas', ('Ventas', 'bi-receipt', 'ver_ventas')),
         ('ruta:ventas:turnos', ('Turnos de caja', 'bi-clock-history',
                                 'ver_caja')),
+        ('ruta:ventas:autorizaciones', ('Autorizaciones a distancia', 'bi-phone',
+                                        ('gestionar_credito', 'autorizar_ajustes'))),
     ]),
     ('Stock', 'bi-boxes', [
         ('ruta:stock:alertas', ('Alertas y vencimientos', 'bi-bell',
@@ -73,6 +75,7 @@ GRUPOS = [
     ]),
     ('Club Cafeto', 'bi-award', [
         ('clientes',           None),
+        ('ruta:fidelizacion:cuentas', ('Cuentas corrientes', 'bi-journal-text', 'cobrar_credito')),
         ('categorias',         None),
         ('beneficios',         None),
     ]),

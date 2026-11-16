@@ -8,4 +8,5 @@ urlpatterns = [
     path('importar/<slug:clave>/confirmar/', importacion.confirmar, name='importar_confirmar'),
     path('importar/<slug:clave>/descartar/', importacion.descartar, name='importar_descartar'),
     path('importar/<slug:clave>/modelo/', importacion.modelo, name='importar_modelo'),
+    path('importar/<slug:clave>/errores/', importacion.errores, name='importar_errores'),
 ]

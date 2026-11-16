@@ -33,3 +33,6 @@ respaldos/
 
 # Correos de desarrollo (los enlaces para elegir la clave, en archivos)
 .correos/
+
+# Fotos de productos subidas desde el sistema (DD-83)
+media/

@@ -1,0 +1,3 @@
+<nav class="filtro-estado" aria-label="{{ etiqueta_filtro|default:'Ver' }}">
+    {% for v in vistas %}<a href="{{ v.url }}"{% if v.activa %} aria-current="page"{% endif %}>{{ v.etiqueta }} <span class="cuenta">{{ v.cantidad }}</span></a>{% endfor %}
+</nav>

@@ -23,39 +23,19 @@ Un campo que apunta a otra tabla que el usuario puede dar de alta lleva un
 {% for campo in form.hidden_fields %}{{ campo }}{% endfor %}
 
 <div class="row g-3">
-{% for campo in form.visible_fields %}
-    <div class="{% if campo.field.widget.input_type == 'checkbox' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}"{% if campo.field.visible_si %} data-visible-si="{{ campo.field.visible_si }}"{% endif %}>
-        {% if campo.field.widget.input_type == 'checkbox' %}
-            <div class="form-check">
-                {{ campo }}
-                <label class="form-check-label" for="{{ campo.id_for_label }}">
-                    {{ campo.label }}
-                </label>
-            </div>
-        {% else %}
-            <label class="form-label" for="{{ campo.id_for_label }}">
-                {{ campo.label }}
-                {% if campo.field.required %}<span class="text-peligro" aria-hidden="true">*</span>{% endif %}
-            </label>
-            {% with url_alta=campo|alta_rapida %}{% if url_alta %}
-            <div class="d-flex gap-2 align-items-start">
-                <div class="flex-grow-1">{{ campo }}</div>
-                <button type="button" class="btn btn-secundario js-alta-rapida" data-url="{{ url_alta }}"
-                        data-destino="{{ campo.id_for_label }}" title="{{ campo|alta_titulo }} sin salir de acá"
-                        aria-label="{{ campo|alta_titulo }}"><i class="bi bi-plus-lg"></i></button>
-            </div>
-            <div class="alta-rapida-panel" data-para="{{ campo.id_for_label }}" hidden></div>
-            {% else %}{{ campo }}{% endif %}{% endwith %}
-        {% endif %}
-
-        {% if campo.help_text %}
-            <div class="form-text">{{ campo.help_text }}</div>
-        {% endif %}
-        {% for error in campo.errors %}
-            <p class="error-campo"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ error }}</p>
-        {% endfor %}
-    </div>
-{% endfor %}
+{% for campo in form.visible_fields %}{% if not campo.field.avanzado %}
+{% include 'crud/_campo.html' %}
+{% endif %}{% endfor %}
 </div>
+{% if form.CAMPOS_SIMPLES %}
+<details class="mas-opciones mt-3"{% if form.abrir_mas_opciones %} open{% endif %}>
+    <summary><i class="bi bi-sliders me-1"></i>Más opciones <span class="small text-secondary">marca, proveedor, presentación, vencimiento…</span></summary>
+    <div class="row g-3 mt-0">
+    {% for campo in form.visible_fields %}{% if campo.field.avanzado %}
+    {% include 'crud/_campo.html' %}
+    {% endif %}{% endfor %}
+    </div>
+</details>
+{% endif %}
 
 {% if formset %}{% include 'crud/_renglones.html' %}{% endif %}

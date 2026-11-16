@@ -109,6 +109,13 @@ CHECK_REBAJA = (
 # ===========================================================================
 #  RUBROS
 # ===========================================================================
+#  Registros reservados (DD-86). Un producto necesita marca, y lo que se
+#  compra necesita proveedor; cuando todavía no se saben, van éstos. Los crea
+#  la migración y no se pueden renombrar ni dar de baja: el alta simple y el
+#  importador cuentan con ellos.
+MARCA_GENERICA = 'Genérica'
+
+
 class Rubro(Maestra):
     """Agrupación comercial de los productos (Cafetería, Minisuper...).
 
@@ -216,6 +223,11 @@ class Marca(Maestra):
         super().clean()
         self.nombre_marca = texto_de_catalogo(
             self.nombre_marca, 2, 50, 'El nombre de la marca')
+        if self.pk and self.nombre_marca != MARCA_GENERICA and type(self).objects.filter(
+                pk=self.pk, nombre_marca=MARCA_GENERICA).exists():
+            raise ValidationError({'nombre_marca': (
+                f'«{MARCA_GENERICA}» es la marca reservada para los productos '
+                'que todavía no tienen la suya: no se le cambia el nombre.')})
         self.descripcion_marca = texto_de_catalogo(
             self.descripcion_marca, 1, 120, 'La descripción', obligatorio=False)
         # "Coca Cola", "coca cola" y "Coca-cola" son la misma marca. Se
@@ -224,6 +236,9 @@ class Marca(Maestra):
         exigir_nombre_unico(self, 'nombre_marca', etiqueta='una marca')
 
     def motivos_que_impiden_la_baja(self):
+        if self.nombre_marca == MARCA_GENERICA:
+            return ['es la marca reservada para los productos que todavía no '
+                    'tienen la suya']
         vigentes = Producto.objects.filter(
             id_marca=self, borrado_logico=False).count()
         if vigentes:
@@ -235,6 +250,15 @@ class Marca(Maestra):
 # ===========================================================================
 #  PRODUCTOS
 # ===========================================================================
+#  Las alícuotas de IVA que usa un comercio minorista (Ley 23.349, art. 28):
+#  la general, la reducida y lo exento o no gravado.
+ALICUOTAS_IVA = [
+    (Decimal('0.0'), '0 % (exento o no gravado)'),
+    (Decimal('10.5'), '10,5 %'),
+    (Decimal('21.0'), '21 %'),
+]
+
+
 class UnidadMedida(models.TextChoices):
     """Cómo se mide el producto. Valores en MAYÚSCULAS (DD-29)."""
     UNIDAD = 'UNIDAD', 'Unidad'
@@ -304,7 +328,7 @@ class Producto(ConSaldosDerivados, Maestra):
         Marca, on_delete=models.RESTRICT, db_column='id_marca',
         verbose_name='Marca', related_name='productos')
     nombre_producto = models.CharField(
-        'Nombre del producto', max_length=50,
+        'Nombre del producto', max_length=100,
         help_text='Sin la marca ni el contenido: van en sus propios campos.')
     contenido = models.DecimalField(
         'Contenido', max_digits=10, decimal_places=3, default=Decimal('1'),
@@ -320,14 +344,24 @@ class Producto(ConSaldosDerivados, Maestra):
         'Precio de venta', default=Decimal('0'), validators=[NO_NEGATIVO])
     precio_costo = campo_importe(
         'Precio de costo', default=Decimal('0'), validators=[NO_NEGATIVO])
+    alicuota_iva = models.DecimalField(
+        '% IVA', max_digits=4, decimal_places=1, default=Decimal('0.0'),
+        choices=ALICUOTAS_IVA,
+        help_text='Qué IVA lleva el producto. No cambia el precio de venta: '
+                  'sirve para calcularlo y para los informes.')
     stock_actual = campo_cantidad('Stock actual', default=Decimal('0'),
                                   editable=False)
     stock_minimo = campo_cantidad('Stock mínimo', default=Decimal('0'),
                                   validators=[NO_NEGATIVO])
     codigo_barras = models.CharField(
-        'Código de barras', max_length=20, null=True, blank=True)
+        'Código', max_length=30, null=True, blank=True)
     controla_vencimiento = models.BooleanField(
         'Controla vencimiento por lote', default=False)
+    # La foto NO se guarda en la base: acá va sólo dónde está. O una
+    # dirección https:// (la carga una automatización a partir del código de
+    # barras) o la ruta, dentro de MEDIA_ROOT, de una foto subida desde el
+    # sistema ("productos/…"). Ver stock/imagenes.py (DD-83).
+    imagen = models.CharField('Foto', max_length=300, null=True, blank=True)
     # Rebaja propia: si está vacía, rige la del rubro.
     dias_rebaja_vencimiento = models.PositiveSmallIntegerField(
         'Rebaja: días antes de vencer', null=True, blank=True)
@@ -389,15 +423,22 @@ class Producto(ConSaldosDerivados, Maestra):
             CheckEnBase(
                 check=CheckSQL(
                     'codigo_barras IS NULL OR '
-                    "codigo_barras ~ '^([0-9]{8}|[0-9]{12,14})$'"),
+                    "codigo_barras ~ '^[0-9]{3,30}$'"),
                 name='ck_productos_codigo_barras'),
             CheckEnBase(
                 check=CheckSQL(
                     "trim(nombre_producto) <> '' AND trim(unidad_medida) <> ''"),
                 name='ck_productos_textos'),
             CheckEnBase(
+                check=CheckSQL(
+                    "imagen IS NULL OR imagen ~ '^(https://|productos/)'"),
+                name='ck_productos_imagen'),
+            CheckEnBase(
                 check=CheckSQL('contenido > 0'),
                 name='ck_productos_contenido'),
+            CheckEnBase(
+                check=CheckSQL('alicuota_iva IN (0, 10.5, 21)'),
+                name='ck_productos_alicuota_iva'),
             models.UniqueConstraint(
                 fields=['codigo_barras'], name='uq_productos_codigo_barras'),
             # Lo que identifica al producto es la TERNA marca + nombre +
@@ -418,8 +459,24 @@ class Producto(ConSaldosDerivados, Maestra):
     def descripcion_completa(self):
         """Marca · nombre · presentación, que es como se nombra en el mostrador."""
         marca = self.id_marca.nombre_marca if self.id_marca_id else ''
+        if marca == MARCA_GENERICA:
+            # "Genérica" quiere decir "todavía no se cargó la marca": en el
+            # mostrador y en el ticket no aporta nada.
+            marca = ''
         partes = [marca, self.nombre_producto, self.presentacion]
         return ' · '.join(p for p in partes if p)
+
+    @property
+    def utilidad_porcentaje(self):
+        """Cuánto se le carga al costo con IVA para llegar al precio.
+
+        Precio = Costo × (1 + IVA/100) × (1 + Utilidad/100). None si no
+        hay costo: no se puede dividir por cero.
+        """
+        base = (self.precio_costo or CERO) * (1 + (self.alicuota_iva or CERO) / 100)
+        if not base or not self.precio_venta:
+            return None
+        return ((self.precio_venta / base - 1) * 100).quantize(Decimal('0.01'))
 
     @property
     def presentacion(self):
@@ -454,7 +511,27 @@ class Producto(ConSaldosDerivados, Maestra):
         ahí sale de los componentes y un "0" parecía un faltante."""
         if not self.tiene_stock_propio:
             return 'Según componentes'
-        return self.stock_actual
+        return max(self.stock_actual - self.stock_vencido, Decimal('0'))
+
+    @property
+    def stock_vencido(self):
+        """Lo que está en lotes ya vencidos: no se vende. Si la lista ya lo
+        calculó para todas las filas (``vencido_en_lotes``), se usa eso."""
+        if not (self.tiene_stock_propio and self.controla_vencimiento):
+            return Decimal('0')
+        anotado = getattr(self, 'vencido_en_lotes', None)
+        if anotado is not None or hasattr(self, 'vencido_en_lotes'):
+            return anotado or Decimal('0')
+        from stock.servicios import vencido
+        return vencido(self)
+
+    @property
+    def aclaracion_de_stock(self):
+        vencido = self.stock_vencido
+        if not vencido:
+            return ''
+        from nucleo.templatetags.cafeto import cantidad
+        return f'Además, {cantidad(vencido)} vencida{"s" if vencido != 1 else ""} (no se venden: hay que sacarlas)'
 
     @property
     def tiene_stock_propio(self):
@@ -522,8 +599,12 @@ class Producto(ConSaldosDerivados, Maestra):
     def clean(self):
         super().clean()
         self.nombre_producto = texto_de_catalogo(
-            self.nombre_producto, 2, 50, 'El nombre del producto')
+            self.nombre_producto, 2, 100, 'El nombre del producto')
         self.codigo_barras = validar_codigo_barras(self.codigo_barras)
+        self.imagen = (self.imagen or '').strip() or None
+        if self.imagen and not self.imagen.startswith(('https://', 'productos/')):
+            raise ValidationError({'imagen': 'La foto tiene que ser una dirección '
+                                             'https:// o una foto subida desde el sistema.'})
 
         if self.unidad_medida not in UnidadMedida.values:
             raise ValidationError(

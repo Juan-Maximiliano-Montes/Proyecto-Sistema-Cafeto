@@ -8,6 +8,7 @@ el ticket, sin depender de cómo esté configurado cada template.
 from decimal import Decimal, InvalidOperation
 
 from django import template
+from django.utils import timezone
 
 register = template.Library()
 
@@ -23,15 +24,19 @@ def _numero(valor, decimales):
 
 @register.filter
 def pesos(valor):
-    """1234.5 -> '$ 1.234,50'. ``None`` -> '—'."""
+    """1234.5 -> '$ 1.234,50'. ``None`` -> '—'.
+
+    Entre el signo y el número va un espacio DE NO SEPARACIÓN (U+00A0): el
+    importe no se parte nunca en dos renglones, esté donde esté (DD-91).
+    """
     if valor is None or valor == '':
         return '—'
     texto = _numero(valor, 2)
     if texto is None:
         return valor
     if texto.startswith('-'):
-        return f'−$ {texto[1:]}'
-    return f'$ {texto}'
+        return f'−$\u00a0{texto[1:]}'
+    return f'$\u00a0{texto}'
 
 
 @register.filter
@@ -66,6 +71,37 @@ def contiene(coleccion, elemento):
 
 
 @register.filter
+def pesos_juntos(texto):
+    """En un texto libre que nombra importes («pide fiarle $ 5.000,00…»),
+    el signo no se separa del número al cortar la línea."""
+    import re
+    return re.sub(r'\$\s+(?=[\d−-])', '$\u00a0', str(texto or ''))
+
+
+@register.filter
+def vencimiento(fecha, hoy=None):
+    """«venció el 11/11», «vence hoy» o «vence el 20/11»: una fecha pasada
+    nunca se lee en futuro."""
+    if not fecha:
+        return ''
+    hoy = hoy or timezone.localdate()
+    if fecha < hoy:
+        return f'venció el {fecha:%d/%m}'
+    if fecha == hoy:
+        return 'vence hoy'
+    return f'vence el {fecha:%d/%m}'
+
+
+@register.filter
+def dias_desde(fecha, hoy=None):
+    """Días que pasaron desde ``fecha`` hasta hoy (0 si es hoy o futura)."""
+    if not fecha:
+        return 0
+    hoy = hoy or timezone.localdate()
+    return max((hoy - fecha).days, 0)
+
+
+@register.filter
 def dias_para_vencer(lote, hoy=None):
     """``{{ lote|dias_para_vencer:hoy }}``: negativo si ya venció."""
     try:
@@ -81,3 +117,10 @@ def index(secuencia, posicion):
         return secuencia[int(posicion)]
     except (IndexError, TypeError, ValueError):
         return None
+
+
+@register.filter
+def foto_de(producto):
+    """La dirección de la foto de un producto, o None."""
+    from stock import imagenes
+    return imagenes.url_de(producto)

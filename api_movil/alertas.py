@@ -35,10 +35,14 @@ FILTRO_INVALIDO = 'Elegí Todas, Stock o Vencimiento.'
 #  Las reglas
 # ---------------------------------------------------------------------------
 def de_stock(producto):
-    """``SIN_STOCK``, ``STOCK_BAJO`` o ``None``: el corte de ``bajo_minimo()``."""
-    if producto.stock_minimo <= 0 or producto.stock_actual >= producto.stock_minimo:
+    """``SIN_STOCK``, ``STOCK_BAJO`` o ``None``: el corte de ``bajo_minimo()``,
+    sobre el stock apto (lo vencido no cuenta)."""
+    apto = getattr(producto, 'stock_apto', None)
+    if apto is None:
+        apto = producto.stock_actual - producto.stock_vencido
+    if producto.stock_minimo <= 0 or apto >= producto.stock_minimo:
         return None
-    return 'SIN_STOCK' if producto.stock_actual <= 0 else 'STOCK_BAJO'
+    return 'SIN_STOCK' if apto <= 0 else 'STOCK_BAJO'
 
 
 def de_lote(lote, hoy, dias_aviso):

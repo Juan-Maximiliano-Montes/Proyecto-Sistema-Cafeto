@@ -113,7 +113,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                     <span class="monto">{{ valor|pesos }}</span>
                 {% elif columna.formato == 'numero' %}
                     {# un 0 es un valor, no un vacío #}
-                    {{ valor|cantidad }}
+                    {{ valor|cantidad }}{% if columna.aclaracion %}{% with nota=fila|valor_de:columna.aclaracion %}{% if nota %}<span class="d-block small text-peligro">{{ nota }}</span>{% endif %}{% endwith %}{% endif %}
                 {% else %}
                     {{ valor|default:"—" }}
                 {% endif %}

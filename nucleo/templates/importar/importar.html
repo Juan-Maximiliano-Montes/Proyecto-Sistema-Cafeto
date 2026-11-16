@@ -6,7 +6,7 @@
     <div>
         <a href="{% url importador.volver %}" class="eyebrow"><i class="bi bi-arrow-left me-1"></i>Volver</a>
         <h1 class="titulo-pantalla mb-0">Importar {{ importador.titulo|lower }}</h1>
-        <p class="bajada">Subí la planilla, revisá qué va a pasar con cada fila y confirmá. Si hay un error, no se importa nada.</p>
+        <p class="bajada">Subí la planilla, revisá qué va a pasar con cada fila y confirmá. Las filas con algún problema quedan aparte, en cuarentena, y no frenan a las demás.</p>
     </div>
     <div class="acciones">
         <a href="{% url 'importar_modelo' importador.clave %}" class="btn btn-secundario"><i class="bi bi-file-earmark-arrow-down me-1"></i>Planilla modelo</a>
@@ -17,7 +17,7 @@
 <form method="post" enctype="multipart/form-data" class="tarjeta" style="max-width: 640px">
     {% csrf_token %}
     <h2 class="subtitulo h5 mb-0">1. Subí la planilla</h2>
-    <p class="small text-secondary mb-0">Excel (.xlsx) o .csv, hasta 2 MB. Las columnas se reconocen por el título, en cualquier orden. Las amarillas de la planilla modelo son obligatorias.</p>
+    <p class="small text-secondary mb-0">Excel (.xlsx) o .csv, hasta 2 MB y 5.000 filas. Las columnas se reconocen por el título, en cualquier orden. Las amarillas de la planilla modelo son obligatorias.</p>
     <input type="file" name="archivo" accept=".xlsx,.csv" class="form-control" required aria-label="Planilla">
     <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Revisar la planilla</button>
 </form>
@@ -33,37 +33,84 @@
     <div class="tarjeta kpi{% if errores %} tarjeta-destacada{% endif %}"><span class="eyebrow">Con errores</span><span class="valor{% if errores %} text-peligro{% endif %}">{{ errores }}</span></div>
 </div>
 
-{% if errores %}
-<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ errores }} fila(s) con errores. Corregí la planilla y volvé a subirla: así no se importa nada a medias.</span></div>
+{% if errores and listas_total %}
+<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ listas_total }} fila(s) listas y {{ errores }} en cuarentena. Podés importar ya las que están bien: las otras no se tocan y te las llevás en un Excel con el motivo al lado.</span></div>
+{% elif errores %}
+<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{% if pendiente.importadas %}Ya se importaron {{ pendiente.importadas }} fila(s). Quedan {{ errores }} en cuarentena: bajalas, corregilas y volvé a subirlas.{% else %}Ninguna fila está en condiciones de importarse. Bajá el Excel con los motivos, corregilo y volvé a subirlo.{% endif %}</span></div>
 {% else %}
 <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span>La planilla «{{ pendiente.archivo }}» está lista para importar.</span></div>
 {% endif %}
 
-<div class="d-flex gap-2 mb-3">
-    <form method="post" action="{% url 'importar_descartar' importador.clave %}" data-titulo="¿Descartamos el archivo?" data-aceptar="Sí, descartar" data-confirmar="No se importa nada y vas a tener que subir el archivo de nuevo.">{% csrf_token %}<button type="submit" class="btn btn-secundario"><i class="bi bi-x-lg me-1"></i>Descartar y subir otra</button></form>
-    {% if not errores %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <form method="post" action="{% url 'importar_descartar' importador.clave %}" data-titulo="¿Descartamos el archivo?" data-aceptar="Sí, descartar" data-confirmar="{% if pendiente.importadas %}Lo que ya se importó queda. Se descartan las filas en cuarentena: si no bajaste el Excel, hacelo antes.{% else %}No se importa nada y vas a tener que subir el archivo de nuevo.{% endif %}">{% csrf_token %}<button type="submit" class="btn btn-secundario"><i class="bi bi-x-lg me-1"></i>Descartar y subir otra</button></form>
+    {% if errores %}
+    <a href="{% url 'importar_errores' importador.clave %}" class="btn btn-secundario"><i class="bi bi-file-earmark-arrow-down me-1"></i>Descargar las {{ errores }} fila(s) con error en Excel</a>
+    {% endif %}
+    {% if listas_total and por_aplicar %}
     <form method="post" action="{% url 'importar_confirmar' importador.clave %}" data-titulo="¿Importar?" data-aceptar="Sí, importar"
-          data-confirmar="Se aplican {{ altas }} alta(s) y {{ cambios }} cambio(s), todo junto.">
-        {% csrf_token %}<button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-check2-all me-1"></i>Confirmar la importación</button>
+          data-confirmar="Se aplican {{ altas }} alta(s) y {{ cambios }} cambio(s), todo junto.{% if errores %} Las {{ errores }} fila(s) en cuarentena NO se importan: quedan acá para que las bajes y las corrijas.{% endif %}">
+        {% csrf_token %}{% if errores %}<input type="hidden" name="solo_validas" value="1">{% endif %}
+        {% for o in importador.opciones %}<input type="hidden" name="{{ o.clave }}" value="{% if o.tildada %}1{% endif %}" data-opcion="{{ o.clave }}">{% endfor %}
+        <button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-check2-all me-1"></i>{% if errores %}Importar la{{ por_aplicar|pluralize }} {{ por_aplicar }} fila{{ por_aplicar|pluralize }} válida{{ por_aplicar|pluralize }} ahora{% else %}Confirmar la importación{% endif %}</button>
     </form>
     {% endif %}
 </div>
 
-<div class="tarjeta p-0 overflow-hidden">
+{% if listas_total and por_aplicar %}{% for o in importador.opciones %}
+<div class="tarjeta mb-3"><div class="form-check">
+    <input class="form-check-input js-opcion-importar" type="checkbox" id="opcion-{{ o.clave }}" data-opcion="{{ o.clave }}"{% if o.tildada %} checked{% endif %}>
+    <label class="form-check-label fw-semibold" for="opcion-{{ o.clave }}">{{ o.etiqueta }}</label>
+    {% if o.ayuda %}<div class="form-text">{{ o.ayuda }}</div>{% endif %}
+</div></div>
+{% endfor %}{% endif %}
+{% for frase in resumen %}<p class="small text-secondary"><i class="bi bi-info-circle me-1"></i>{{ frase }}</p>{% endfor %}
+
+{% if cuarentena %}
+<h2 class="subtitulo h5">En cuarentena <span class="insignia insignia-peligro">{{ errores }}</span></h2>
+<div class="tarjeta p-0 overflow-hidden mb-4">
     <div class="table-responsive">
     <table class="table align-middle mb-0">
         <thead><tr><th>Fila</th><th>Qué pasa</th><th>Detalle</th></tr></thead>
         <tbody>
-        {% for r in resultados %}
+        {% for r in cuarentena %}
             <tr{% if not r.ok %} class="fila-destacada"{% endif %}>
                 <td class="text-nowrap">{{ r.numero }}</td>
-                <td>{% if not r.ok %}<span class="insignia insignia-peligro">Error</span>{% elif r.accion == 'ALTA' %}<span class="insignia insignia-exito">Alta</span>{% elif r.accion == 'CAMBIO' %}<span class="insignia insignia-aviso">Cambio</span>{% else %}<span class="insignia insignia-neutra">Sin cambios</span>{% endif %}</td>
-                <td>{{ r.descripcion }}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}{% for a in r.avisos %}<span class="d-block text-warning small"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ a }}</span>{% endfor %}</td>
+                <td>{% if not r.ok %}<span class="insignia insignia-peligro">No entra</span>{% elif r.accion == 'ALTA' %}<span class="insignia insignia-exito">Alta</span>{% elif r.accion == 'CAMBIO' %}<span class="insignia insignia-aviso">Cambio</span>{% else %}<span class="insignia insignia-neutra">Sin cambios</span>{% endif %}</td>
+                <td>{% if r.ok %}{{ r.descripcion }}{% else %}{{ r.datos.nombre|default:r.descripcion }}{% endif %}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}{% for a in r.avisos %}<span class="d-block text-warning small"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ a }}</span>{% endfor %}</td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
     </div>
 </div>
+{% endif %}
+
+{% if listas_total %}
+<h2 class="subtitulo h5">Listas para importar <span class="insignia insignia-exito">{{ listas_total }}</span></h2>
+{% if listas_total > listas|length %}<p class="small text-secondary">Se muestran las primeras {{ listas|length }}{% if listas_con_aviso %} y, más abajo, las {{ listas_con_aviso|length }} que tienen algo para mirar{% endif %}. Las demás están bien y entran igual.</p>{% endif %}
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <thead><tr><th>Fila</th><th>Qué pasa</th><th>Detalle</th></tr></thead>
+        <tbody>
+        {% for r in listas %}
+            <tr{% if not r.ok %} class="fila-destacada"{% endif %}>
+                <td class="text-nowrap">{{ r.numero }}</td>
+                <td>{% if not r.ok %}<span class="insignia insignia-peligro">No entra</span>{% elif r.accion == 'ALTA' %}<span class="insignia insignia-exito">Alta</span>{% elif r.accion == 'CAMBIO' %}<span class="insignia insignia-aviso">Cambio</span>{% else %}<span class="insignia insignia-neutra">Sin cambios</span>{% endif %}</td>
+                <td>{% if r.ok %}{{ r.descripcion }}{% else %}{{ r.datos.nombre|default:r.descripcion }}{% endif %}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}{% for a in r.avisos %}<span class="d-block text-warning small"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ a }}</span>{% endfor %}</td>
+            </tr>
+        {% endfor %}
+        {% for r in listas_con_aviso %}
+            <tr{% if not r.ok %} class="fila-destacada"{% endif %}>
+                <td class="text-nowrap">{{ r.numero }}</td>
+                <td>{% if not r.ok %}<span class="insignia insignia-peligro">No entra</span>{% elif r.accion == 'ALTA' %}<span class="insignia insignia-exito">Alta</span>{% elif r.accion == 'CAMBIO' %}<span class="insignia insignia-aviso">Cambio</span>{% else %}<span class="insignia insignia-neutra">Sin cambios</span>{% endif %}</td>
+                <td>{% if r.ok %}{{ r.descripcion }}{% else %}{{ r.datos.nombre|default:r.descripcion }}{% endif %}{% for e in r.errores %}<span class="d-block text-peligro small"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ e }}</span>{% endfor %}{% for a in r.avisos %}<span class="d-block text-warning small"><i class="bi bi-exclamation-triangle-fill me-1"></i>{{ a }}</span>{% endfor %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

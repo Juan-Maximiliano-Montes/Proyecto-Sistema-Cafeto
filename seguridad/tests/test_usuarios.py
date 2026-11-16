@@ -328,6 +328,8 @@ class CatalogoDePermisosTest(TestCase):
         'gestionar_ordenes', 'ver_egresos', 'registrar_egreso',
         'registrar_gasto_caja', 'conciliar_egresos', 'importar_proveedores',
         'ver_reportes', 'editar_parametros',
+        # DD-91: el fiado. Cobrar lo tienen los tres perfiles; decidir, la Administración.
+        'cobrar_credito', 'gestionar_credito',
     }
 
     # Los CRUD de "Mantener datos maestros" (DFD 10). Los códigos NO se

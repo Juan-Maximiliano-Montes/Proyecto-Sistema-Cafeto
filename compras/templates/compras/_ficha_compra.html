@@ -10,7 +10,7 @@
     <thead><tr><th>Producto</th><th class="table-numero">Cantidad</th><th class="table-numero">Costo</th><th class="table-numero">Subtotal</th></tr></thead>
     <tbody>
     {% for r in renglones %}
-        <tr><td>{{ r.id_producto }}{% for l in r.lotes.all %}<span class="d-block small text-tenue">Lote {{ l.numero_lote|default:"s/n" }} · vence {{ l.fecha_vencimiento|date:"d/m/Y" }} · {{ l.cantidad_inicial|cantidad }}</span>{% endfor %}</td><td class="table-numero">{{ r.cantidad_recibida|cantidad }}</td><td class="table-numero">{{ r.precio_costo_unitario|pesos }}</td><td class="table-numero">{{ r.subtotal|pesos }}</td></tr>
+        <tr><td>{{ r.id_producto }}{% for l in r.lotes.all %}<span class="d-block small text-tenue">Lote {{ l.numero_lote|default:"s/n" }} · {{ l.fecha_vencimiento|vencimiento }} · {{ l.cantidad_inicial|cantidad }}</span>{% endfor %}</td><td class="table-numero">{{ r.cantidad_recibida|cantidad }}</td><td class="table-numero">{{ r.precio_costo_unitario|pesos }}</td><td class="table-numero">{{ r.subtotal|pesos }}</td></tr>
     {% endfor %}
     </tbody>
 </table>
@@ -23,5 +23,5 @@
 </dl>
 {% if egresos %}
 <h6 class="subtitulo">Pagos</h6>
-<ul class="small mb-0">{% for e in egresos %}<li>{{ e.fecha_egreso|date:"d/m/Y"|default:"Sin pagar" }} · {{ e.monto|pesos }} con {{ e.id_medio_pago|default:"—" }} · {{ e.get_estado_pago_display }}</li>{% endfor %}</ul>
+<ul class="small mb-0">{% for e in egresos %}<li>{{ e.fecha_egreso|date:"d/m/Y"|default:"Sin pagar" }} · {{ e.monto|pesos }} con {{ e.id_medio_pago|default:"—" }} · {% if e.estado_pago == 'RECHAZADO' %}<span class="text-peligro">rechazado, no cuenta como pagado</span>{% else %}{{ e.get_estado_pago_display }}{% endif %}</li>{% endfor %}</ul>
 {% endif %}

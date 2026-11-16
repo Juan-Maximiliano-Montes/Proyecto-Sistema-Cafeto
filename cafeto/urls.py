@@ -29,10 +29,23 @@ urlpatterns = [
     path('fidelizacion/', include('fidelizacion.urls')),
     path('negocio/', include('negocio.urls')),
     path('api/movil/', include('api_movil.urls')),
+    path('api/servicio/', include('api_servicio.urls')),
     path('', include('nucleo.urls')),
     path('perfil/', seguridad_views.mi_perfil, name='mi_perfil'),
     path('', inicio, name='home'),
 ]
+
+# Las fotos de los productos. Son públicas a propósito: la app del cliente
+# las pide sin sesión, igual que el catálogo. Sólo se sirve esa carpeta.
+from django.urls import re_path
+from django.views.static import serve
+
+
+def foto_subida(request, path):
+    return serve(request, path, document_root=settings.MEDIA_ROOT)
+
+
+urlpatterns.append(re_path(r'^media/(?P<path>productos/[\w.-]+)$', foto_subida, name='media'))
 
 if settings.DEBUG:
     from django.contrib import admin

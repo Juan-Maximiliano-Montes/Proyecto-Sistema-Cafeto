@@ -1,0 +1,769 @@
+[
+  {
+    "name": "Cafeto · Cierre del día por WhatsApp",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "30 22 * * *"
+              }
+            ]
+          }
+        },
+        "name": "Todos los días 22:30",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/resumen/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Resumen del día",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst lineas = ['*Cafeto · cierre del ' + r.fecha + '*', '',\n  'Vendido: ' + plata(r.ventas_hoy), 'Ganancia bruta: ' + plata(r.ganancia_bruta_hoy)];\nfor (const m of r.desglose_medios_pago_hoy) lineas.push('  · ' + m.medio + ': ' + plata(m.total));\nif (r.renglones_sin_costo_hoy) lineas.push('', 'Ojo: ' + r.renglones_sin_costo_hoy + ' renglón(es) vendidos sin costo cargado.');\nif (r.avisos.length) { lineas.push('', '*Avisos*'); for (const a of r.avisos) lineas.push('  · ' + a.texto); }\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+        },
+        "name": "Armar el mensaje",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Todos los días 22:30": {
+        "main": [
+          [
+            {
+              "node": "Resumen del día",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resumen del día": {
+        "main": [
+          [
+            {
+              "node": "Armar el mensaje",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el mensaje": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Vencimientos y fiados de la mañana",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 8 * * 1-6"
+              }
+            ]
+          }
+        },
+        "name": "Lunes a sábado 8:00",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/resumen/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Resumen del día",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst cc = r.cuentas_corrientes || {atrasados: [], vencen_pronto: []};\nif (!r.vencimientos_proximos.length && !cc.atrasados.length && !cc.vencen_pronto.length) return [];\nconst lineas = ['*Cafeto · buen día*'];\nif (r.vencimientos_proximos.length) {\n  lineas.push('', '*Para pagar en estos días*');\n  for (const v of r.vencimientos_proximos)\n    lineas.push((v.vencido ? 'VENCIDO ' : '') + v.vence + ' · ' + v.a_quien + ' · ' + v.concepto + ' · ' + plata(v.monto));\n}\nif (cc.atrasados.length) {\n  lineas.push('', '*Fiados atrasados* (te deben ' + plata(cc.te_deben) + ' en total)');\n  for (const c of cc.atrasados)\n    lineas.push('  · ' + c.cliente + ': ' + plata(c.vencido) + ' vencido' + (c.dias_de_atraso ? ', ' + c.dias_de_atraso + ' día(s)' : '') + (c.suspendido ? ' (suspendido)' : '') + (c.nota ? ' — ' + c.nota : ''));\n}\nif (cc.vencen_pronto.length) {\n  lineas.push('', '*Fiados que vencen en estos días*');\n  for (const c of cc.vencen_pronto) lineas.push('  · ' + c.vence + ' · ' + c.cliente + ' · ' + plata(c.falta));\n}\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+        },
+        "name": "Sólo si hay algo que avisar",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Lunes a sábado 8:00": {
+        "main": [
+          [
+            {
+              "node": "Resumen del día",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Resumen del día": {
+        "main": [
+          [
+            {
+              "node": "Sólo si hay algo que avisar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Sólo si hay algo que avisar": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Completar marca y foto con Open Food Facts",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 3 * * *"
+              }
+            ]
+          }
+        },
+        "name": "Cada noche 3:00",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/sin-marca/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Productos sin marca",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return $input.first().json.productos.map((p) => ({ json: p }));"
+        },
+        "name": "Uno por producto",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://world.openfoodfacts.org/api/v2/product/{{ $json.codigo_barras }}.json?fields=brands,image_front_url",
+          "options": {
+            "batching": {
+              "batch": {
+                "batchSize": 1,
+                "batchInterval": 1500
+              }
+            },
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "name": "Buscar en Open Food Facts",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "const p = $('Uno por producto').item.json;\nconst d = $input.item.json;\nif (d.status !== 1 || !d.product) return null;\nconst cuerpo = {};\nif (p.sin_foto && d.product.image_front_url) cuerpo.url = d.product.image_front_url.replace(/^http:/, 'https:');\nconst marca = (d.product.brands || '').split(',')[0].trim();\nif (marca) cuerpo.marca = marca;\nif (!cuerpo.url && !cuerpo.marca) return null;\nreturn { json: { id: p.id, cuerpo } };"
+        },
+        "name": "Qué se puede completar",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/{{ $json.id }}/enriquecer/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.cuerpo) }}"
+        },
+        "name": "Completar el producto",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1100,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Cada noche 3:00": {
+        "main": [
+          [
+            {
+              "node": "Productos sin marca",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Productos sin marca": {
+        "main": [
+          [
+            {
+              "node": "Uno por producto",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Uno por producto": {
+        "main": [
+          [
+            {
+              "node": "Buscar en Open Food Facts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Buscar en Open Food Facts": {
+        "main": [
+          [
+            {
+              "node": "Qué se puede completar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Qué se puede completar": {
+        "main": [
+          [
+            {
+              "node": "Completar el producto",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Factura leída → compra pre-cargada",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "cafeto-factura",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "name": "Llega la factura ya leída",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/compras/pre-cargar/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.body) }}"
+        },
+        "name": "Pre-cargar la compra",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r = $input.first().json;\nreturn [{ json: { texto: 'Hay una compra pre-cargada para revisar (' + r.renglones_reconocidos + ' renglones reconocidos, ' + r.renglones_sin_reconocer.length + ' sin reconocer). Abrila, controlala contra la factura y confirmá: ' + r.url } }];"
+        },
+        "name": "Armar el aviso",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Llega la factura ya leída": {
+        "main": [
+          [
+            {
+              "node": "Pre-cargar la compra",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pre-cargar la compra": {
+        "main": [
+          [
+            {
+              "node": "Armar el aviso",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el aviso": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Mantenimiento del día 1",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 4 1 * *"
+              }
+            ]
+          }
+        },
+        "name": "Día 1 a las 4:00",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/mantenimiento/mensual/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 600000
+          }
+        },
+        "name": "Correr el mantenimiento",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r = $input.first().json;\nconst lineas = ['*Cafeto · mantenimiento del mes*', '',\n  'Registros viejos que pasaron al histórico: ' + r.filas_al_historico,\n  'Productos que cambiaron de proveedor habitual: ' + r.cantidad_reasignados];\nfor (const p of r.productos_reasignados.slice(0, 15)) lineas.push('  · ' + p.producto + ': ' + p.antes + ' → ' + p.ahora);\nif (r.proveedores_inactivos_6m.length) {\n  lineas.push('', '*Proveedores sin movimiento hace más de 6 meses* (fijate si conviene darlos de baja)');\n  for (const p of r.proveedores_inactivos_6m) lineas.push('  · ' + p.nombre + (p.ultima_compra ? ' (última compra ' + p.ultima_compra + ')' : ' (sin compras)'));\n}\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+        },
+        "name": "Armar el resumen",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Día 1 a las 4:00": {
+        "main": [
+          [
+            {
+              "node": "Correr el mantenimiento",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Correr el mantenimiento": {
+        "main": [
+          [
+            {
+              "node": "Armar el resumen",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el resumen": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Autorización a distancia por WhatsApp",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "cafeto-autorizacion",
+          "responseMode": "onReceived",
+          "options": {}
+        },
+        "name": "La caja pide autorización",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Sólo el sistema puede pedir: el mismo token que usa la API de servicio.\nconst pedido = $input.first().json;\nconst token = (pedido.headers || {})['x-cafeto-token'];\nif (!$env.CAFETO_N8N_TOKEN || token !== $env.CAFETO_N8N_TOKEN) { return []; }\nconst b = pedido.body || {};\nconst renglones = (b.renglones || []).map(r => '• ' + r).join('\\n');\nconst texto = '📲 *¿Autorizás?* ' + b.pedido + '.\\n' +\n  'Total del ticket: ' + b.total + '\\n' + (renglones ? renglones + '\\n' : '') +\n  '\\nPara aprobar: ' + b.enlace + '\\n' +\n  'O dictale este PIN a la caja: *' + b.pin + '*\\n' +\n  'Vale hasta las ' + b.vence + '.';\nreturn [{ json: { texto } }];"
+        },
+        "name": "Armar el mensaje",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          440,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "La caja pide autorización": {
+        "main": [
+          [
+            {
+              "node": "Armar el mensaje",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el mensaje": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  }
+]

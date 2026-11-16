@@ -59,6 +59,8 @@ def _exigir_sin_duplicado(egreso):
 def _validar_medio(medio_pago, turno):
     if medio_pago is None or medio_pago.borrado_logico:
         raise ValidationError('Elegí un medio de pago vigente.')
+    if medio_pago.es_cuenta_corriente:
+        raise ValidationError('La cuenta corriente es el fiado de los clientes: con eso no se le paga a nadie.')
     if medio_pago.afecta_caja and turno is None:
         raise ValidationError(
             'Un pago en efectivo sale de un cajón: elegí la caja con turno '
@@ -209,14 +211,64 @@ def conciliar(egreso, acreditado, fecha, referencia_bancaria=None):
     return egreso
 
 
-def vencimientos_proximos(hasta):
-    """Lo que vence hasta esa fecha y todavía no se pagó (DD-32)."""
+def vencimientos_proximos(hasta, desde=None):
+    """Lo que vence hasta esa fecha (y desde ``desde``, si se indica) y
+    todavía falta pagar (DD-32). Una factura cubierta por transferencias
+    en acreditación ya no figura: no hay nada que pagar."""
     obligaciones = Egreso.objects.filter(
         estado_pago='PENDIENTE_PAGO',
         fecha_vencimiento__isnull=False,
         fecha_vencimiento__lte=hasta).order_by('fecha_vencimiento')
-    compras = Compra.objects.filter(
-        ~Q(estado_compra='PAGADA'),
+    compras = compras_por_pagar().filter(
         fecha_vencimiento_pago__isnull=False,
         fecha_vencimiento_pago__lte=hasta).order_by('fecha_vencimiento_pago')
+    if desde is not None:
+        obligaciones = obligaciones.filter(fecha_vencimiento__gte=desde)
+        compras = compras.filter(fecha_vencimiento_pago__gte=desde)
     return {'obligaciones': obligaciones, 'compras': compras}
+
+
+# ---------------------------------------------------------------------------
+#  Lo que todavía hay que pagar (una consulta, para la pantalla, Inicio y n8n)
+# ---------------------------------------------------------------------------
+def compras_por_pagar():
+    """Las facturas de compra a las que les falta plata.
+
+    Lo que está «en acreditación» (transferido, esperando al banco) ya
+    cubre: una factura pagada entera por transferencia no vuelve a ofrecer
+    «Pagar» con Falta $ 0,00, que invita a pagarla dos veces. Si el banco la
+    rechaza, ese pago deja de contar y la factura vuelve sola."""
+    from django.db.models import DecimalField, F, OuterRef, Subquery, Sum, Value
+    from django.db.models.functions import Coalesce
+
+    dinero = DecimalField(max_digits=14, decimal_places=2)
+    en_acreditacion = (Egreso.objects.filter(id_compra=OuterRef('pk'), estado_pago='PENDIENTE_ACREDITACION')
+                       .order_by().values('id_compra').annotate(t=Sum('monto')).values('t'))
+    return (Compra.con_pagado(Compra.objects.exclude(estado_compra='PAGADA'))
+            .annotate(en_acreditacion=Coalesce(Subquery(en_acreditacion, output_field=dinero),
+                                               Value(Decimal('0'), output_field=dinero)),
+                      falta=F('total_compra') - Coalesce(F('pagado_anotado'),
+                                                        Value(Decimal('0'), output_field=dinero)))
+            .filter(falta__gt=0)
+            .select_related('id_proveedor')
+            .order_by('fecha_vencimiento_pago', 'fecha_compra', 'pk'))
+
+
+DIAS_SIN_CONFIRMAR = 3
+
+
+def vencidos(hoy=None):
+    """Facturas y obligaciones impagas con la fecha de pago ya pasada:
+    cuántas son y cuánto falta pagar."""
+    hoy = hoy or timezone.localdate()
+    facturas = [c for c in compras_por_pagar().filter(fecha_vencimiento_pago__lt=hoy)]
+    otras = list(Egreso.objects.filter(estado_pago='PENDIENTE_PAGO', fecha_vencimiento__lt=hoy))
+    return {'cantidad': len(facturas) + len(otras),
+            'monto': sum((c.falta for c in facturas), Decimal('0')) + sum((e.monto for e in otras), Decimal('0'))}
+
+
+def sin_confirmar(hoy=None, dias=DIAS_SIN_CONFIRMAR):
+    """Transferencias que el banco no confirmó ni rechazó después de
+    ``dias`` días de enviadas."""
+    hoy = hoy or timezone.localdate()
+    return Egreso.objects.filter(estado_pago='PENDIENTE_ACREDITACION', fecha_egreso__lt=hoy - timedelta(days=dias))

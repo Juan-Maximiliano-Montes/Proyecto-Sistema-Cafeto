@@ -439,36 +439,62 @@ def exigir_dni_creible(dni, etiqueta='El DNI'):
 #  CÓDIGO DE BARRAS GS1  (V-E productos)
 # ---------------------------------------------------------------------------
 LARGOS_GS1 = (8, 12, 13, 14)      # EAN-8, UPC-A, EAN-13, GTIN-14
+CODIGO_MINIMO, CODIGO_MAXIMO = 3, 30
 
 
-def validar_codigo_barras(valor):
-    """Largo GS1 válido y dígito verificador correcto.
+def es_gtin(digitos):
+    """¿Es un código GS1 bien formado (largo y dígito verificador)?
 
-    El verificador GS1 se calcula sobre todos los dígitos menos el último:
-    desde la derecha se multiplican alternadamente por 3 y por 1, se suman,
-    y el verificador es lo que falta para la decena siguiente.
+    Sirve para AVISAR, no para rechazar: en un comercio conviven los códigos
+    de fábrica (EAN-13) con los propios (balanza, elaborados, promociones),
+    que son números cualesquiera (DD-86).
     """
-    texto = limpiar_texto(valor)
-    if texto is None:
-        return None
-    digitos = texto.replace(' ', '').replace('-', '')
-
-    if not digitos.isdigit():
-        raise ValidationError('El código de barras sólo admite dígitos.')
-    if len(digitos) not in LARGOS_GS1:
-        raise ValidationError(
-            'El código de barras debe tener 8, 12, 13 o 14 dígitos '
-            f'(EAN-8, UPC-A, EAN-13 o GTIN-14); escribiste {len(digitos)}.')
-
+    if not digitos or not digitos.isdigit() or len(digitos) not in LARGOS_GS1:
+        return False
     cuerpo, verificador = digitos[:-1], int(digitos[-1])
     suma = 0
     for posicion, caracter in enumerate(reversed(cuerpo)):
         suma += int(caracter) * (3 if posicion % 2 == 0 else 1)
-    esperado = (10 - suma % 10) % 10
-    if esperado != verificador:
+    return (10 - suma % 10) % 10 == verificador
+
+
+def sanear_codigo(valor):
+    """Limpia lo que deja un lector o una planilla alrededor del código.
+
+    * espacios y guiones;
+    * basura pegada al principio o al final ("7798126071631|");
+    * el mismo código leído dos veces seguidas
+      ("77900704182897790070418289" → "7790070418289").
+
+    Devuelve el texto saneado (o None si queda vacío). No valida.
+    """
+    texto = limpiar_texto(valor)
+    if texto is None:
+        return None
+    texto = re.sub(r'[\s-]', '', texto)
+    texto = re.sub(r'^[^0-9A-Za-z]+|[^0-9A-Za-z]+$', '', texto)
+    mitad = len(texto) // 2
+    if len(texto) % 2 == 0 and mitad >= 8 and texto[:mitad] == texto[mitad:]:
+        texto = texto[:mitad]
+    return texto or None
+
+
+def validar_codigo_barras(valor):
+    """El código con el que se busca el producto: sólo dígitos, de 3 a 30.
+
+    Hasta DD-86 se exigía un GTIN con su dígito verificador. Con los
+    artículos reales del local eso dejaba afuera uno de cada cinco: los
+    códigos propios de la cafetería y de la balanza no son GS1.
+    """
+    digitos = sanear_codigo(valor)
+    if digitos is None:
+        return None
+    if not digitos.isdigit():
+        raise ValidationError('El código sólo admite dígitos.')
+    if not CODIGO_MINIMO <= len(digitos) <= CODIGO_MAXIMO:
         raise ValidationError(
-            'El código de barras no verifica: el último dígito debería ser '
-            f'{esperado}. Revisá que esté bien copiado.')
+            f'El código tiene que tener entre {CODIGO_MINIMO} y {CODIGO_MAXIMO} '
+            f'dígitos; el que escribiste tiene {len(digitos)}.')
     return digitos
 
 

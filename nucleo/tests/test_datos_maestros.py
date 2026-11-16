@@ -705,23 +705,22 @@ class ReglasPorEntidadTest(BaseMaestros):
         self.assertTrue(Producto.objects.filter(
             codigo_barras='7790387011456').exists())
 
-    def test_falla_codigo_de_barras_con_verificador_malo(self):
+    def test_un_codigo_que_no_es_de_fabrica_entra_como_propio(self):
         respuesta = self.crear('productos', {
             'nombre_producto': 'Yerba Playadito 1 kg',
             'id_marca': self.marca.pk, 'contenido': '1',
             'id_rubro': self.rubro.pk, 'id_proveedor': self.proveedor.pk,
             'unidad_medida': 'KG', 'precio_venta': '6000',
             'precio_costo': '4000', 'stock_minimo': '3',
-            'codigo_barras': '7790387011457'})
-        self.assertFalse(Producto.objects.exists())
-        self.assertContains(respuesta, 'no verifica')
+            'codigo_barras': ' 7790387011457|'})
+        self.assertEqual(Producto.objects.get().codigo_barras, '7790387011457')
 
     def test_falla_codigo_de_barras_con_largo_invalido(self):
         with self.assertRaises(ValidationError):
             Producto(nombre_producto='X Y', id_rubro=self.rubro, id_marca=self.marca, contenido=Decimal('1'),
                      id_proveedor=self.proveedor, precio_venta=Decimal('10'),
                      precio_costo=Decimal('1'), stock_minimo=0,
-                     codigo_barras='12345').clean()
+                     codigo_barras='12').clean()
 
     def test_vender_bajo_el_costo_exige_confirmacion(self):
         datos = {
@@ -1140,7 +1139,7 @@ class LaBaseRechazaSolaTest(BaseMaestros):
         with self.assertRaises(IntegrityError), transaction.atomic():
             Producto.objects.create(
                 nombre_producto='Código corto', id_rubro=self.rubro, id_marca=self.marca, contenido=Decimal('1'),
-                     id_proveedor=self.proveedor, codigo_barras='123',
+                     id_proveedor=self.proveedor, codigo_barras='12',
                 precio_venta=Decimal('10'), precio_costo=Decimal('1'))
 
     def test_check_de_la_caja_de_tres_caracteres(self):

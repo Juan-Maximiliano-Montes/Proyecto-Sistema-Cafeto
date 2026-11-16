@@ -5,6 +5,7 @@ qué porcentaje, y a cuánto se redondea el precio nuevo ($10, $50...). La
 vista previa muestra cada precio antes y después; recién al confirmar se
 escribe, todo junto.
 """
+from django.utils import timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
@@ -61,6 +62,7 @@ def aplicar(productos, porcentaje, paso):
     cambiados = 0
     for producto, antes, despues in calcular(bloqueados, porcentaje, paso):
         if despues != antes:
-            Producto.objects.filter(pk=producto.pk).update(precio_venta=despues)
+            Producto.objects.filter(pk=producto.pk).update(
+                precio_venta=despues, fecha_modificacion=timezone.now())
             cambiados += 1
     return cambiados

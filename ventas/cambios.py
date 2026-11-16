@@ -93,9 +93,21 @@ def balance(venta, devueltos, entregados):
 def medios_de_reintegro(venta):
     """Por dónde se le puede devolver al cliente: por los mismos medios
     con que pagó (DD-66). Lo que se pagó con tarjeta se anula en el posnet;
-    sólo lo que se pagó en efectivo sale del cajón."""
-    ids = venta.pagos.values_list('id_medio_pago', flat=True)
-    return MedioPago.objects.filter(pk__in=ids).order_by('nombre_medio_pago')
+    sólo lo que se pagó en efectivo sale del cajón.
+
+    Si la compra fue fiada (DD-91): mientras deba algo de ella, lo devuelto
+    se descuenta de la deuda («Cuenta corriente»); lo que ya pagó de esa
+    deuda se le devuelve por el medio con que la pagó.
+    """
+    from fidelizacion import credito
+
+    ids = set(venta.pagos.values_list('id_medio_pago', flat=True))
+    debe = credito.lo_que_falta_de(venta)
+    ids |= set(credito.medios_de_cobro_de(venta))
+    medios = MedioPago.objects.filter(pk__in=ids)
+    if debe > 0:
+        return medios.filter(nombre_medio_pago=MedioPago.NOMBRE_CUENTA_CORRIENTE)
+    return medios.exclude(nombre_medio_pago=MedioPago.NOMBRE_CUENTA_CORRIENTE).order_by('nombre_medio_pago')
 
 
 def reintegro(venta, medio_pago, importe):
@@ -105,6 +117,27 @@ def reintegro(venta, medio_pago, importe):
     Nunca más de lo que entró por ese medio, menos lo que ya se devolvió
     por él en cambios anteriores.
     """
+    from fidelizacion import credito
+
+    if medio_pago.es_cuenta_corriente:
+        # Se descuenta de lo que todavía debe de esta compra, sin recargo.
+        debe = credito.lo_que_falta_de(venta)
+        if importe > debe:
+            raise ValidationError(
+                f'De la venta N° {venta.pk} debe {pesos(debe)}: la devolución se descuenta de esa deuda y '
+                f'no puede pasar de ahí. Si devuelve más, primero registrá esta parte y después el resto.')
+        return importe
+    cobrado_en_cuenta = credito.cobrado_de(venta, medio_pago)
+    if cobrado_en_cuenta:
+        # Lo que pagó de su deuda con este medio vuelve por el mismo medio.
+        ya = (Cambio.objects.filter(id_venta=venta, id_medio_pago=medio_pago)
+              .aggregate(t=Sum('importe_devuelto'))['t'] or CERO)
+        if importe > cobrado_en_cuenta - ya:
+            raise ValidationError(
+                f'De la venta N° {venta.pk} pagó {pesos(cobrado_en_cuenta)} con "{medio_pago}"'
+                + (f' y ya se le devolvieron {pesos(ya)}' if ya else '')
+                + f': por ese medio se pueden devolver hasta {pesos(cobrado_en_cuenta - ya)}.')
+        return importe
     pagos = list(venta.pagos.filter(id_medio_pago=medio_pago))
     if not pagos:
         raise ValidationError(
@@ -215,12 +248,21 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
     if not saldo:
         medio_pago = None
     if importe_devuelto:
+        from fidelizacion import credito
+
+        credito.bloquear_cliente_de(venta)
+        if credito.lo_que_falta_de(venta) > 0 and not medio_pago.es_cuenta_corriente:
+            raise ValidationError(
+                f'La venta N° {venta.pk} fue fiada y todavía debe {pesos(credito.lo_que_falta_de(venta))}: '
+                'lo devuelto se descuenta de esa deuda. Elegí «Cuenta corriente»; del cajón no sale plata '
+                'por mercadería que no se pagó.')
         # Por el mismo medio y por todo lo cobrado, recargo incluido (DD-66).
         importe_devuelto = reintegro(venta, medio_pago, importe_devuelto)
     if importe_cobrado and medio_pago.cantidad_cuotas > 1:
         raise ValidationError(
             'La diferencia de un cambio se cobra en un solo pago: elegí un '
             'medio sin cuotas.')
+    # Descontar de una deuda es lo mismo que devolver plata: también se autoriza.
     if importe_devuelto and autorizante is None:
         raise ValidationError(
             f'Devolver {pesos(importe_devuelto)} al cliente lo tiene que '
@@ -279,4 +321,12 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
                 turno, usuario, TipoMovimientoCaja.DEVOLUCION,
                 -importe_devuelto, f'Devolución N° {cambio.pk} (venta '
                 f'N° {venta.pk})', id_cambio=cambio)
+    # DD-91: lo devuelto de una compra fiada achica la deuda; del cajón no
+    # sale plata por mercadería que todavía no se pagó.
+    cambio.deuda_cancelada = None
+    if medio_pago is not None and medio_pago.es_cuenta_corriente and importe_devuelto:
+        from fidelizacion import credito
+
+        cambio.deuda_cancelada = credito.cancelar_por_venta(
+            venta, usuario, importe_devuelto, f'Devolución N° {cambio.pk}')
     return cambio

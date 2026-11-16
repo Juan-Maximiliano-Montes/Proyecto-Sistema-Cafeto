@@ -1,0 +1,302 @@
+"""Lo que una automatización puede pedirle al sistema (DD-84)."""
+import json
+from datetime import timedelta
+
+from django.core.exceptions import ValidationError
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.views.decorators.http import require_GET, require_POST
+
+from api_servicio.autenticacion import de_servicio
+
+TOPE = 200
+
+
+@de_servicio
+@require_GET
+def resumen(request):
+    """Los números y los avisos del día, como los ve la dueña en el inicio."""
+    from negocio import panel
+    from seguridad.models import Usuario
+
+    duenia = Usuario.objects.filter(es_titular=True, activo=True).first()
+    if duenia is None:
+        return JsonResponse({'detail': 'El sistema no tiene titular.'}, status=409)
+    numeros, avisos = panel.del_dia(duenia)
+    from negocio import ganancia
+
+    hoy = timezone.localdate()
+    ventas = ganancia.completadas(hoy, hoy)
+    del_dia = ganancia.de_ventas(ventas)
+    return JsonResponse({
+        'ventas_hoy': str(del_dia['facturado']),
+        'ganancia_bruta_hoy': str(del_dia['ganancia']),
+        'renglones_sin_costo_hoy': del_dia['sin_costo'],
+        'desglose_medios_pago_hoy': [{'medio': medio, 'total': str(total)}
+                                     for medio, total in ganancia.por_medio_de_pago(ventas)],
+        'vencimientos_proximos': _vencimientos(hoy),
+        'proveedores_inactivos_6m': _inactivos(hoy),
+        'cuentas_corrientes': _cuentas_corrientes(hoy),
+        'fecha': timezone.localdate().isoformat(),
+        'numeros': [{'titulo': n['titulo'], 'valor': str(n['valor']), 'detalle': n.get('detalle', '')}
+                    for n in numeros],
+        'avisos': [{'clave': a['clave'], 'tipo': a['tipo'], 'texto': a['texto']} for a in avisos],
+    })
+
+
+DIAS_DE_VENCIMIENTOS = 3
+
+
+def _cuentas_corrientes(hoy):
+    from fidelizacion import credito
+
+    return credito.alertas(hoy, DIAS_DE_VENCIMIENTOS)
+
+
+def _inactivos(hoy):
+    from compras import habitual
+
+    return [{'id': p.pk, 'nombre': p.nombre_proveedor, 'cuit': p.cuit_proveedor,
+             'ultima_compra': p.ultima_compra.isoformat() if p.ultima_compra else None,
+             'productos_a_su_nombre': p.productos.filter(borrado_logico=False).count()}
+            for p in habitual.inactivos(hoy)[:TOPE] if not p.es_el_general]
+
+
+def _vencimientos(hoy):
+    """Lo que hay que pagar de acá a tres días (y lo que ya venció)."""
+    from compras.models import Compra, Egreso
+
+    limite = hoy + timedelta(days=DIAS_DE_VENCIMIENTOS)
+    filas = [{'tipo': 'gasto', 'a_quien': str(e.id_proveedor or e.destinatario or e.id_tipo_egreso),
+              'concepto': e.concepto, 'vence': e.fecha_vencimiento.isoformat(),
+              'vencido': e.fecha_vencimiento < hoy, 'monto': str(e.monto)}
+             for e in Egreso.objects.filter(estado_pago='PENDIENTE_PAGO', fecha_vencimiento__lte=limite)
+                                    .select_related('id_proveedor', 'id_tipo_egreso')
+                                    .order_by('fecha_vencimiento')[:TOPE]]
+    compras = Compra.con_pagado(
+        Compra.objects.exclude(estado_compra='PAGADA')
+        .filter(fecha_vencimiento_pago__lte=limite).select_related('id_proveedor')
+        .order_by('fecha_vencimiento_pago'))[:TOPE]
+    for compra in compras:
+        if compra.saldo_pendiente > 0:
+            filas.append({'tipo': 'compra', 'a_quien': str(compra.id_proveedor),
+                          'concepto': f'{compra.get_tipo_comprobante_display()} {compra.numero_formateado}',
+                          'vence': compra.fecha_vencimiento_pago.isoformat(),
+                          'vencido': compra.fecha_vencimiento_pago < hoy,
+                          'monto': str(compra.saldo_pendiente)})
+    return sorted(filas, key=lambda f: f['vence'])
+
+
+@de_servicio
+@require_GET
+def ordenes_emitidas(request):
+    """Las órdenes emitidas en los últimos días, con a quién mandarlas.
+
+    Quien las manda lleva la cuenta de cuáles ya mandó (el ``id``): el
+    sistema no guarda "enviada", porque que salió el mensaje no lo sabe él.
+    """
+    from compras.models import OrdenCompra
+
+    try:
+        dias = max(1, min(int(request.GET.get('dias', 2)), 30))
+    except ValueError:
+        dias = 2
+    ordenes = (OrdenCompra.objects.filter(
+        estado_orden='EMITIDA', fecha_orden__gte=timezone.localdate() - timedelta(days=dias))
+        .select_related('id_proveedor').order_by('pk')[:TOPE])
+    return JsonResponse({'ordenes': [{
+        'id': o.pk, 'fecha': o.fecha_orden.isoformat(), 'total': str(o.total_orden),
+        'pdf': f'/api/servicio/ordenes/{o.pk}/pdf/',
+        'proveedor': {'nombre': o.id_proveedor.nombre_proveedor,
+                      'correo': o.id_proveedor.email_proveedor,
+                      'telefono': o.id_proveedor.telefono_proveedor},
+    } for o in ordenes]})
+
+
+@de_servicio
+@require_GET
+def orden_pdf(request, pk):
+    from compras.models import OrdenCompra
+    from compras.views.ordenes import pdf_de_la_orden
+
+    orden = get_object_or_404(
+        OrdenCompra.objects.select_related('id_proveedor'), pk=pk, estado_orden='EMITIDA')
+    respuesta = HttpResponse(pdf_de_la_orden(orden), content_type='application/pdf')
+    respuesta['Content-Disposition'] = f'attachment; filename="orden-de-compra-{orden.pk}.pdf"'
+    return respuesta
+
+
+@de_servicio
+@require_GET
+def productos_sin_foto(request):
+    """Productos con código de barras y sin foto: los que se pueden buscar."""
+    from stock.models import Producto
+
+    productos = (Producto.objects.filter(borrado_logico=False, imagen__isnull=True)
+                 .exclude(codigo_barras__isnull=True).select_related('id_marca')
+                 .order_by('pk')[:TOPE])
+    return JsonResponse({'productos': [{
+        'id': p.pk, 'codigo_barras': p.codigo_barras, 'nombre': p.nombre_producto,
+        'marca': p.id_marca.nombre_marca if p.id_marca_id else None,
+    } for p in productos]})
+
+
+@de_servicio
+@require_POST
+def foto_de_producto(request, pk):
+    """Le pone a un producto la dirección https:// de su foto."""
+    from seguridad.servicios import registrar_auditoria
+    from stock import imagenes
+    from stock.models import Producto
+
+    producto = get_object_or_404(Producto, pk=pk, borrado_logico=False)
+    try:
+        datos = json.loads(request.body or b'{}')
+        url = datos.get('url') if isinstance(datos, dict) else None
+        antes = producto.imagen
+        imagenes.poner_url(producto, url)
+    except (ValueError, ValidationError) as error:
+        mensaje = ' '.join(getattr(error, 'messages', ['El cuerpo tiene que ser {"url": "https://…"}.']))
+        return JsonResponse({'detail': mensaje}, status=400)
+    registrar_auditoria(
+        None, 'MODIFICACION', 'PRODUCTO', instancia=producto,
+        anterior={'id_producto': producto.pk, 'imagen': antes},
+        nuevo={'id_producto': producto.pk, 'imagen': producto.imagen},
+        detalle=f'Una automatización le puso la foto a {producto}.')
+    return JsonResponse({'id': producto.pk, 'imagen': producto.imagen})
+
+
+@de_servicio
+@require_GET
+def productos_sin_marca(request):
+    """Productos con código y la marca «Genérica»: los que se pueden completar."""
+    from stock.models import MARCA_GENERICA, Producto
+
+    productos = (Producto.objects.filter(borrado_logico=False, id_marca__nombre_marca=MARCA_GENERICA)
+                 .exclude(codigo_barras__isnull=True).order_by('pk')[:TOPE])
+    return JsonResponse({'productos': [{
+        'id': p.pk, 'codigo_barras': p.codigo_barras, 'nombre': p.nombre_producto,
+        'sin_foto': not p.imagen} for p in productos]})
+
+
+@de_servicio
+@require_POST
+def enriquecer_producto(request, pk):
+    """Completa lo que el producto todavía no tiene: la foto y/o la marca.
+
+    La marca sólo reemplaza a «Genérica»: una marca que cargó una persona
+    no la pisa una automatización. Si con la marca nueva el producto
+    quedaría igual a otro (misma marca, nombre y presentación), no se toca.
+    """
+    from django.db import transaction
+    from nucleo.validaciones import clave_normalizada
+    from seguridad.servicios import registrar_auditoria
+    from stock import imagenes
+    from stock.models import MARCA_GENERICA, Marca, Producto
+
+    producto = get_object_or_404(Producto.objects.select_related('id_marca'), pk=pk, borrado_logico=False)
+    try:
+        datos = json.loads(request.body or b'{}')
+        if not isinstance(datos, dict) or not (datos.get('url') or datos.get('marca')):
+            raise ValueError
+    except ValueError:
+        return JsonResponse({'detail': 'El cuerpo lleva "url", "marca" o las dos.'}, status=400)
+    antes = {'id_producto': producto.pk, 'imagen': producto.imagen, 'marca': producto.id_marca.nombre_marca}
+    hecho, omitido = [], {}
+    try:
+        with transaction.atomic():
+            if datos.get('url'):
+                imagenes.poner_url(producto, datos['url'])
+                hecho.append('foto')
+            if str(datos.get('marca') or '').strip():
+                from stock.reservados import asignar_marca
+                puesta, motivo = asignar_marca(producto, datos['marca'])
+                if puesta:
+                    hecho.append('marca')
+                else:
+                    omitido['marca'] = motivo
+    except ValidationError as error:
+        return JsonResponse({'detail': ' '.join(error.messages)}, status=400)
+    if hecho:
+        registrar_auditoria(
+            None, 'MODIFICACION', 'PRODUCTO', instancia=producto, anterior=antes,
+            nuevo={'id_producto': producto.pk, 'imagen': producto.imagen,
+                   'marca': producto.id_marca.nombre_marca},
+            detalle=f'Una automatización le completó {" y ".join(hecho)} a {producto}.')
+    return JsonResponse({'id': producto.pk, 'imagen': producto.imagen,
+                         'marca': producto.id_marca.nombre_marca,
+                         'actualizado': hecho, 'omitido': omitido})
+
+
+@de_servicio
+@require_POST
+def precargar_compra(request):
+    """Arma el enlace a una recepción ya escrita. No registra la compra."""
+    from django.conf import settings
+    from django.urls import reverse
+    from urllib.parse import urlencode
+
+    from compras import precarga
+
+    try:
+        testigo, resumen = precarga.armar(json.loads(request.body or b'{}'))
+    except ValueError:
+        return JsonResponse({'detail': 'El cuerpo no es JSON.'}, status=400)
+    except ValidationError as error:
+        return JsonResponse({'detail': ' '.join(error.messages)}, status=400)
+    ruta = reverse('compras:recepcion') + '?' + urlencode({'precarga': testigo})
+    base = (getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').rstrip('/')
+    return JsonResponse({**resumen, 'url': base + ruta, 'registrada': False,
+                         'vence_en_dias': precarga.VIGENCIA // 86400}, status=201)
+
+
+@de_servicio
+@require_POST
+def mantenimiento_mensual(request):
+    """La rutina del día 1: archiva lo viejo y ordena los proveedores.
+
+    1. ``pasar_a_historico --ejecutar`` (la única baja física del sistema).
+    2. Los productos de proveedores sin movimiento hace más de 180 días
+       pasan al último que sí los vendió (``compras.habitual``).
+
+    Con ``?simular=1`` informa lo que haría y no cambia nada. No da de baja
+    a ningún proveedor: eso lo decide una persona.
+    """
+    import io
+    import re
+
+    from django.core.management import call_command
+    from django.db import transaction
+
+    from compras import habitual
+    from seguridad.servicios import registrar_auditoria
+
+    simular = request.GET.get('simular') == '1'
+    salida = io.StringIO()
+    call_command('pasar_a_historico', *([] if simular else ['--ejecutar']), stdout=salida, no_color=True)
+    texto = salida.getvalue()
+    total = re.search(r'(\d+) fila\(s\)', texto)
+    hoy = timezone.localdate()
+    with transaction.atomic():
+        cambios = habitual.reasignar_los_de_inactivos(hoy)
+        reasignados = [{'producto': str(p), 'antes': str(a), 'ahora': str(n)} for p, a, n in cambios]
+        if simular:
+            transaction.set_rollback(True)
+    inactivos = _inactivos(hoy)
+    if not simular:
+        registrar_auditoria(
+            None, 'MANTENIMIENTO', 'MENSUAL', modulo='NUCLEO',
+            anterior={'proveedor_habitual': [{'producto': r['producto'], 'proveedor': r['antes']}
+                                             for r in reasignados[:TOPE]]},
+            nuevo={'archivadas': int(total.group(1)) if total else 0, 'reasignados': reasignados[:TOPE]},
+            detalle=f'Mantenimiento mensual automático: {total.group(1) if total else 0} fila(s) al histórico, '
+                    f'{len(reasignados)} producto(s) cambiaron de proveedor habitual, '
+                    f'{len(inactivos)} proveedor(es) sin movimiento hace más de 6 meses.')
+    return JsonResponse({
+        'simulacion': simular,
+        'filas_al_historico': int(total.group(1)) if total else 0,
+        'detalle_del_historico': [linea.strip() for linea in texto.splitlines() if linea.strip()][:60],
+        'productos_reasignados': reasignados[:TOPE], 'cantidad_reasignados': len(reasignados),
+        'proveedores_inactivos_6m': inactivos,
+    })

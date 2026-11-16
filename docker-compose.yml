@@ -88,10 +88,81 @@ services:
       # App móvil: dónde está, DENTRO del contenedor, la cuenta de servicio
       # de Firebase (el montaje de ./secretos de arriba).
       CAFETO_FIREBASE_CREDENCIAL: ${CAFETO_FIREBASE_CREDENCIAL:-/run/secrets/firebase.json}
+      # Correo con los nombres nuevos (Resend u otro SMTP). Si se definen,
+      # mandan sobre los DJANGO_CORREO_* de arriba (ver .env.example).
+      CAFETO_SMTP_HOST: ${CAFETO_SMTP_HOST:-}
+      CAFETO_SMTP_PORT: ${CAFETO_SMTP_PORT:-}
+      CAFETO_SMTP_USER: ${CAFETO_SMTP_USER:-}
+      CAFETO_SMTP_PASSWORD: ${CAFETO_SMTP_PASSWORD:-}
+      CAFETO_DEFAULT_FROM_EMAIL: ${CAFETO_DEFAULT_FROM_EMAIL:-}
+      # Con qué dirección se llega al sistema desde afuera (fotos en la app).
+      CAFETO_URL_PUBLICA: ${CAFETO_URL_PUBLICA:-}
+      # Credencial de la API de servicio. Vacía = la API no existe.
+      CAFETO_N8N_TOKEN: ${CAFETO_N8N_TOKEN:-}
+      # Webhook de n8n para los pedidos de autorización a distancia (DD-94).
+      CAFETO_N8N_WEBHOOK_AUTORIZACION: ${CAFETO_N8N_WEBHOOK_AUTORIZACION:-}
     depends_on:
       db:
         condition: service_healthy
 
+  # ---------- Automatizaciones (OPCIONALES) ----------
+  # No arrancan con "docker compose up": sólo si se pide el perfil, porque
+  # entre los dos piden alrededor de 1 GB de memoria.
+  #
+  #   docker compose --profile automatizacion up -d
+  #
+  # n8n habla con el sistema por la red interna (http://web:8000) usando la
+  # API de servicio y CAFETO_N8N_TOKEN; no usa la sesión de ningún usuario.
+  # Los dos puertos quedan atados a 127.0.0.1: se abren desde esta máquina,
+  # no desde la red del local ni desde internet.
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: cafeto_n8n
+    profiles: ["automatizacion"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      GENERIC_TIMEZONE: America/Argentina/Salta
+      TZ: America/Argentina/Salta
+      # Para que los flujos lean la credencial sin tenerla escrita adentro.
+      CAFETO_URL: http://web:8000
+      CAFETO_N8N_TOKEN: ${CAFETO_N8N_TOKEN:-}
+      # Los flujos de docs/n8n_workflows_cafeto.json leen estas variables.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      WAHA_URL: http://waha:3000
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      CAFETO_WHATSAPP_DUENIA: ${CAFETO_WHATSAPP_DUENIA:-}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - web
+
+  # WhatsApp por una sesión de WhatsApp Web (WAHA). No es la API oficial de
+  # WhatsApp: leer la advertencia en "Automatizaciones con n8n.md" (03 - Documentos).
+  waha:
+    image: devlikeapro/waha
+    container_name: cafeto_waha
+    profiles: ["automatizacion"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      # Panel (localhost:3000/dashboard) y documentación de la API
+      # (localhost:3000): si no se fijan, WAHA inventa una clave nueva en
+      # cada arranque y hay que ir a buscarla al log. Por defecto, usuario
+      # "admin" y la misma WAHA_API_KEY como clave.
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:-${WAHA_API_KEY:-}}
+      WHATSAPP_SWAGGER_USERNAME: ${WHATSAPP_SWAGGER_USERNAME:-admin}
+      WHATSAPP_SWAGGER_PASSWORD: ${WHATSAPP_SWAGGER_PASSWORD:-${WAHA_API_KEY:-}}
+      TZ: America/Argentina/Salta
+    volumes:
+      - waha_data:/app/.sessions
+
 # Volumen nombrado: conserva los datos aunque se borre el contenedor
 volumes:
   db_data:
+  n8n_data:
+  waha_data:

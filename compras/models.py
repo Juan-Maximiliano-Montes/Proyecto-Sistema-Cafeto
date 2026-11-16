@@ -60,6 +60,13 @@ class TipoProveedor(models.TextChoices):
     MIXTO = 'MIXTO', 'Mercadería y servicios'
 
 
+#  Proveedor reservado (DD-86): el de los productos que todavía no tienen
+#  el suyo. El CUIT es deliberadamente uno que ARCA no asigna (cuerpo todo en
+#  cero) pero que verifica, para no pisar jamás el de una empresa real.
+NOMBRE_PROVEEDOR_GENERAL = 'Proveedor General (Por asignar)'
+CUIT_PROVEEDOR_GENERAL = '30-00000000-7'
+
+
 class Proveedor(ConSelloDeModificacion,
                 SinBajaFisica, models.Model):
     """Proveedor de mercadería o de servicios. Tabla PROVEEDORES del DER.
@@ -164,6 +171,15 @@ class Proveedor(ConSelloDeModificacion,
         self.nombre_proveedor = texto_de_catalogo(
             self.nombre_proveedor, 2, 50, 'El nombre del proveedor')
         self.cuit_proveedor = validar_cuit(self.cuit_proveedor)
+        if self.pk and type(self).objects.filter(
+                pk=self.pk, cuit_proveedor=CUIT_PROVEEDOR_GENERAL).exists() and (
+                self.cuit_proveedor != CUIT_PROVEEDOR_GENERAL
+                or self.nombre_proveedor != NOMBRE_PROVEEDOR_GENERAL
+                or self.tipo_proveedor != TipoProveedor.MIXTO):
+            raise ValidationError(
+                f'«{NOMBRE_PROVEEDOR_GENERAL}» es el proveedor reservado para '
+                'lo que todavía no tiene el suyo: no se le cambian el nombre, '
+                'el CUIT ni el tipo.')
         self.telefono_proveedor = validar_telefono(self.telefono_proveedor)
 
         # Los UNIQUE no distinguen vigentes de dados de baja: sin esto,
@@ -250,6 +266,10 @@ class Proveedor(ConSelloDeModificacion,
         """Nada lo impide: la localidad no tiene baja y el CUIT sigue siendo suyo."""
         return []
 
+    @property
+    def es_el_general(self):
+        return self.cuit_proveedor == CUIT_PROVEEDOR_GENERAL
+
     def motivos_que_impiden_la_baja(self):
         """Lista de motivos por los que este proveedor no se puede dar de baja.
 
@@ -261,6 +281,9 @@ class Proveedor(ConSelloDeModificacion,
         from stock.models import Producto
 
         motivos = []
+        if self.es_el_general:
+            return ['es el proveedor reservado para los productos que todavía '
+                    'no tienen el suyo']
 
         abiertas = OrdenCompra.objects.filter(
             id_proveedor=self, estado_orden__in=('PENDIENTE', 'EMITIDA', 'CON_DIFERENCIAS')
@@ -620,6 +643,17 @@ class Compra(ConSaldosDerivados, SinBajaFisica, models.Model):
     def __str__(self):
         return f'{self.get_tipo_comprobante_display()} {self.numero_formateado} · {self.id_proveedor}'
 
+    @staticmethod
+    def con_pagado(consulta):
+        """La misma consulta con lo pagado de cada compra ya sumado."""
+        from django.db.models import DecimalField, OuterRef, Subquery, Sum
+
+        pagos = (Egreso.objects.filter(id_compra=OuterRef('pk'))
+                 .exclude(estado_pago='RECHAZADO').order_by()
+                 .values('id_compra').annotate(t=Sum('monto')).values('t'))
+        return consulta.annotate(pagado_anotado=Subquery(
+            pagos, output_field=DecimalField(max_digits=14, decimal_places=2)))
+
     @property
     def numero_formateado(self):
         """0001-00001234, como figura impreso."""
@@ -627,8 +661,14 @@ class Compra(ConSaldosDerivados, SinBajaFisica, models.Model):
 
     @property
     def pagado(self):
-        """Lo ya imputado por egresos vivos (no rechazados)."""
+        """Lo ya imputado por egresos vivos (no rechazados).
+
+        Un listado lo trae calculado de la base (``Compra.con_pagado``) para
+        no hacer una consulta por cada fila."""
         from django.db.models import Sum
+
+        if 'pagado_anotado' in self.__dict__:
+            return self.pagado_anotado or Decimal('0')
 
         return self.egresos.exclude(estado_pago='RECHAZADO').aggregate(
             t=Sum('monto'))['t'] or Decimal('0')

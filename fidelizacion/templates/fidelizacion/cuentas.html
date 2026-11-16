@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Cuentas corrientes{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-journal-text me-1"></i>Club Cafeto</span>
+        <h1 class="titulo-pantalla mb-0">Cuentas corrientes</h1>
+        <p class="bajada">Los clientes que llevaron fiado: cuánto deben y desde cuándo. Tocá a uno para cobrarle.</p>
+    </div>
+</div>
+
+<div class="grilla grilla-compacta mb-3">
+    <div class="tarjeta kpi h-100"><span class="eyebrow">Te deben en total</span><span class="valor">{{ total|pesos }}</span></div>
+    <div class="tarjeta kpi h-100"><span class="eyebrow">De eso, ya venció</span><span class="valor{% if vencido %} text-peligro{% endif %}">{{ vencido|pesos }}</span></div>
+    <div class="tarjeta kpi h-100"><span class="eyebrow">Clientes atrasados o suspendidos</span><span class="valor">{{ en_mora }}</span></div>
+    <div class="tarjeta kpi h-100"><span class="eyebrow">Dado por perdido</span><span class="valor{% if perdido %} text-peligro{% endif %}">{{ perdido|pesos }}</span><span class="detalle">{% if incobrables %}{{ incobrables }} cliente{{ incobrables|pluralize }} incobrable{{ incobrables|pluralize }}{% else %}Ninguna deuda perdida{% endif %}</span></div>
+</div>
+
+<form method="get" class="herramientas">
+    <input type="hidden" name="ver" value="{{ ver }}">
+    <div class="buscador"><i class="bi bi-search"></i><input type="search" name="q" value="{{ busqueda }}" class="form-control" placeholder="Buscar un cliente: nombre, DNI, teléfono o QR" aria-label="Buscar un cliente"></div>
+    <button type="submit" class="btn btn-secundario">Buscar</button>
+</form>
+{% if busqueda %}
+<div class="tarjeta mb-3">
+    <h2 class="subtitulo h5">Resultado de «{{ busqueda }}»</h2>
+    {% for c in hallados %}<a class="d-block py-2" href="{% url 'fidelizacion:cuenta' c.pk %}">{{ c.apellido_cliente }}, {{ c.nombre_cliente }} <span class="small text-secondary">· {{ c.get_estado_credito_display }}</span></a>
+    {% empty %}<p class="text-secondary mb-0">No encontré ningún cliente con eso. Si es nuevo, dalo de alta en Clientes o desde el mostrador.</p>{% endfor %}
+</div>
+{% endif %}
+
+{% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Qué cuentas ver' %}
+
+<div class="tarjeta p-0 overflow-hidden">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        {% if ver == 'incobrables' %}
+        <caption class="visually-hidden">Clientes con deuda dada por perdida</caption>
+        <thead><tr><th>Cliente</th><th>Para reconocerlo</th><th class="table-numero">Dado por perdido</th><th>Cuándo</th><th class="table-numero">Debe hoy</th><th></th></tr></thead>
+        <tbody>
+        {% for c in filas %}
+        <tr>
+            <td><a href="{% url 'fidelizacion:cuenta' c.pk %}" class="fw-semibold">{{ c.apellido_cliente }}, {{ c.nombre_cliente }}</a> <span class="insignia {% if c.estado_credito == 'INCOBRABLE' %}insignia-peligro{% else %}insignia-neutra{% endif %}">{{ c.get_estado_credito_display }}</span></td>
+            <td class="small">{{ c.nota_credito|default:"—" }}</td>
+            <td class="table-numero text-peligro fw-semibold">{{ c.perdido|pesos }}</td>
+            <td class="text-nowrap">{{ c.perdido_el|date:"d/m/Y"|default:"—" }}</td>
+            <td class="table-numero">{{ c.debe|pesos }}</td>
+            <td class="text-end"><a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-secundario text-nowrap">Ver cuenta</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-secondary py-5">No hay deudas dadas por perdidas.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if filas %}<tfoot><tr><th colspan="2">Total dado por perdido</th><th class="table-numero text-peligro">{{ perdido|pesos }}</th><th colspan="3"></th></tr></tfoot>{% endif %}
+        {% else %}
+        <caption class="visually-hidden">Cuentas corrientes: {% for v in vistas %}{% if v.activa %}{{ v.etiqueta|lower }}{% endif %}{% endfor %}</caption>
+        <thead><tr><th>Cliente</th><th>Para reconocerlo</th><th class="table-numero">Debe</th><th class="table-numero">Vencido</th><th>Atraso</th><th></th></tr></thead>
+        <tbody>
+        {% for c in filas %}
+        <tr{% if c.vencido or c.estado_credito == 'SANCIONADO' %} class="fila-destacada"{% endif %}>
+            <td><a href="{% url 'fidelizacion:cuenta' c.pk %}" class="fw-semibold">{{ c.apellido_cliente }}, {{ c.nombre_cliente }}</a>{% if c.estado_credito == 'SANCIONADO' %} <span class="insignia insignia-peligro">Suspendido</span>{% elif c.estado_credito == 'INCOBRABLE' %} <span class="insignia insignia-peligro">Incobrable</span>{% elif ver == 'todos' %} <span class="insignia {% if c.estado_credito == 'HABILITADO' %}insignia-exito{% else %}insignia-neutra{% endif %}">{{ c.get_estado_credito_display }}</span>{% endif %}</td>
+            <td class="small">{{ c.nota_credito|default:"—" }}</td>
+            <td class="table-numero">{{ c.debe|pesos }}</td>
+            <td class="table-numero{% if c.vencido %} text-peligro fw-semibold{% endif %}">{{ c.vencido|pesos }}</td>
+            <td>{% if c.dias_de_atraso %}{{ c.dias_de_atraso }} día{{ c.dias_de_atraso|pluralize }}{% elif c.debe and c.proximo %}<span class="small text-secondary">vence el {{ c.proximo|date:"d/m" }}</span>{% elif c.perdido %}<span class="small text-peligro text-nowrap">{{ c.perdido|pesos }} perdidos</span>{% else %}—{% endif %}</td>
+            <td class="text-end">{% if c.debe %}<a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-primary">Cobrar</a>{% else %}<a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-secundario text-nowrap">Ver cuenta</a>{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-secondary py-5">{% if ver == 'deuda' %}Nadie te debe nada. Cuando alguien lleve fiado desde el mostrador, aparece acá.{% elif ver == 'mora' %}Nadie está atrasado ni suspendido.{% else %}Todavía nadie tiene cuenta corriente.{% endif %}</td></tr>
+        {% endfor %}
+        </tbody>
+        {% endif %}
+    </table>
+    </div>
+</div>
+{% endblock %}

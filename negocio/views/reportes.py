@@ -95,3 +95,21 @@ def exportar_reporte(request):
     registrar_auditoria(request, 'EXPORTACION', 'REPORTE', modulo='NEGOCIO',
                         detalle=f'Exportó «{reporte.titulo}» {periodo}.'.strip())
     return exportar(formato, reporte.titulo, columnas, filas, periodo, grafico=grafico)
+
+
+@requiere_permiso('ver_reportes', redirigir_a='home')
+def resumen_del_mes(request):
+    """Lo que entró, lo que salió y lo que queda por pagar, de un mes."""
+    from negocio import mensual
+
+    hoy = timezone.localdate()
+    try:
+        anio, numero = (int(parte) for parte in request.GET.get('mes', '').split('-'))
+        if not (2000 <= anio <= hoy.year + 1 and 1 <= numero <= 12):
+            raise ValueError
+    except ValueError:
+        anio, numero = hoy.year, hoy.month
+    contexto = mensual.del_mes(anio, numero)
+    contexto['mes'] = f'{anio:04d}-{numero:02d}'
+    contexto['mes_actual'] = f'{hoy.year:04d}-{hoy.month:02d}'
+    return render(request, 'negocio/resumen_del_mes.html', contexto)

@@ -13,7 +13,7 @@ from fidelizacion.models import (
     Cliente,
 )
 from geografia.models import Localidad
-from nucleo.formularios import FormularioMaestro, SelectorConBusqueda
+from nucleo.formularios import FormularioMaestro, SelectorConBusqueda, vigentes_mas_el_actual
 from nucleo.validaciones import nombre_de_persona, normalizar_telefono, texto_de_catalogo
 from stock.models import Producto
 
@@ -80,8 +80,8 @@ class BeneficioForm(FormularioMaestro):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['id_categoria'].queryset = \
-            CategoriaFidelizacion.objects.filter(borrado_logico=False)
+        vigentes_mas_el_actual(self, 'id_categoria',
+                               CategoriaFidelizacion.objects.filter(borrado_logico=False))
         for nombre in ('vigencia_desde', 'vigencia_hasta'):
             self.fields[nombre].input_formats = ['%d/%m/%Y', '%Y-%m-%d']
 
@@ -111,8 +111,8 @@ class BeneficioProductoForm(FormularioMaestro):
         # el id que llegue. Lo que no se dibuja son sus 5.000 opciones
         # (ver SelectorConBusqueda).
         campo = self.fields['id_producto']
-        campo.queryset = Producto.objects.filter(
-            borrado_logico=False).select_related('id_marca')
+        vigentes_mas_el_actual(self, 'id_producto', Producto.objects.filter(
+            borrado_logico=False).select_related('id_marca'))
         campo.widget = SelectorConBusqueda(
             url_busqueda=reverse_lazy('stock:buscar_productos'),
             attrs={'class': 'form-select js-catalogo'})

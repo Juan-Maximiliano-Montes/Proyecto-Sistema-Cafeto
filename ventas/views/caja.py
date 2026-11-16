@@ -42,7 +42,7 @@ from ventas.forms import (
     ConfirmacionCierreForm,
     MovimientoEfectivoForm,
 )
-from ventas.models import CajaRegistradora, MovimientoCaja, TurnoCaja
+from ventas.models import CajaRegistradora, MovimientoCaja, TipoMovimientoCaja, TurnoCaja
 from nucleo.templatetags.cafeto import pesos
 
 PERMISOS_DEL_PUESTO = ('vender', 'abrir_caja', 'cerrar_caja',
@@ -358,6 +358,10 @@ def cierre(request):
         'diferencia': diferencia, 'tolerancia': tolerancia,
         'pide_supervisor': pide_supervisor, 'relevo': relevo, 'form': form,
         'titular_sola': titular_sola, 'etapa': etapa,
+        # De dónde sale lo que tiene que haber: se muestra recién cuando el
+        # conteo ya coincidió o ya quedó fijo (el arqueo sigue siendo ciego).
+        'composicion': ([(e, m) for e, m in servicio_caja.resumen(turno) if m]
+                        if etapa in ('REVELADA', 'COINCIDE') else []),
     })
 
 
@@ -495,8 +499,10 @@ def recaudacion(request, pk):
     filas = servicio_caja.recaudacion(turno)
     return render(request, 'ventas/recaudacion.html', {
         'turno': turno, 'filas': filas,
-        'total': sum((f['total'] for f in filas), Decimal('0')),
-        'resumen': [(e, m) for e, m in servicio_caja.resumen(turno) if m],
+        'total': sum((f['total'] for f in filas if not f['fiado']), Decimal('0')),
+        # El fondo inicial va en su propio renglón, arriba: no se repite.
+        'resumen': [(e, m) for e, m in servicio_caja.resumen(turno)
+                    if m and e != TipoMovimientoCaja.APERTURA.label],
         'conteos': servicio_caja.conteos_declarados(turno),
         'negocio': ParametrosNegocio.vigentes(),
     })

@@ -26,10 +26,10 @@
 <h6 class="subtitulo">Recaudación por medio de pago</h6>
 <div class="table-responsive mb-3">
 <table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Medio</th><th class="table-numero">Ventas</th><th class="table-numero">Cobrado</th><th class="table-numero">Cambios</th><th class="table-numero">Total</th></tr></thead>
+    <thead><tr><th>Medio</th><th class="table-numero">Ventas</th><th class="table-numero">Cobrado en ventas</th><th class="table-numero">Cambios</th><th class="table-numero">Cobros de cuentas corrientes</th><th class="table-numero">Total</th></tr></thead>
     <tbody>
     {% for r in recaudacion %}
-        <tr><td>{{ r.medio }}</td><td class="table-numero">{{ r.ventas }}</td><td class="table-numero">{{ r.cobrado|pesos }}</td><td class="table-numero">{{ r.cambios|pesos }}</td><td class="table-numero">{{ r.total|pesos }}</td></tr>
+        <tr><td>{{ r.medio }}{% if r.fiado %}<span class="d-block small text-secondary">vendido al fiado: no entró</span>{% endif %}</td><td class="table-numero">{{ r.ventas }}</td><td class="table-numero">{{ r.cobrado|pesos }}</td><td class="table-numero">{{ r.cambios|pesos }}</td><td class="table-numero">{{ r.cuentas|pesos }}</td><td class="table-numero">{{ r.total|pesos }}</td></tr>
     {% endfor %}
     </tbody>
 </table>

@@ -1,6 +1,6 @@
 """Módulo Ventas y Caja.
 
-Nueve tablas:
+Diez tablas:
 
     MEDIOS_PAGO          efectivo, transferencia, tarjetas, QR
     CAJAS_REGISTRADORAS  los cajones de cobro (Cafetería, Minisuper)
@@ -11,6 +11,7 @@ Nueve tablas:
     PAGOS_VENTA          cómo se pagó: uno o varios medios (pago mixto)
     CAMBIOS              devolución o cambio de mercadería de una venta
     DETALLES_CAMBIO      lo que vuelve y lo que se entrega
+    SOLICITUDES_AUTORIZACION  el permiso que la caja pide a distancia (DD-94)
 
 El efectivo del cajón es la SUMA del libro de caja: no hay una columna
 "saldo" que se pueda desincronizar.
@@ -80,6 +81,9 @@ class MedioPago(Maestra):
     # El dato inicial protegido: su recargo es siempre 0 y no se da de baja,
     # porque el vuelto y el arqueo se calculan sobre el importe en efectivo.
     NOMBRE_PROTEGIDO = 'Efectivo'
+    # El fiado (DD-91): un medio que no cobra nada en el momento. La venta
+    # queda paga "a cuenta" y lo que se debe vive en MOVIMIENTOS_CUENTA.
+    NOMBRE_CUENTA_CORRIENTE = 'Cuenta corriente'
 
     id_medio_pago = models.AutoField('ID', primary_key=True)
     nombre_medio_pago = models.CharField('Medio de pago', max_length=25)
@@ -169,8 +173,20 @@ class MedioPago(Maestra):
         return clave_normalizada(self.nombre_medio_pago) == \
             clave_normalizada(self.NOMBRE_PROTEGIDO)
 
+    @property
+    def es_cuenta_corriente(self):
+        return clave_normalizada(self.nombre_medio_pago) == \
+            clave_normalizada(self.NOMBRE_CUENTA_CORRIENTE)
+
     def clean(self):
         super().clean()
+        if self.pk and type(self).objects.filter(
+                pk=self.pk, nombre_medio_pago=self.NOMBRE_CUENTA_CORRIENTE).exists() and (
+                not self.es_cuenta_corriente or self.afecta_caja or self.recargo_porcentaje
+                or self.es_tarjeta_credito):
+            raise ValidationError(
+                f'«{self.NOMBRE_CUENTA_CORRIENTE}» es el medio reservado para el fiado: '
+                'no se le cambia el nombre, no entra al cajón y no lleva recargo.')
         # Mínimo 2: "QR" es un nombre de medio de pago legítimo (y es uno
         # de los datos iniciales; con 3 no se lo podía ni editar).
         self.nombre_medio_pago = texto_de_catalogo(
@@ -435,9 +451,10 @@ class TipoMovimientoCaja(models.TextChoices):
     GASTO = 'GASTO', 'Gasto pagado con la caja'
     DEVOLUCION = 'DEVOLUCION', 'Devolución de dinero'
     ANULACION = 'ANULACION', 'Anulación de venta'
+    COBRO_CUENTA = 'COBRO_CUENTA', 'Cobro de cuenta corriente'
 
 
-ENTRADAS_DE_CAJA = ('VENTA', 'COBRO_CAMBIO', 'REFUERZO')
+ENTRADAS_DE_CAJA = ('VENTA', 'COBRO_CAMBIO', 'REFUERZO', 'COBRO_CUENTA')
 SALIDAS_DE_CAJA = ('RETIRO', 'GASTO', 'DEVOLUCION', 'ANULACION')
 
 
@@ -1059,3 +1076,111 @@ class DetalleCambio(LibroInmutable, models.Model):
 
     def __str__(self):
         return f'{self.get_sentido_display()} {self.cantidad} × {self.id_producto}'
+
+
+# ===========================================================================
+#  AUTORIZACIÓN A DISTANCIA (DD-94)
+# ===========================================================================
+class EstadoSolicitud(models.TextChoices):
+    PENDIENTE = 'PENDIENTE', 'Esperando respuesta'
+    APROBADA = 'APROBADA', 'Aprobada'
+    RECHAZADA = 'RECHAZADA', 'Rechazada'
+    USADA = 'USADA', 'Usada en la venta'
+    ANULADA = 'ANULADA', 'Anulada'
+
+
+class ViaAprobacion(models.TextChoices):
+    ENLACE = 'ENLACE', 'Enlace del correo o del WhatsApp'
+    PIN = 'PIN', 'PIN dictado a la caja'
+    BANDEJA = 'BANDEJA', 'Desde el sistema'
+
+
+class SolicitudAutorizacion(models.Model):
+    """La caja pide permiso y la dueña contesta desde el celular.
+
+    Cuando una venta necesita la firma de alguien que no está al lado de la
+    caja (fiarle a alguien por primera vez, pasar su tope, un descuento por
+    encima del de la cajera), la caja deja acá el pedido con el ticket tal
+    como está. Se avisa a la titular por correo y por n8n; ella aprueba con
+    el enlace, desde la bandeja del sistema, o le dicta a la caja un PIN de
+    4 dígitos. Vale 10 minutos y para ESE ticket: la ``huella_operacion``
+    resume cliente, productos, descuentos y pagos, y si el ticket cambia la
+    aprobación ya no sirve.
+
+    Del enlace y del PIN se guarda sólo el hash: quien lea la base no puede
+    aprobar nada.
+    """
+
+    VIGENCIA_MINUTOS = 10
+    INTENTOS_DE_PIN = 5
+
+    id_solicitud = models.AutoField('ID', primary_key=True)
+    id_usuario_solicitante = models.ForeignKey(
+        'seguridad.Usuario', on_delete=models.RESTRICT, db_column='id_usuario_solicitante',
+        related_name='+', verbose_name='Pidió')
+    id_usuario_autorizante = models.ForeignKey(
+        'seguridad.Usuario', on_delete=models.RESTRICT, db_column='id_usuario_autorizante',
+        null=True, blank=True, related_name='+', verbose_name='Contestó')
+    id_turno_caja = models.ForeignKey(
+        TurnoCaja, on_delete=models.RESTRICT, db_column='id_turno_caja',
+        related_name='solicitudes', verbose_name='Turno de caja')
+    id_cliente = models.ForeignKey(
+        'fidelizacion.Cliente', on_delete=models.RESTRICT, db_column='id_cliente',
+        null=True, blank=True, related_name='+', verbose_name='Cliente')
+    id_venta = models.ForeignKey(
+        Venta, on_delete=models.RESTRICT, db_column='id_venta', null=True, blank=True,
+        related_name='+', verbose_name='Venta')
+    motivo_solicitud = models.CharField('Qué se pide', max_length=200)
+    monto_solicitud = campo_importe('Total del ticket')
+    pedido = models.JSONField('Ticket')
+    huella_operacion = models.CharField('Huella del ticket', max_length=64)
+    token_hash = models.CharField('Hash del enlace', max_length=64)
+    pin_hash = models.CharField('Hash del PIN', max_length=64)
+    intentos_pin = models.PositiveSmallIntegerField('Intentos de PIN', default=0)
+    estado_solicitud = models.CharField(
+        'Estado', max_length=10, choices=EstadoSolicitud.choices, default=EstadoSolicitud.PENDIENTE)
+    via_aprobacion = models.CharField(
+        'Cómo se aprobó', max_length=8, choices=ViaAprobacion.choices, null=True, blank=True)
+    fecha_solicitud = models.DateTimeField('Pedida', default=timezone.now)
+    fecha_vencimiento = models.DateTimeField('Vence')
+    fecha_resolucion = models.DateTimeField('Contestada', null=True, blank=True)
+
+    class Meta:
+        db_table = 'solicitudes_autorizacion'
+        verbose_name = 'Pedido de autorización'
+        verbose_name_plural = 'Pedidos de autorización'
+        ordering = ['-id_solicitud']
+        indexes = [models.Index(fields=['estado_solicitud', 'fecha_vencimiento'], name='ix_solautoriz_pendientes')]
+        constraints = [
+            CheckEnBase(
+                check=CheckSQL(
+                    "estado_solicitud IN ('PENDIENTE','APROBADA','RECHAZADA','USADA','ANULADA') "
+                    'AND monto_solicitud >= 0 AND intentos_pin BETWEEN 0 AND 5 '
+                    'AND fecha_vencimiento > fecha_solicitud '
+                    "AND trim(motivo_solicitud) <> '' AND length(huella_operacion) = 64"),
+                name='ck_solautoriz_valores'),
+            # Lo que contestó: nadie y nada mientras espera; quién y cómo si
+            # se aprobó; sólo cuándo si se rechazó o se anuló.
+            CheckEnBase(
+                check=CheckSQL(
+                    "(estado_solicitud = 'PENDIENTE' AND id_usuario_autorizante IS NULL "
+                    'AND via_aprobacion IS NULL AND fecha_resolucion IS NULL) '
+                    "OR (estado_solicitud IN ('APROBADA','USADA') AND id_usuario_autorizante IS NOT NULL "
+                    "AND via_aprobacion IN ('ENLACE','PIN','BANDEJA') AND fecha_resolucion IS NOT NULL) "
+                    "OR (estado_solicitud IN ('RECHAZADA','ANULADA') AND via_aprobacion IS NULL "
+                    'AND fecha_resolucion IS NOT NULL)'),
+                name='ck_solautoriz_resolucion'),
+            # La venta sólo la tiene una aprobación usada. Una usada puede
+            # no tener venta: la de un ajuste de stock desde el mostrador.
+            CheckEnBase(
+                check=CheckSQL("id_venta IS NULL OR estado_solicitud = 'USADA'"),
+                name='ck_solautoriz_venta'),
+            models.UniqueConstraint(fields=['token_hash'], name='uq_solicitudes_autorizacion_token_hash'),
+        ]
+
+    def __str__(self):
+        return f'Pedido de autorización N° {self.pk}'
+
+    @property
+    def vencida(self):
+        return timezone.now() >= self.fecha_vencimiento

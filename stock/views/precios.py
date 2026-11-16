@@ -47,7 +47,11 @@ def actualizar_precios(request):
     if datos.get('porcentaje'):
         productos = precios.alcanzados(**filtros)
         try:
-            bajo_costo = precios.quedan_bajo_costo(productos, porcentaje, paso)
+            # Una sola pasada: de acá salen la vista previa, lo que queda
+            # bajo el costo y lo que el redondeo deja igual.
+            todas = precios.calcular(productos, porcentaje, paso)
+            bajo_costo = [p for p, _antes, despues in todas
+                          if p.precio_costo is not None and despues < p.precio_costo]
             contexto['bajo_costo'] = bajo_costo
             confirmado = (request.method == 'POST'
                           and (not bajo_costo or request.POST.get('confirmo_bajo_costo')))
@@ -75,8 +79,8 @@ def actualizar_precios(request):
                     detalle=f'{porcentaje} % ({alcance}), redondeo a {pesos(paso)}: {cantidad} precio(s) cambiados.')
                 messages.success(request, f'Listo: se actualizaron {cantidad} precio(s).')
                 return redirect('stock:productos_lista')
-            filas = precios.calcular(productos[:VISTA_PREVIA], porcentaje, paso)
-            total = productos.count()
+            filas = todas[:VISTA_PREVIA]
+            total = len(todas)
             if not total:
                 elegidos = [str(v) for v in filtros.values() if v]
                 contexto['sin_productos'] = (
@@ -84,8 +88,7 @@ def actualizar_precios(request):
                     + ' y de '.join(f'"{e}"' for e in elegidos)
                     + ' a la vez. Probá dejando alguno de los filtros en "Todos".'
                     if elegidos else 'Todavía no hay productos a la venta para remarcar.')
-            sin_cambio = sum(1 for _p, antes, despues in
-                             precios.calcular(productos, porcentaje, paso) if antes == despues)
+            sin_cambio = sum(1 for _p, antes, despues in todas if antes == despues)
             contexto.update({'filas': filas, 'total': total, 'sin_cambio': sin_cambio,
                              'token': idempotencia.emitir(request)})
         except ValidationError as error:

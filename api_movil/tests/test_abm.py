@@ -29,7 +29,7 @@ class MarcasTest(BaseApi):
         ids = [m['id'] for m in primera['resultados'] + segunda['resultados']]
         self.assertEqual(len(set(ids)), vigentes)          # nada repetido
         self.assertEqual([m['nombre'] for m in primera['resultados'][:2]],
-                         ['Marca 00', 'Marca 01'])         # por nombre
+                         ['Genérica', 'Marca 00'])         # por nombre
 
     def test_una_pagina_rara_no_rompe(self):
         self.assertEqual(self.pedir('get', '/marcas/', {'pagina': 'x'},

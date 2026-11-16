@@ -218,8 +218,15 @@ DIAS_DE_ATRASO_ADMITIDOS = timedelta(days=30)
 def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
                 numero_comprobante, renglones, fecha_compra=None,
                 importe_otros_conceptos=Decimal('0'), orden=None,
-                fecha_vencimiento_pago=None):
+                fecha_vencimiento_pago=None, vincular_sin_proveedor=True):
     """Registra la factura, da de alta los lotes y entra el stock.
+
+    ``vincular_sin_proveedor``: los productos que todavía figuran con el
+    «Proveedor General (Por asignar)» pasan a ser de este proveedor (DD-86).
+    Los que ya tienen uno propio lo conservan salvo que las compras hayan
+    cambiado de verdad (``compras.habitual``, DD-89). Lo que cambió queda
+    en ``compra.vinculados`` (cuántos) y ``compra.rotados`` ([(producto,
+    anterior, motivo)]).
 
     ``renglones`` es una lista de ``RenglonRecibido``. El total de la
     compra es la suma de los renglones más los otros conceptos
@@ -350,6 +357,18 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
                 cantidad=cantidad, costo_unitario=costo, **documento)
         # RN-4.2.4: el costo queda en el ÚLTIMO precio facturado.
         Producto.objects.filter(pk=producto.pk).update(precio_costo=costo)
+        compra.por_revisar = getattr(compra, 'por_revisar', []) + [producto]
+
+    from compras import habitual
+    compra.vinculados, compra.rotados = 0, []
+    for producto in getattr(compra, 'por_revisar', []):
+        anterior = producto.id_proveedor
+        motivo = habitual.al_recibir(producto, proveedor, vincular_sin_proveedor,
+                                     hoy=compra.fecha_compra)
+        if motivo == 'SIN_ASIGNAR':
+            compra.vinculados += 1
+        elif motivo:
+            compra.rotados.append((producto, anterior, motivo))
 
     if orden is not None:
         # La planilla de control (DFD 3): si lo recibido no coincide con lo

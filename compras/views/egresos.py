@@ -34,6 +34,7 @@ from nucleo.templatetags.cafeto import pesos
 
 PERMISOS = ('ver_egresos', 'registrar_egreso', 'registrar_gasto_caja',
             'conciliar_egresos')
+RESUELTOS = ('ACREDITADO', 'RECHAZADO')
 PESTANIAS = (('a_pagar', 'A pagar', 'bi-calendar-event'),
              ('por_acreditar', 'Por acreditar', 'bi-bank'),
              ('historial', 'Historial', 'bi-clock-history'))
@@ -53,7 +54,11 @@ def _fecha(texto):
 def _contexto_formularios(request):
     return {
         'tipos': TipoEgreso.objects.filter(borrado_logico=False).order_by('nombre_tipo_egreso'),
-        'medios': MedioPago.objects.filter(borrado_logico=False).order_by('-afecta_caja', 'nombre_medio_pago'),
+        # La cuenta corriente es el fiado de los clientes: con eso no se le
+        # paga a nadie.
+        'medios': MedioPago.objects.filter(borrado_logico=False)
+                  .exclude(nombre_medio_pago=MedioPago.NOMBRE_CUENTA_CORRIENTE)
+                  .order_by('-afecta_caja', 'nombre_medio_pago'),
         'proveedores': Proveedor.objects.filter(borrado_logico=False).order_by('nombre_proveedor'),
         'turno': puesto.turno_de(request),
         'token': idempotencia.emitir(request),
@@ -70,7 +75,8 @@ def egresos(request):
     if pestania == 'por_acreditar':
         consulta = base.filter(estado_pago='PENDIENTE_ACREDITACION').order_by('fecha_egreso', 'pk')
     elif pestania == 'historial':
-        consulta = base.exclude(estado_pago='PENDIENTE_PAGO').order_by('-fecha_egreso', '-pk')
+        # Sólo lo resuelto: lo que espera al banco está en «Por acreditar».
+        consulta = base.filter(estado_pago__in=RESUELTOS).order_by('-fecha_egreso', '-pk')
         busqueda = request.GET.get('q', '').strip()
         if busqueda:
             consulta = consulta.filter(Q(concepto__icontains=busqueda)
@@ -79,14 +85,19 @@ def egresos(request):
     else:
         pestania = 'a_pagar'
         consulta = base.filter(estado_pago='PENDIENTE_PAGO').order_by('fecha_vencimiento', 'pk')
-        contexto['compras_impagas'] = (
-            Compra.objects.exclude(estado_compra='PAGADA').select_related('id_proveedor')
-            .order_by('fecha_vencimiento_pago', 'fecha_compra')[:50])
+        contexto['compras_impagas'] = servicio.compras_por_pagar()[:50]
     contexto.update(paginar(request, consulta, TAMANIOS_TABLA, por_defecto=25))
     contexto.update({
-        'pestania': pestania, 'pestanias': PESTANIAS, 'filtro': request.GET,
+        'pestania': pestania, 'filtro': request.GET,
+        'vistas': [{'clave': clave, 'etiqueta': etiqueta, 'activa': clave == pestania, 'url': f'?ver={clave}',
+                    'cantidad': cantidad} for (clave, etiqueta, _icono), cantidad in zip(PESTANIAS, (
+                        base.filter(estado_pago='PENDIENTE_PAGO').count()
+                        + servicio.compras_por_pagar().count(),
+                        base.filter(estado_pago='PENDIENTE_ACREDITACION').count(),
+                        base.filter(estado_pago__in=RESUELTOS).count()))],
         'vence_pronto': hoy + timedelta(days=7),
-        'compra_elegida': Compra.objects.filter(pk=request.GET.get('compra') or 0).first(),
+        'compra_elegida': servicio.compras_por_pagar().filter(pk=request.GET.get('compra') or 0).first(),
+        'dias_sin_confirmar': servicio.DIAS_SIN_CONFIRMAR,
     })
     return render(request, 'compras/egresos.html', contexto)
 

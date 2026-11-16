@@ -1,0 +1,33 @@
+{% load crud_extras %}
+    <div class="{% if campo.field.widget.input_type == 'checkbox' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}"{% if campo.field.visible_si %} data-visible-si="{{ campo.field.visible_si }}"{% endif %}>
+        {% if campo.field.widget.input_type == 'checkbox' %}
+            <div class="form-check">
+                {{ campo }}
+                <label class="form-check-label" for="{{ campo.id_for_label }}">
+                    {{ campo.label }}
+                </label>
+            </div>
+        {% else %}
+            <label class="form-label" for="{{ campo.id_for_label }}">
+                {{ campo.label }}
+                {% if campo.field.required %}<span class="text-peligro" aria-hidden="true">*</span>{% endif %}
+            </label>
+            {% with url_alta=campo|alta_rapida %}{% if url_alta %}
+            <div class="d-flex gap-2 align-items-start">
+                <div class="flex-grow-1">{{ campo }}</div>
+                <button type="button" class="btn btn-secundario js-alta-rapida" data-url="{{ url_alta }}"
+                        data-destino="{{ campo.id_for_label }}" title="{{ campo|alta_titulo }} sin salir de acá"
+                        aria-label="{{ campo|alta_titulo }}"><i class="bi bi-plus-lg"></i></button>
+            </div>
+            <div class="alta-rapida-panel" data-para="{{ campo.id_for_label }}" hidden></div>
+            {% else %}{{ campo }}{% endif %}{% endwith %}
+        {% endif %}
+
+        {% if campo.field.complemento %}{% include campo.field.complemento %}{% endif %}
+        {% if campo.help_text %}
+            <div class="form-text">{{ campo.help_text }}</div>
+        {% endif %}
+        {% for error in campo.errors %}
+            <p class="error-campo"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ error }}</p>
+        {% endfor %}
+    </div>

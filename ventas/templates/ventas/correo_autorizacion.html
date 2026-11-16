@@ -1,0 +1,9 @@
+{% load cafeto %}<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1f2430;max-width:480px">
+<p>Hola{% if titular %} {{ titular.nombre }}{% endif %}:</p>
+<p>Desde la caja te piden autorización.</p>
+<p style="font-size:16px"><strong>{{ solicitud.motivo_solicitud }}.</strong><br>{% if solicitud.monto_solicitud %}Total del ticket: <strong style="white-space:nowrap">{{ solicitud.monto_solicitud|pesos }}</strong>{% else %}Es un ajuste de stock: no hay cobro.{% endif %}</p>
+{% if renglones %}<ul style="color:#555">{% for r in renglones %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+<p><a href="{{ enlace }}" style="display:inline-block;background:#f5b324;color:#1f2430;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:bold">Ver y aprobar</a></p>
+<p>O dictale este PIN a la caja: <strong style="font-size:22px;letter-spacing:4px">{{ pin }}</strong></p>
+<p style="color:#555;font-size:13px">Vale hasta las {{ vence|date:"H:i" }}. Si no lo pediste vos ni nadie del local, no hagas nada: vence solo.</p>
+</div>

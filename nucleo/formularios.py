@@ -22,6 +22,37 @@ CLASES = {
 CLASE_POR_DEFECTO = 'form-control'
 
 
+def vigentes_mas_el_actual(formulario, nombre, vigentes):
+    """El combo ofrece sólo lo vigente (V-G7), pero si el registro ya
+    apunta a algo que después se dio de baja o se desactivó, eso también
+    aparece, elegido y marcado.
+
+    Sin esto el ``<select>`` no encuentra la opción guardada y el navegador
+    muestra la primera: al guardar por otra cosa (el precio, el nombre) el
+    dato cambia sin que nadie lo haya elegido, o el formulario falla con
+    un «elegí una opción válida» que nadie entiende. Elegir otra cosa
+    vigente sigue funcionando igual; volver a elegir lo de baja, no: sólo
+    se conserva lo que ya estaba.
+    """
+    campo = formulario.fields[nombre]
+    actual = formulario.initial.get(nombre)
+    actual = getattr(actual, 'pk', actual)
+    if actual in (None, '') or vigentes.filter(pk=actual).exists():
+        campo.queryset = vigentes
+        return
+    campo.queryset = vigentes | vigentes.model.objects.filter(pk=actual)
+    etiquetar = campo.label_from_instance
+
+    def con_aviso(objeto):
+        texto = etiquetar(objeto)
+        if str(objeto.pk) != str(actual):
+            return texto
+        return f'{texto} (dado de baja)' if getattr(objeto, 'borrado_logico', False) else f'{texto} (inactivo)'
+
+    campo.label_from_instance = con_aviso
+    campo.fuera_de_uso = actual
+
+
 class FormularioMaestro(forms.ModelForm):
     """Base de todos los formularios de datos maestros.
 
@@ -212,7 +243,8 @@ class SelectorConBusqueda(forms.Select):
 
         seleccionados = {str(v) for v in value if v not in (None, '')}
         if seleccionados:
-            cortas += [(str(o.pk), str(o))
+            etiquetar = getattr(campo, 'label_from_instance', str)
+            cortas += [(str(o.pk), etiquetar(o))
                        for o in queryset.filter(pk__in=seleccionados)]
 
         self.choices = cortas

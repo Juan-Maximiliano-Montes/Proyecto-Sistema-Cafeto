@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from nucleo.modelos import (
     Maestra,
+    campo_importe,
     sello_fecha_modificacion,
     sello_usuario_modificacion,
 )
@@ -446,6 +447,13 @@ class BeneficioProducto(models.Model):
 # ===========================================================================
 #  CLIENTES Y PUNTOS
 # ===========================================================================
+class EstadoCredito(models.TextChoices):
+    SIN_CREDITO = 'SIN_CREDITO', 'Sin cuenta corriente'
+    HABILITADO = 'HABILITADO', 'Puede llevar fiado'
+    SANCIONADO = 'SANCIONADO', 'Suspendido'
+    INCOBRABLE = 'INCOBRABLE', 'Incobrable'
+
+
 class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
               SinBajaFisica, models.Model):
     """Cliente del programa de fidelización (Alternativa II)."""
@@ -471,6 +479,20 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
         validators=[VALIDADOR_TELEFONO])
     email_cliente = models.EmailField(
         'Email', max_length=254, null=True, blank=True)
+    # --- Cuenta corriente (fiado, DD-91). Quién puede llevar sin pagar. ---
+    estado_credito = models.CharField(
+        'Cuenta corriente', max_length=12, choices=EstadoCredito.choices,
+        default=EstadoCredito.SIN_CREDITO)
+    limite_credito = campo_importe(
+        'Tope de fiado', default=Decimal('0'), validators=[NO_NEGATIVO],
+        help_text='Cuánto puede deber como máximo. 0 = sin tope fijo.')
+    nota_credito = models.CharField(
+        'Nota del fiado', max_length=120, null=True, blank=True,
+        help_text='Cómo reconocerlo o qué se acordó: "Cobra la jubilación '
+                  'el 10".')
+    plazo_credito_dias = models.PositiveSmallIntegerField(
+        'Días para pagar', default=30,
+        help_text='El plazo que se le propone en la caja cuando lleva fiado.')
     # La cuenta de la app (Firebase) con la que el cliente se vinculó. Una
     # vez vinculada, se lo encuentra por acá y el correo deja de importar.
     # No se carga ni se edita en ninguna pantalla: lo escribe la API móvil.
@@ -519,6 +541,12 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
                     "fecha_nacimiento IS NULL OR "
                     "fecha_nacimiento >= DATE '1900-01-01'"),
                 name='ck_clientes_nacimiento'),
+            CheckEnBase(
+                check=CheckSQL(
+                    "estado_credito IN ('SIN_CREDITO','HABILITADO',"
+                    "'SANCIONADO','INCOBRABLE') AND limite_credito >= 0 "
+                    'AND plazo_credito_dias BETWEEN 1 AND 366'),
+                name='ck_clientes_credito'),
             models.UniqueConstraint(
                 fields=['qr_cliente'], name='uq_clientes_qr_cliente'),
             models.UniqueConstraint(
@@ -811,3 +839,90 @@ class MovimientoPuntos(LibroInmutable, models.Model):
 
     def __str__(self):
         return f'{self.tipo_movimiento} {self.puntos:+} ({self.id_cliente})'
+
+
+class TipoMovimientoCuenta(models.TextChoices):
+    FIADO = 'FIADO', 'Compra fiada'
+    COBRO = 'COBRO', 'Pago del cliente'
+    INTERES = 'INTERES', 'Recargo por mora'
+    CANCELACION = 'CANCELACION', 'Baja por anulación o devolución'
+    INCOBRABLE = 'INCOBRABLE', 'Pérdida por incobrable'
+
+
+class MovimientoCuenta(models.Model):
+    """El libro de la cuenta corriente de un cliente (DD-91).
+
+    Cada compra fiada es una fila FIADO con su vencimiento y lo que le falta
+    pagar (``saldo_pendiente``). Todo lo que la achica —un pago, la anulación
+    de la venta, una devolución, darla por perdida— es otra fila que apunta
+    a ese fiado (``id_fiado``). El recargo por mora (INTERES) no agranda la
+    deuda: se cobra en el momento, junto con el pago.
+
+    Lo que debe un cliente es la suma de ``saldo_pendiente`` de sus fiados.
+    """
+
+    id_movimiento_cuenta = models.AutoField('ID', primary_key=True)
+    id_cliente = models.ForeignKey(
+        'fidelizacion.Cliente', on_delete=models.RESTRICT, db_column='id_cliente',
+        related_name='movimientos_cuenta', verbose_name='Cliente')
+    tipo_movimiento = models.CharField('Tipo', max_length=12, choices=TipoMovimientoCuenta.choices)
+    monto = campo_importe('Importe')
+    id_venta = models.ForeignKey(
+        'ventas.Venta', on_delete=models.RESTRICT, db_column='id_venta', null=True, blank=True,
+        related_name='movimientos_cuenta', verbose_name='Venta')
+    id_fiado = models.ForeignKey(
+        'self', on_delete=models.RESTRICT, db_column='id_fiado', null=True, blank=True,
+        related_name='aplicaciones', verbose_name='Fiado al que se aplica')
+    id_medio_pago = models.ForeignKey(
+        'ventas.MedioPago', on_delete=models.RESTRICT, db_column='id_medio_pago', null=True, blank=True,
+        related_name='+', verbose_name='Medio de pago')
+    id_turno_caja = models.ForeignKey(
+        'ventas.TurnoCaja', on_delete=models.RESTRICT, db_column='id_turno_caja', null=True, blank=True,
+        related_name='+', verbose_name='Turno de caja')
+    id_usuario = models.ForeignKey(
+        'seguridad.Usuario', on_delete=models.RESTRICT, db_column='id_usuario',
+        related_name='+', verbose_name='Usuario')
+    fecha_movimiento = models.DateTimeField('Fecha', default=timezone.now)
+    fecha_vencimiento = models.DateField('Vence', null=True, blank=True)
+    saldo_pendiente = campo_importe('Falta pagar', null=True, blank=True)
+    puntos_acreditados = models.BooleanField('Puntos acreditados', default=False)
+    motivo = models.CharField('Motivo', max_length=120, null=True, blank=True)
+
+    class Meta:
+        db_table = 'movimientos_cuenta'
+        verbose_name = 'movimiento de cuenta corriente'
+        verbose_name_plural = 'movimientos de cuenta corriente'
+        ordering = ['id_movimiento_cuenta']
+        indexes = [models.Index(fields=['id_cliente', 'tipo_movimiento'], name='ix_movcuenta_cliente')]
+        constraints = [
+            CheckEnBase(
+                check=CheckSQL("tipo_movimiento IN ('FIADO','COBRO','INTERES','CANCELACION','INCOBRABLE') "
+                               'AND monto > 0'),
+                name='ck_movcuenta_tipo'),
+            # Un fiado nace de una venta, vence y lleva su saldo; lo demás no.
+            CheckEnBase(
+                check=CheckSQL(
+                    "(tipo_movimiento = 'FIADO' AND id_venta IS NOT NULL AND id_fiado IS NULL "
+                    'AND fecha_vencimiento IS NOT NULL AND saldo_pendiente IS NOT NULL '
+                    'AND saldo_pendiente >= 0 AND saldo_pendiente <= monto) '
+                    "OR (tipo_movimiento <> 'FIADO' AND fecha_vencimiento IS NULL "
+                    'AND saldo_pendiente IS NULL AND NOT puntos_acreditados)'),
+                name='ck_movcuenta_fiado'),
+            # Lo que achica una deuda dice cuál; el recargo no achica ninguna.
+            CheckEnBase(
+                check=CheckSQL(
+                    "(tipo_movimiento IN ('COBRO','CANCELACION','INCOBRABLE')) = (id_fiado IS NOT NULL)"),
+                name='ck_movcuenta_aplicacion'),
+            # La plata entra por un medio de pago; sólo el efectivo va a un turno.
+            CheckEnBase(
+                check=CheckSQL(
+                    "(tipo_movimiento IN ('COBRO','INTERES')) = (id_medio_pago IS NOT NULL) "
+                    'AND (id_turno_caja IS NULL OR id_medio_pago IS NOT NULL)'),
+                name='ck_movcuenta_medio'),
+            models.UniqueConstraint(
+                fields=['id_venta'], condition=models.Q(tipo_movimiento='FIADO'),
+                name='uq_movcuenta_fiado_venta'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_tipo_movimiento_display()} · {self.id_cliente} · {self.monto}'

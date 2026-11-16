@@ -104,7 +104,7 @@ class VerProveedoresPermisoTest(TestCase):
         # Dos saltos: 'crear_proveedor' lo manda al listado, y el listado
         # (que pide 'ver_proveedores') lo manda a su ficha personal.
         self.assertEqual(r.request['PATH_INFO'], reverse('mi_perfil'))
-        self.assertEqual(Proveedor.objects.count(), 0)
+        self.assertEqual(Proveedor.objects.exclude(cuit_proveedor='30-00000000-7').count(), 0)
 
     def test_permiso_explicito_habilita_al_cajero(self):
         ver = Permiso.objects.get(codigo='ver_proveedores')
@@ -153,7 +153,7 @@ class PermisosGranularesTest(TestCase):
             'condicion_pago': Proveedor.CondicionPago.CONTADO,
         })
         self.assertRedirects(r, reverse('compras:proveedores_lista'))
-        self.assertEqual(Proveedor.objects.count(), 1)   # sólo el del setUp
+        self.assertEqual(Proveedor.objects.exclude(cuit_proveedor='30-00000000-7').count(), 1)   # sólo el del setUp
 
     def test_no_puede_editar_por_url(self):
         r = self.client.post(

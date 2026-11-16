@@ -32,7 +32,7 @@
         {% for r in renglones %}
             <tr>
                 <td>{{ r.id_producto }}</td>
-                <td class="small">{% if r.id_lote %}vence {{ r.id_lote.fecha_vencimiento|date:"d/m/Y" }}{% else %}—{% endif %}</td>
+                <td class="small">{% if r.id_lote %}{{ r.id_lote.fecha_vencimiento|vencimiento }}{% else %}—{% endif %}</td>
                 {% if ajuste.tipo_ajuste == 'CONTEO' %}
                     {% if ve_diferencias %}<td class="table-numero">{{ r.cantidad_teorica|cantidad }}</td>{% endif %}
                     <td class="table-numero">{{ r.cantidad_contada|cantidad }}</td>

@@ -3,7 +3,7 @@ from django.urls import path
 
 from nucleo.crud import rutas_crud
 
-from .views import ajustes, alertas, catalogos, precios, produccion
+from .views import ajustes, alertas, catalogos, fotos, precios, produccion
 
 app_name = 'stock'
 
@@ -12,13 +12,17 @@ urlpatterns = (rutas_crud('productos') + rutas_crud('rubros')
 
 urlpatterns += [
     # Consultas que alimentan los selectores de producto (JSON).
+    path('productos/<int:pk>/foto/', fotos.foto_de_producto, name='producto_foto'),
     path('api/productos/', catalogos.buscar_productos, name='buscar_productos'),
+    path('api/codigo-interno/', catalogos.codigo_interno, name='codigo_interno'),
     path('api/lotes/', alertas.lotes_de_producto, name='lotes_de_producto'),
     # Alertas y ofertas
     path('alertas/', alertas.alertas, name='alertas'),
     path('alertas/exportar/', alertas.exportar_alertas, name='exportar_alertas'),
     path('ofertas/', alertas.ofertas, name='ofertas'),
     path('ofertas/etiquetas/', alertas.etiquetas_de_oferta, name='etiquetas_oferta'),
+    path('conteo/buscar/', ajustes.conteo_buscar, name='conteo_buscar'),
+    path('productos/etiquetas/', alertas.etiquetas_de_gondola, name='etiquetas_gondola'),
     # Ajustes
     path('ajustes/', ajustes.ajustes, name='ajustes'),
     path('ajustes/<int:pk>/', ajustes.ajuste, name='ajuste'),

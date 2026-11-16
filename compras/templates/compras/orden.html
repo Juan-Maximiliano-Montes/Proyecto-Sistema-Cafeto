@@ -28,6 +28,7 @@
         {% endif %}
     </div>
 </div>
+{% if orden.estado_orden == 'CANCELADA' %}<div class="aviso aviso-error mb-3" role="status"><i class="bi bi-x-octagon-fill"></i><span><strong>Orden cancelada.</strong> No se espera nada de este pedido.</span></div>{% endif %}
 {% if diferencias %}
 <div class="tarjeta mb-3">
     <h2 class="h5 mb-1">Control de la recepción</h2>

@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Etiquetas de góndola{% endblock %}
+
+{% block contenido %}
+<style>
+    .hoja-etiquetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(62mm, 1fr)); gap: 3mm; }
+    .etiqueta-gondola { height: 36mm; box-sizing: border-box; border: 1px dashed #8A8F9C; border-radius: 2mm; padding: 2.5mm 3mm;
+                        display: flex; flex-direction: column; background: #fff; color: #161616; break-inside: avoid; }
+    .etiqueta-gondola .nombre { font-weight: 700; font-size: 10.5pt; line-height: 1.15; max-height: 2.3em; overflow: hidden; }
+    .etiqueta-gondola .presentacion { font-size: 8pt; color: #5B6078; }
+    .etiqueta-gondola .precio { font-weight: 800; font-size: 24pt; line-height: 1; margin-top: auto; font-variant-numeric: tabular-nums; }
+    .etiqueta-gondola .pie { display: flex; justify-content: space-between; font-size: 7pt; color: #5B6078; margin-top: 1mm; font-variant-numeric: tabular-nums; }
+    @media print {
+        @page { size: A4; margin: 8mm; }
+        body * { visibility: hidden; }
+        .hoja-etiquetas, .hoja-etiquetas * { visibility: visible; }
+        .hoja-etiquetas { position: absolute; inset: 0 auto auto 0; width: 194mm; grid-template-columns: repeat(3, 62mm); }
+    }
+</style>
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-tags me-1"></i>Productos</span>
+        <h1 class="titulo-pantalla mb-0">Etiquetas de góndola</h1>
+        <p class="bajada">Elegí qué precios imprimir. Sale una hoja A4 con tres columnas para recortar.</p>
+    </div>
+    <div class="acciones">
+        <a href="{% url 'stock:productos_lista' %}" class="btn btn-secundario"><i class="bi bi-arrow-left me-1"></i>Productos</a>
+        {% if productos %}<button type="button" class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer me-1"></i>Imprimir {{ productos|length }} etiqueta{{ productos|length|pluralize }}</button>{% endif %}
+    </div>
+</div>
+
+<form method="get" class="herramientas">
+    <div class="buscador"><i class="bi bi-search"></i><input type="search" name="q" value="{{ filtro.q }}" class="form-control" placeholder="Nombre, marca o código" aria-label="Buscar productos"></div>
+    <select name="rubro" class="form-select" aria-label="Rubro" data-auto-enviar>
+        <option value="">Rubro: elegí</option>
+        {% for r in rubros %}<option value="{{ r.pk }}"{% if filtro.rubro == r.pk|stringformat:'s' %} selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select>
+    <select name="cambios" class="form-select" aria-label="Modificados" data-auto-enviar>
+        <option value="">Modificados: cualquier fecha</option>
+        <option value="1"{% if filtro.cambios == '1' %} selected{% endif %}>Modificados hoy</option>
+        <option value="7"{% if filtro.cambios == '7' %} selected{% endif %}>Modificados en los últimos 7 días</option>
+    </select>
+    <button type="submit" class="btn btn-secundario"><i class="bi bi-funnel me-1"></i>Ver</button>
+</form>
+
+{% if not elegido %}
+<div class="tarjeta text-center text-secondary py-5"><i class="bi bi-tags fs-1 d-block mb-2"></i>Elegí un rubro, los modificados de hoy o de la semana, o buscá un producto.</div>
+{% elif not productos %}
+<div class="tarjeta text-center text-secondary py-5">No hay productos a la venta que coincidan.</div>
+{% else %}
+{% if total > maximo %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>Coinciden {{ total }} productos: se muestran los primeros {{ maximo }}. Achicá la búsqueda (por rubro, por ejemplo) para imprimir el resto.</span></div>{% endif %}
+<div class="hoja-etiquetas">
+    {% for p in productos %}
+    <div class="etiqueta-gondola">
+        <div class="nombre">{% if p.id_marca.nombre_marca != 'Genérica' %}{{ p.id_marca.nombre_marca }} {% endif %}{{ p.nombre_producto }}</div>
+        <div class="presentacion">{{ p.presentacion }}</div>
+        <div class="precio">{{ p.precio_venta|pesos }}</div>
+        <div class="pie"><span>{{ p.codigo_barras|default:'' }}</span><span>{{ hoy|date:"d/m/Y" }}</span></div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

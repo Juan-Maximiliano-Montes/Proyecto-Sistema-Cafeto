@@ -55,7 +55,9 @@
 <div class="row g-3">
     <div class="col-lg-6">
         {% if puede_abrir %}
-        <form method="post" action="{% url 'ventas:abrir_turno' %}" class="tarjeta p-4 form-una-vez" novalidate>
+        <form method="post" action="{% url 'ventas:abrir_turno' %}" class="tarjeta p-4 form-una-vez" novalidate
+              data-titulo="¿Abrimos la caja?" data-aceptar="Sí, abrir"
+              data-confirmar="El turno arranca a tu nombre con el fondo que cargaste.">
             {% csrf_token %}
             {{ form_apertura.token_operacion }}
             <h2 class="subtitulo h4 mb-1">Abrir la caja</h2>

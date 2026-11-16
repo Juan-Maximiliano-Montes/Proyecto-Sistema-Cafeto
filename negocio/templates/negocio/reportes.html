@@ -10,6 +10,7 @@
         <p class="bajada">{% if sin_periodo %}Al día de hoy.{% else %}Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}.{% endif %}</p>
     </div>
     <div class="acciones">
+        <a href="{% url 'negocio:resumen_del_mes' %}" class="btn btn-secundario"><i class="bi bi-calendar3 me-1"></i>Resumen del mes</a>
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">

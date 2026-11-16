@@ -11,6 +11,8 @@ from datetime import date
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -22,6 +24,7 @@ from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock import servicios
 from stock.models import (
+    Rubro,
     MOTIVOS_POR_TIPO,
     AjusteStock,
     EstadoAjuste,
@@ -192,9 +195,29 @@ def conteo(request):
                     lote = None
                 else:
                     lote = _lote(producto, request.POST.get('lote'))
-                servicios.cargar_conteo(abierto, producto, contada, lote=lote,
+                # Góndola + depósito: si el producto ya estaba anotado en este
+                # conteo y la casilla está tildada, lo nuevo se suma.
+                ya = (abierto.detalles.filter(id_producto=producto, id_lote=lote).first()
+                      if nuevo_lote is None else None)
+                sumado = ya is not None and request.POST.get('sumar') == '1'
+                total = contada + ya.cantidad_contada if sumado else contada
+                servicios.cargar_conteo(abierto, producto, total, lote=lote,
                                         nuevo_lote=nuevo_lote)
-                messages.success(request, f'Anotado: {producto.cantidad_con_unidad(contada)} de {producto}.')
+                if sumado:
+                    messages.success(request, (
+                        f'Sumado: {producto.cantidad_con_unidad(ya.cantidad_contada)} + '
+                        f'{producto.cantidad_con_unidad(contada)} = '
+                        f'{producto.cantidad_con_unidad(total)} de {producto}.'))
+                else:
+                    messages.success(request, f'Anotado: {producto.cantidad_con_unidad(contada)} de {producto}.'
+                                     + (' Reemplazó lo que estaba anotado.' if ya is not None else ''))
+            elif accion == 'alta_rapida':
+                producto, contada = _alta_rapida(request)
+                servicios.cargar_conteo(abierto, producto, contada)
+                registrar_auditoria(request, 'ALTA', 'PRODUCTO', instancia=producto, nuevo=instantanea(producto),
+                                    detalle=f'Alta rápida de {producto} desde el conteo N° {abierto.pk}.')
+                messages.success(request, f'Producto nuevo cargado y anotado: '
+                                          f'{producto.cantidad_con_unidad(contada)} de {producto}.')
             elif accion == 'enviar':
                 antes = instantanea(abierto)
                 abierto = servicios.enviar_conteo(abierto)
@@ -214,7 +237,69 @@ def conteo(request):
                       .order_by('-pk') if abierto else []),
         'motivos': _motivos(TipoAjuste.CONTEO),
         'catalogo': _catalogo(),
+        'rubros': Rubro.objects.filter(borrado_logico=False).order_by('nombre_rubro'),
+        'puede_crear': request.usuario_actual.tiene_permiso('crear_producto'),
     })
+
+
+@transaction.atomic
+def _alta_rapida(request):
+    """Un producto que apareció en la góndola y no estaba cargado: se da de
+    alta con lo mínimo y se devuelve junto con lo contado (DD-90).
+
+    Marca «Genérica» (o la que se haya encontrado) y «Proveedor General»:
+    se completan después, al recibir la primera compra.
+    """
+    from stock.reservados import asignar_marca, marca_generica, proveedor_general
+
+    if not request.usuario_actual.tiene_permiso('crear_producto'):
+        raise ValidationError('Tu perfil no puede dar de alta productos: avisale a quien pueda '
+                              'y dejá ese producto aparte.')
+    datos = request.POST
+    contada = leer_numero(datos.get('contada'), 3)
+    if contada is None:
+        raise ValidationError('Escribí cuánto contaste.')
+    producto = Producto(
+        codigo_barras=datos.get('codigo'), nombre_producto=datos.get('nombre', ''),
+        id_rubro=Rubro.objects.filter(pk=datos.get('rubro') or 0, borrado_logico=False).first(),
+        id_marca=marca_generica(), id_proveedor=proveedor_general(),
+        precio_venta=leer_numero(datos.get('precio'), 2) or 0,
+        precio_costo=leer_numero(datos.get('costo'), 2) or 0)
+    if producto.id_rubro is None:
+        raise ValidationError('Elegí el rubro.')
+    producto.full_clean()
+    producto.save()
+    asignar_marca(producto, datos.get('marca'))
+    return producto, contada
+
+
+@requiere_alguno(*PERMISOS_DE_AJUSTES)
+def conteo_buscar(request):
+    """Lo que leyó el escáner en el conteo: el producto, sus lotes y cuánto
+    lleva anotado; o ``existe: false`` para ofrecer el alta rápida."""
+    from nucleo.validaciones import sanear_codigo
+
+    codigo = sanear_codigo(request.GET.get('codigo', ''))
+    if not codigo or not codigo.isdigit() or not 3 <= len(codigo) <= 30:
+        return JsonResponse({'existe': False, 'codigo': '', 'valido': False})
+    producto = Producto.objects.filter(codigo_barras=codigo).first()
+    if producto is None:
+        return JsonResponse({'existe': False, 'codigo': codigo, 'valido': True})
+    if producto.borrado_logico or not producto.tiene_stock_propio:
+        return JsonResponse({'existe': True, 'contable': False, 'nombre': str(producto), 'motivo': (
+            'Está dado de baja: reactivalo en Productos.' if producto.borrado_logico
+            else 'No lleva stock propio (se prepara en el local): no se cuenta.')})
+    abierto = _conteo_abierto()
+    anotado = {d.id_lote_id: d.cantidad_contada
+               for d in abierto.detalles.filter(id_producto=producto)} if abierto else {}
+    lotes = ([{'id': l.pk, 'texto': f'vence {l.fecha_vencimiento:%d/%m/%Y}',
+               'anotado': str(anotado[l.pk]) if l.pk in anotado else None}
+              for l in servicios.lotes_fefo(producto)] if producto.controla_vencimiento else [])
+    return JsonResponse({
+        'existe': True, 'contable': True, 'id': producto.pk, 'nombre': str(producto),
+        'unidad': 'u.' if producto.exige_cantidad_entera else producto.unidad_medida,
+        'entera': producto.exige_cantidad_entera, 'por_lote': producto.controla_vencimiento,
+        'lotes': lotes, 'anotado': str(anotado[None]) if None in anotado else None})
 
 
 # ===========================================================================

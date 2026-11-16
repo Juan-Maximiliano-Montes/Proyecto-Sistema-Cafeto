@@ -497,7 +497,7 @@ def instantanea(objeto, campos=None):
     for campo in objeto._meta.fields:
         if campos is not None and campo.name not in campos:
             continue
-        if campo.column in ('contrasena_hash', 'token_hash'):
+        if campo.column in ('contrasena_hash', 'token_hash', 'pin_hash'):
             continue
         valor = getattr(objeto, campo.attname, None)
         if isinstance(valor, (Decimal, uuid.UUID)):
@@ -535,7 +535,7 @@ def fotos(filas, campos=None):
 
 def registrar_auditoria(request, operacion, entidad, anterior=None,
                         nuevo=None, detalle='', modulo=None, instancia=None,
-                        resultado=None):
+                        resultado=None, usuario=None):
     """Escribe UN registro en LOG_AUDITORIA.
 
     ``operacion`` es el verbo y la entidad ("ALTA DE RUBRO"), ``anterior`` y
@@ -553,11 +553,13 @@ def registrar_auditoria(request, operacion, entidad, anterior=None,
     ``entidad`` vacía deja la operación tal cual ("ACCESO DENEGADO").
     ``resultado`` es EXITOSA salvo que se diga otra cosa; para los rechazos
     está ``registrar_rechazo`` (DD-62).
+    ``usuario`` es quien actuó cuando no hay sesión que lo diga: la titular
+    que aprueba desde el enlace que le llegó al celular (DD-94).
     """
     from seguridad.models import LogAuditoria, ResultadoOperacion
 
     sesion = sesion_del_request(request) if request is not None else None
-    usuario = getattr(request, 'usuario_actual', None) if request else None
+    usuario = usuario or (getattr(request, 'usuario_actual', None) if request else None)
     if usuario is None and sesion is not None:
         usuario = sesion.id_usuario
     if usuario is None:
