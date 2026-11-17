@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load cafeto static %}
+{% block titulo %}Cafeto · Archivo histórico{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-archive me-1"></i>Reportes</span>
+        <h1 class="titulo-pantalla mb-0">Archivo histórico y retención legal ({{ conservacion }} años)</h1>
+        <p class="bajada">Todo lo que se registró, de cualquier año: lo que está en uso y lo ya archivado, juntos y en sólo lectura.</p>
+    </div>
+    <div class="acciones">
+        <a href="{% url 'negocio:reportes' %}" class="btn btn-secundario"><i class="bi bi-graph-up me-1"></i>Reportes</a>
+    </div>
+</div>
+
+<section class="tarjeta mb-3" aria-labelledby="titReglas">
+    <h2 id="titReglas" class="h5"><i class="bi bi-shield-lock me-1"></i>Qué se guarda y hasta cuándo</h2>
+    <ul class="mb-2">
+        <li><strong>Nada se borra.</strong> A los 24 meses (12 la actividad y los pedidos de autorización), lo que ya terminó pasa al archivo: deja de estar en las pantallas del día a día pero acá se sigue viendo y exportando.</li>
+        <li><strong>Sólo se archiva lo cerrado.</strong> Una venta fiada con saldo, una compra con un pago sin acreditar, un turno con una diferencia sin revisar o un lote con stock se quedan donde están, aunque tengan años.</li>
+        <li><strong>Lo archivado no se puede cambiar.</strong> La base de datos rechaza cualquier modificación o borrado: es la copia fiel que se le muestra al contador, a ARCA o a Rentas de Salta.</li>
+        <li><strong>Se conserva al menos {{ conservacion }} años</strong> desde la fecha de cada comprobante (art. 328 del Código Civil y Comercial). Cubre también lo que piden ARCA y el Código Fiscal de Salta, que exigen guardar la documentación mientras el impuesto pueda reclamarse.</li>
+    </ul>
+    <p class="small text-tenue mb-0"><i class="bi bi-info-circle me-1"></i>Ante un requerimiento puntual, confirmá con el contador qué período pide y bajalo desde «Consultar un período».</p>
+</section>
+
+<section class="tarjeta p-0 overflow-hidden mb-3" aria-labelledby="titAnios">
+    <h2 id="titAnios" class="h5 px-3 pt-3">Comprobantes resguardados por año</h2>
+    <div class="table-responsive">
+    <table class="table align-middle mb-0">
+        <caption class="visually-hidden">Cantidad de registros por año y libro, en uso y archivados</caption>
+        <thead><tr>
+            <th scope="col">Año</th>
+            {% for l in libros %}<th scope="col" class="table-numero">{{ l.titulo }}</th>{% endfor %}
+            <th scope="col">Conservar hasta</th>
+        </tr></thead>
+        <tbody>
+        {% for a in anios %}
+            <tr>
+                <th scope="row"><a href="?libro={{ libro.clave }}&amp;anio={{ a.anio|stringformat:"d" }}#consulta" aria-label="Consultar {{ a.anio|stringformat:"d" }}">{{ a.anio|stringformat:"d" }}</a></th>
+                {% for c in a.libros %}
+                <td class="table-numero">{{ c.vigentes|add:c.archivadas|cantidad }}{% if c.archivadas %}<br><span class="small text-tenue">{{ c.archivadas|cantidad }} archivad{{ c.archivadas|pluralize:"o,os" }}</span>{% endif %}</td>
+                {% endfor %}
+                <td>{{ a.conservar_hasta|date:"d/m/Y" }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="{{ libros|length|add:2 }}" class="vacio"><i class="bi bi-archive"></i>Todavía no hay comprobantes registrados.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section id="consulta" class="mb-3" aria-labelledby="titConsulta">
+    <h2 id="titConsulta" class="h5">Consultar un período</h2>
+    <form method="get" class="herramientas" action="#consulta" id="formArchivo">
+        <label class="d-flex align-items-center gap-2 small text-secondary">Libro
+            <select name="libro" class="form-select">
+                {% for l in libros %}<option value="{{ l.clave }}"{% if l.clave == libro.clave %} selected{% endif %}>{{ l.titulo }}</option>{% endfor %}
+            </select>
+        </label>
+        <label class="d-flex align-items-center gap-2 small text-secondary">Año
+            <select name="anio" class="form-select" id="archivoAnio">
+                <option value=""{% if not anio %} selected{% endif %}>Fechas a elección</option>
+                {% for a in anios %}<option value="{{ a.anio|stringformat:"d" }}"{% if a.anio == anio %} selected{% endif %}>{{ a.anio|stringformat:"d" }}</option>{% endfor %}
+            </select>
+        </label>
+        <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}" class="form-control" id="archivoDesde"></label>
+        <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}" class="form-control" id="archivoHasta" max="{{ hoy|date:'Y-m-d' }}"></label>
+        <button type="submit" class="btn btn-secundario"><i class="bi bi-search me-1" aria-hidden="true"></i>Consultar</button>
+        {# Las descargas mandan lo que está elegido AHORA en el formulario, aunque no se haya tocado «Consultar». #}
+        <button type="submit" class="btn btn-secundario" formaction="{% url 'negocio:archivo_exportar' %}" name="formato" value="csv"><i class="bi bi-filetype-csv me-1" aria-hidden="true"></i>Bajar CSV</button>
+        <button type="submit" class="btn btn-secundario" formaction="{% url 'negocio:archivo_exportar' %}" name="formato" value="xlsx"><i class="bi bi-file-earmark-excel me-1" aria-hidden="true"></i>Bajar Excel</button>
+    </form>
+    <p class="small text-secondary"><i class="bi {{ libro.icono }} me-1"></i><strong>{{ libro.titulo }}</strong> del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}. {{ libro.regla }}</p>
+
+    <div class="tarjeta p-0 overflow-hidden">
+        <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <caption class="visually-hidden">{{ libro.titulo }} del período elegido</caption>
+            <thead><tr>{% for c in columnas %}<th scope="col"{% if c.formato == 'numero' or c.formato == 'dinero' %} class="table-numero"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
+            <tbody>
+            {% for fila in filas %}
+                <tr>{% for valor in fila %}{% with c=columnas|index:forloop.counter0 %}
+                    {% if c.formato == 'dinero' %}<td class="table-numero">{{ valor|pesos }}</td>
+                    {% elif c.formato == 'numero' %}<td class="table-numero">{% if valor is None %}—{% else %}{{ valor }}{% endif %}</td>
+                    {% elif c.formato == 'fecha' %}<td>{{ valor|date:"d/m/Y"|default:"—" }}</td>
+                    {% elif c.formato == 'fecha_hora' %}<td class="text-nowrap">{{ valor|date:"d/m/Y H:i"|default:"—" }}</td>
+                    {% elif c.formato == 'si_no' %}<td>{{ valor|yesno:"Sí,No" }}</td>
+                    {% elif forloop.last %}<td><span class="insignia {% if valor == 'Archivada' %}insignia-neutra{% else %}insignia-exito{% endif %}">{% if valor == 'Archivada' %}<i class="bi bi-lock-fill me-1" aria-hidden="true"></i>Archivada{% else %}En uso{% endif %}</span></td>
+                    {% else %}<td>{{ valor|default:"—" }}</td>{% endif %}
+                {% endwith %}{% endfor %}</tr>
+            {% empty %}
+                <tr><td colspan="{{ columnas|length }}" class="vacio"><i class="bi bi-archive"></i>No hay {{ libro.titulo|lower }} del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% if hay_mas %}<p class="small text-tenue mt-2"><i class="bi bi-info-circle me-1"></i>Se muestran los primeros {{ tope }}. Bajá el CSV o el Excel para tener el período completo.</p>{% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'cafeto/js/archivo.js' %}"></script>{% endblock %}

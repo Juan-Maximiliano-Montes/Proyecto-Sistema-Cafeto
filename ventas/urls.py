@@ -16,6 +16,10 @@ urlpatterns = [
     path('caja/arqueo/', caja.declarar_arqueo, name='declarar_arqueo'),
     path('caja/cierre/', caja.cierre, name='cierre'),
     path('caja/cierre/descartar/', caja.descartar_arqueo, name='descartar_arqueo'),
+    path('caja/cierre/autorizacion/', caja.pedir_autorizacion_cierre, name='pedir_autorizacion_cierre'),
+    path('caja/arqueo-parcial/', caja.corte_x, name='corte_x'),
+    path('caja/arqueo-parcial/<int:pk>/', caja.comprobante_x, name='comprobante_x'),
+    path('caja/movimientos/<int:pk>/vale/', caja.vale_movimiento, name='vale_movimiento'),
     # El mostrador
     path('mostrador/', mostrador.mostrador, name='mostrador'),
     path('mostrador/catalogo/', mostrador.catalogo, name='catalogo'),
@@ -33,6 +37,7 @@ urlpatterns = [
     path('autorizaciones/', autorizaciones.bandeja, name='autorizaciones'),
     path('autorizar/<str:token>/', autorizaciones.enlace, name='autorizar_a_distancia'),
     path('cambios/', cambios.cambios, name='cambios'),
+    path('cambios/<int:pk>/comprobante/', cambios.comprobante_cambio, name='comprobante_cambio'),
     # Consultas
     path('ventas/', consultas.ventas, name='ventas'),
     path('ventas/exportar/', consultas.exportar_ventas, name='exportar_ventas'),
@@ -44,5 +49,6 @@ urlpatterns = [
     path('turnos/exportar/', caja.exportar_turnos, name='exportar_turnos'),
     path('turnos/<int:pk>/', caja.ficha_turno, name='ficha_turno'),
     path('turnos/<int:pk>/recaudacion/', caja.recaudacion, name='recaudacion'),
+    path('turnos/<int:pk>/revisar/', caja.revisar_turno, name='revisar_turno'),
 ]
 urlpatterns += rutas_crud('medios_pago') + rutas_crud('cajas_registradoras')

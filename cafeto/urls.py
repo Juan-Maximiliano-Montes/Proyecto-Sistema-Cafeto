@@ -47,6 +47,12 @@ def foto_subida(request, path):
 
 urlpatterns.append(re_path(r'^media/(?P<path>productos/[\w.-]+)$', foto_subida, name='media'))
 
+# Las páginas de error con la identidad de Cafeto (DD-100): nunca un traceback.
+handler400 = 'nucleo.errores.pagina_400'
+handler403 = 'nucleo.errores.pagina_403'
+handler404 = 'nucleo.errores.pagina_404'
+handler500 = 'nucleo.errores.pagina_500'
+
 if settings.DEBUG:
     from django.contrib import admin
 

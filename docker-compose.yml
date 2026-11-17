@@ -101,6 +101,9 @@ services:
       CAFETO_N8N_TOKEN: ${CAFETO_N8N_TOKEN:-}
       # Webhook de n8n para los pedidos de autorización a distancia (DD-94).
       CAFETO_N8N_WEBHOOK_AUTORIZACION: ${CAFETO_N8N_WEBHOOK_AUTORIZACION:-}
+      # Webhook de n8n que lee la foto o el PDF de una factura (DD-98). Vacío =
+      # la lee el propio sistema (PDF y texto; fotos si hay OCR instalado).
+      CAFETO_N8N_WEBHOOK_FACTURA: ${CAFETO_N8N_WEBHOOK_FACTURA:-}
     depends_on:
       db:
         condition: service_healthy
@@ -133,6 +136,8 @@ services:
       WAHA_URL: http://waha:3000
       WAHA_API_KEY: ${WAHA_API_KEY:-}
       CAFETO_WHATSAPP_DUENIA: ${CAFETO_WHATSAPP_DUENIA:-}
+      # El WhatsApp al que los proveedores mandan las facturas (DD-98).
+      CAFETO_WHATSAPP_COMPRAS: ${CAFETO_WHATSAPP_COMPRAS:-}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -158,6 +163,10 @@ services:
       WHATSAPP_SWAGGER_USERNAME: ${WHATSAPP_SWAGGER_USERNAME:-admin}
       WHATSAPP_SWAGGER_PASSWORD: ${WHATSAPP_SWAGGER_PASSWORD:-${WAHA_API_KEY:-}}
       TZ: America/Argentina/Salta
+      # Facturas por WhatsApp (DD-98): WAHA le avisa a n8n cada mensaje que
+      # llega. Vacío = no avisa (el flujo 7 no recibe nada).
+      WHATSAPP_HOOK_URL: ${WHATSAPP_HOOK_URL:-}
+      WHATSAPP_HOOK_EVENTS: message
     volumes:
       - waha_data:/app/.sessions
 

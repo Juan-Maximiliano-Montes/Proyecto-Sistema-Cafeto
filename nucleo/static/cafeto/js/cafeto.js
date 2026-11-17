@@ -89,6 +89,7 @@
     }
 
     var Cafeto = window.Cafeto = window.Cafeto || {};
+    Cafeto.escapar = escapar;
 
     /**
      * Cafeto.confirmar({titulo, texto, html, aceptar, peligro}) -> Promise<boolean>
@@ -117,6 +118,11 @@
             }
             aceptar.addEventListener('click', alAceptar);
             modal.addEventListener('hidden.bs.modal', alCerrar);
+            // Enter confirma (el foco va al botón de aceptar), Escape cancela.
+            // En lo peligroso (borrar, anular) el foco no va al botón rojo.
+            if (!opciones.peligro) {
+                modal.addEventListener('shown.bs.modal', function () { aceptar.focus(); }, {once: true});
+            }
             instancia.show();
         });
     };
@@ -846,5 +852,13 @@
         var boton = evento.target.closest && evento.target.closest('.js-camara');
         var destino = boton && document.querySelector(boton.dataset.destino);
         if (destino) { leerConCamara(destino); }
+    });
+})();
+
+/* «Imprimir» sin JavaScript en línea (las páginas sueltas usan imprimir.js). */
+(function () {
+    'use strict';
+    document.addEventListener('click', function (evento) {
+        if (evento.target.closest && evento.target.closest('[data-imprimir]')) { window.print(); }
     });
 })();

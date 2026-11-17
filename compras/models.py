@@ -54,6 +54,17 @@ class CondicionPago(models.TextChoices):
     DIAS_60 = '60_DIAS', '60 días'
 
 
+# Días que da cada condición de pago para la factura (DD-101). La cuenta
+# corriente con el proveedor se toma a 30 días si no se dice otra cosa.
+PLAZO_DE_PAGO = {
+    CondicionPago.CONTADO: 0,
+    CondicionPago.CUENTA_CORRIENTE: 30,
+    CondicionPago.DIAS_15: 15,
+    CondicionPago.DIAS_30: 30,
+    CondicionPago.DIAS_60: 60,
+}
+
+
 class TipoProveedor(models.TextChoices):
     MERCADERIA = 'MERCADERIA', 'Mercadería e insumos'
     SERVICIOS = 'SERVICIOS', 'Servicios (luz, internet, mantenimiento)'
@@ -610,6 +621,10 @@ class Compra(ConSaldosDerivados, SinBajaFisica, models.Model):
         'Vence el', null=True, blank=True)
     estado_compra = models.CharField(
         'Estado', max_length=20, choices=ESTADOS, default='PENDIENTE')
+    # Compra de salvataje (DD-98): se compró afuera por una urgencia. Suma
+    # stock, pero no cambia el costo de referencia del producto ni cuenta
+    # para decidir quién es su proveedor habitual.
+    compra_ocasional = models.BooleanField('Compra ocasional (salvataje)', default=False)
 
     class Meta:
         db_table = 'compras'
@@ -947,3 +962,81 @@ class Egreso(SinBajaFisica, models.Model):
 
     def __str__(self):
         return f'{self.concepto} · {self.monto}'
+
+
+
+class OrigenFactura(models.TextChoices):
+    WHATSAPP = 'WHATSAPP', 'WhatsApp'
+    CORREO = 'CORREO', 'Correo'
+    OTRO = 'OTRO', 'Otra automatización'
+
+
+class EstadoFacturaRecibida(models.TextChoices):
+    PENDIENTE = 'PENDIENTE', 'Para revisar'
+    CONFIRMADA = 'CONFIRMADA', 'Confirmada'
+    DESCARTADA = 'DESCARTADA', 'Descartada'
+
+
+class FacturaRecibida(models.Model):
+    """Una factura que llegó por WhatsApp o por correo y ya se leyó (DD-98).
+
+    No es una compra: es la bandeja de entrada. La compra existe recién
+    cuando una persona la abre en «Recibir mercadería», la controla contra
+    el papel y la confirma; entonces queda CONFIRMADA y apunta a esa compra.
+    Si no corresponde (repetida, de otro local), se DESCARTA con su nombre.
+
+    ``datos_factura`` es lo leído ya reconocido contra el catálogo (el mismo
+    borrador que arma ``compras.precarga``). ``huella_factura`` impide que
+    un reintento de la automatización deje dos veces la misma factura
+    esperando.
+    """
+
+    id_factura_recibida = models.AutoField('ID', primary_key=True)
+    origen_factura = models.CharField('Llegó por', max_length=10, choices=OrigenFactura.choices,
+                                      default=OrigenFactura.OTRO)
+    remitente = models.CharField('Quién la mandó', max_length=80, null=True, blank=True)
+    resumen_factura = models.CharField('Resumen', max_length=200)
+    datos_factura = models.JSONField('Lo leído de la factura')
+    huella_factura = models.CharField('Huella', max_length=64)
+    estado_factura = models.CharField('Estado', max_length=10, choices=EstadoFacturaRecibida.choices,
+                                      default=EstadoFacturaRecibida.PENDIENTE)
+    fecha_recepcion = models.DateTimeField('Recibida', default=timezone.now)
+    id_compra = models.ForeignKey(
+        Compra, on_delete=models.RESTRICT, db_column='id_compra', null=True, blank=True,
+        related_name='facturas_recibidas', verbose_name='Compra')
+    id_usuario_resolucion = models.ForeignKey(
+        'seguridad.Usuario', on_delete=models.RESTRICT, db_column='id_usuario_resolucion',
+        null=True, blank=True, related_name='facturas_resueltas', verbose_name='Resolvió')
+    fecha_resolucion = models.DateTimeField('Resuelta', null=True, blank=True)
+
+    class Meta:
+        db_table = 'facturas_recibidas'
+        verbose_name = 'Factura recibida'
+        verbose_name_plural = 'Facturas recibidas'
+        ordering = ['-fecha_recepcion']
+        constraints = [
+            CheckEnBase(
+                check=CheckSQL(
+                    "estado_factura IN ('PENDIENTE','CONFIRMADA','DESCARTADA') "
+                    "AND origen_factura IN ('WHATSAPP','CORREO','OTRO') "
+                    "AND trim(resumen_factura) <> ''"),
+                name='ck_factrecibidas_dominios'),
+            CheckEnBase(
+                check=CheckSQL(
+                    "((estado_factura = 'CONFIRMADA') = (id_compra IS NOT NULL)) AND "
+                    "((estado_factura = 'PENDIENTE') = (id_usuario_resolucion IS NULL)) AND "
+                    '((id_usuario_resolucion IS NULL) = (fecha_resolucion IS NULL)) AND '
+                    '(fecha_resolucion IS NULL OR fecha_resolucion >= fecha_recepcion)'),
+                name='ck_factrecibidas_resolucion'),
+            models.UniqueConstraint(
+                fields=['huella_factura'], condition=models.Q(estado_factura='PENDIENTE'),
+                name='uq_factrecibidas_pendiente'),
+            models.UniqueConstraint(fields=['id_compra'], name='uq_factrecibidas_compra'),
+        ]
+
+    def __str__(self):
+        return self.resumen_factura
+
+    @property
+    def pendiente(self):
+        return self.estado_factura == EstadoFacturaRecibida.PENDIENTE

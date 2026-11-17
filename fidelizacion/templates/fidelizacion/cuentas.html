@@ -9,6 +9,9 @@
         <h1 class="titulo-pantalla mb-0">Cuentas corrientes</h1>
         <p class="bajada">Los clientes que llevaron fiado: cuánto deben y desde cuándo. Tocá a uno para cobrarle.</p>
     </div>
+    {% if 'ver_reportes' in permisos_usuario %}<div class="acciones">
+        {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=cuenta#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
+    </div>{% endif %}
 </div>
 
 <div class="grilla grilla-compacta mb-3">

@@ -33,6 +33,8 @@ AVISOS = {
     'SIN_ACREDITAR': ('bi-bank', 'compras:egresos', '?ver=por_acreditar'),
     'FIADO_VENCIDO': ('bi-journal-x', 'fidelizacion:cuentas', '?estado=vencidos'),
     'RECONTEOS': ('bi-cash-coin', 'ventas:turnos', '?estado=recontados'),
+    'CAJA_A_REVISAR': ('bi-cash-stack', 'ventas:turnos', '?estado=a_revisar'),
+    'FACTURAS_RECIBIDAS': ('bi-inbox', 'compras:compras', ''),
     'CORREOS_REPETIDOS': ('bi-people', 'fidelizacion:clientes_lista', ''),
     'SEGURIDAD': ('bi-shield-exclamation', 'seguridad:actividad', '#alertas'),
 }

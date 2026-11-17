@@ -179,8 +179,13 @@ class EtiquetasYMostradorTest(Base):
     def test_el_mostrador_trae_el_visor_y_los_atajos(self):
         from django.template.loader import get_template
         fuente = get_template('ventas/mostrador.html').template.source
-        for texto in ('id="autoTicket"', 'visor-vuelto', "e.key === 'F9'", "e.key === 'F4'", "e.key === 'F2'"):
+        for texto in ('visor-vuelto', "e.key === 'F9'", "e.key === 'F4'", "e.key === 'F2'",
+                      # Cobrar confirma con el resumen; después, imprimir o no, en grande (DD-101).
+                      '¿Confirmamos el cobro?', 'Imprimir ticket <kbd>P</kbd>',
+                      'No imprimir · Nueva venta <kbd>Enter</kbd>',
+                      'El ticket queda guardado en Ventas'):
             self.assertIn(texto, fuente)
+        self.assertNotIn('id="autoTicket"', fuente)
 
     def test_el_lector_con_basura_encuentra_el_producto(self):
         f.entrar(self.client, self.admin)

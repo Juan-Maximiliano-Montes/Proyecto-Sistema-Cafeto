@@ -11,6 +11,7 @@
         <p class="bajada">Lo que hay que pagar, lo que ya se pagó y lo que el banco tiene que confirmar.</p>
     </div>
     <div class="acciones">
+        {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=egresos#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -22,6 +23,9 @@
         {% if puede_registrar %}<button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalEgreso"><i class="bi bi-plus-lg me-1"></i>Nuevo pago</button>{% endif %}
     </div>
 </div>
+{% if vale %}
+<div class="aviso aviso-exito"><i class="bi bi-receipt" aria-hidden="true"></i><span>Salió plata del cajón. <a href="{% url 'ventas:vale_movimiento' vale.pk %}" target="_blank" rel="noopener" class="fw-semibold">Imprimir el vale para el cajón</a></span></div>
+{% endif %}
 
 {% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Qué pagos ver' %}
 <form method="get" id="herramientas" class="herramientas{% if pestania != 'historial' %} d-none{% endif %}">

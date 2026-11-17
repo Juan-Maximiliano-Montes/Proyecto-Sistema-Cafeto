@@ -17,18 +17,20 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from nucleo.formularios import leer_numero
-from seguridad.decorators import requiere_permiso
-from seguridad.servicios import autorizar_con_clave, foto, instantanea, registrar_auditoria
+from seguridad.decorators import requiere_alguno, requiere_permiso
+from seguridad.servicios import (autorizar_con_clave, foto, instantanea, registrar_acceso_denegado,
+                                 registrar_auditoria)
 from fidelizacion.models import Cliente
 from stock.models import Producto
 from ventas import cambios as servicio
 from ventas.anulacion import motivo_de as anulacion_motivo
 from ventas import puesto
-from ventas.models import MedioPago, MotivoCambio, Venta
+from ventas.models import Cambio, MedioPago, MotivoCambio, Venta
 from nucleo.templatetags.cafeto import pesos
 
 MAXIMO_ENTREGADOS = 5
@@ -110,6 +112,8 @@ def cambios(request):
         'filas_entrega': _filas_entrega(request),
         'catalogo': reverse('stock:buscar_productos') + '?tipos=REVENTA,ELABORADO,PRODUCIDO,COMBO',
         'datos': request.POST,
+        'comprobante': (Cambio.objects.filter(pk=request.GET['comprobante']).first()
+                        if request.GET.get('comprobante', '').isdigit() else None),
     }
     if venta is not None:
         from ventas.views.consultas import contexto_anulacion
@@ -216,4 +220,27 @@ def cambios(request):
         messages.success(request, f'Cambio N° {cambio.pk} registrado. Cobrale {pesos(cambio.importe_cobrado)} al cliente.')
     else:
         messages.success(request, f'Cambio N° {cambio.pk} registrado, sin diferencia de dinero.')
-    return redirect('ventas:cambios')
+    return redirect(f"{reverse('ventas:cambios')}?comprobante={cambio.pk}")
+
+
+@requiere_alguno('registrar_cambio', 'ver_ventas')
+def comprobante_cambio(request, pk):
+    """El comprobante del cambio o la devolución: uno para el cliente y otro
+    para el cajón (si salió plata), con la firma de quien recibe."""
+    from negocio.models import ParametrosNegocio
+
+    cambio = get_object_or_404(
+        Cambio.objects.select_related('id_venta__id_cliente', 'id_usuario', 'id_usuario_autorizante',
+                                      'id_medio_pago', 'id_turno_caja__id_caja_registradora'), pk=pk)
+    usuario = request.usuario_actual
+    if cambio.id_usuario_id != usuario.pk and not usuario.puede('ver_ventas'):
+        registrar_acceso_denegado(request, 'ver_ventas')
+        messages.error(request, 'Ese cambio lo registró otra persona.')
+        return redirect('ventas:cambios')
+    renglones = list(cambio.detalles.select_related('id_producto').order_by('sentido', 'pk'))
+    return render(request, 'ventas/comprobante_cambio.html', {
+        'cambio': cambio, 'cliente': cambio.id_venta.id_cliente,
+        'devuelve': [r for r in renglones if r.sentido == 'DEVUELVE'],
+        'entrega': [r for r in renglones if r.sentido == 'ENTREGA'],
+        'negocio': ParametrosNegocio.vigentes(), 'impreso': timezone.now(),
+    })

@@ -9,6 +9,7 @@
         <h1 class="titulo-pantalla mb-0">Ventas</h1>
     </div>
     <div class="acciones">
+        {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=ventas#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">

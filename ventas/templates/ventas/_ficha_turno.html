@@ -1,13 +1,18 @@
 {% load cafeto %}
 <dl class="ficha mb-3">
     <dt>Caja</dt><dd>{{ turno.id_caja_registradora }}</dd>
-    <dt>Abrió</dt><dd>{{ turno.id_usuario_apertura }} · {{ turno.fecha_apertura|date:"d/m/Y H:i" }}</dd>
+    <dt>Abrió</dt><dd>{{ turno.id_usuario_apertura|persona }} · {{ turno.fecha_apertura|date:"d/m/Y H:i" }}{% if turno.id_turno_anterior_id %} <span class="small text-secondary">· recibió el cajón del turno N° {{ turno.id_turno_anterior_id }}</span>{% endif %}</dd>
     {% if turno.fecha_cierre %}
-    <dt>Cerró</dt><dd>{{ turno.id_usuario_cierre }} · {{ turno.fecha_cierre|date:"d/m/Y H:i" }} <span class="insignia insignia-neutra ms-1">{{ turno.get_tipo_cierre_display }}</span></dd>
-    {% if turno.id_usuario_supervisor %}<dt>Supervisó</dt><dd>{{ turno.id_usuario_supervisor }}</dd>{% endif %}
+    <dt>Cerró</dt><dd>{{ turno.id_usuario_cierre|persona }} · {{ turno.fecha_cierre|date:"d/m/Y H:i" }} <span class="insignia insignia-neutra ms-1">{{ turno.get_tipo_cierre_display }}</span>
+        {% if turno.relevo_en_ausencia %}<span class="d-block small fw-semibold">Cerrado en relevo por {{ turno.id_usuario_cierre.nombre }} {{ turno.id_usuario_cierre.apellido }} en ausencia de {{ turno.id_usuario_apertura.nombre }} {{ turno.id_usuario_apertura.apellido }}</span>{% endif %}</dd>
+    {% if turno.siguiente %}<dt>Recibió</dt><dd>{{ turno.siguiente.id_usuario_apertura|persona }} · turno N° {{ turno.siguiente.pk }}</dd>{% endif %}
+    {% if turno.id_usuario_supervisor %}<dt>Aprobó la diferencia</dt><dd>{{ turno.id_usuario_supervisor|persona }}</dd>{% endif %}
+    {% if turno.requiere_revision %}<dt>Revisión</dt><dd>{% if turno.id_usuario_revision %}Revisó {{ turno.id_usuario_revision|persona }} · {{ turno.fecha_revision|date:"d/m/Y H:i" }}{% else %}<span class="insignia insignia-peligro">Con diferencia — Pendiente de revisión de titular</span>
+        {% if puede_revisar %}<form method="post" action="{% url 'ventas:revisar_turno' turno.pk %}" class="d-inline ms-2"
+              data-titulo="¿La diferencia está revisada?" data-aceptar="Sí, la revisé" data-confirmar="Queda a tu nombre, con la fecha y la hora, que miraste esta diferencia y el motivo que dejó quien cerró.">{% csrf_token %}<button type="submit" class="btn btn-sm btn-primary">Marcar como revisada</button></form>{% endif %}{% endif %}</dd>{% endif %}
     <dt>Esperado</dt><dd class="monto">{{ turno.monto_esperado|pesos }}</dd>
     <dt>Contado</dt><dd class="monto">{{ turno.monto_final|pesos }}</dd>
-    <dt>Diferencia</dt><dd class="monto {% if turno.diferencia_caja < 0 %}text-peligro{% endif %}">{{ turno.diferencia_caja|pesos }}</dd>
+    <dt>Diferencia</dt><dd class="monto {% if turno.diferencia_caja < 0 %}text-peligro{% endif %}">{{ turno.diferencia_caja|diferencia_caja }}</dd>
     {% if turno.observacion_diferencia %}<dt>Explicación</dt><dd>{{ turno.observacion_diferencia }}</dd>{% endif %}
     {% if conteos|length > 1 %}
     <dt class="text-peligro">Se contó {{ conteos|length }} veces</dt>
@@ -34,11 +39,15 @@
     </tbody>
 </table>
 </div>
-{% if not turno.abierto %}<p class="mb-3"><a href="{% url 'ventas:recaudacion' turno.pk %}" target="_blank" rel="noopener">Documento de recaudación para imprimir</a></p>{% endif %}
+{% if not turno.abierto %}<p class="mb-3"><a href="{% url 'ventas:recaudacion' turno.pk %}" target="_blank" rel="noopener"><i class="bi bi-printer me-1"></i>Comprobante de cierre para imprimir</a></p>{% endif %}
 {% endif %}
 {% if resumen %}
 <h6 class="subtitulo">Resumen del efectivo</h6>
 <dl class="ficha mb-3">{% for etiqueta, monto in resumen %}<dt>{{ etiqueta }}</dt><dd class="monto">{{ monto|pesos }}</dd>{% endfor %}</dl>
+{% endif %}
+{% if cortes %}
+<h6 class="subtitulo">Arqueos parciales (controles sin cerrar)</h6>
+<ul class="list-unstyled small mb-3">{% for c in cortes %}<li><a href="{% url 'ventas:comprobante_x' c.pk %}" target="_blank" rel="noopener">{{ c.fecha_hora|date:"d/m/Y H:i:s" }} · {{ c.id_usuario.nombre }} {{ c.id_usuario.apellido }}</a></li>{% endfor %}</ul>
 {% endif %}
 <h6 class="subtitulo">Movimientos</h6>
 <div class="table-responsive">
@@ -46,7 +55,7 @@
     <thead><tr><th>Hora</th><th>Movimiento</th><th>Concepto</th><th>Quién</th>{% if not propio_abierto %}<th class="table-numero">Monto</th>{% endif %}</tr></thead>
     <tbody>
     {% for m in movimientos %}
-        <tr><td>{{ m.fecha_hora|time:"H:i" }}</td><td>{{ m.get_tipo_movimiento_display }}</td><td>{{ m.concepto }}</td><td>{{ m.id_usuario.nombre }}</td>{% if not propio_abierto %}<td class="table-numero">{{ m.monto|pesos }}</td>{% endif %}</tr>
+        <tr><td>{{ m.fecha_hora|time:"H:i" }}</td><td>{{ m.get_tipo_movimiento_display }}{% if m.tipo_movimiento == 'REFUERZO' or m.tipo_movimiento == 'RETIRO' or m.tipo_movimiento == 'GASTO' %} <a href="{% url 'ventas:vale_movimiento' m.pk %}" target="_blank" rel="noopener" class="small" title="Vale para imprimir"><i class="bi bi-printer" aria-hidden="true"></i><span class="visually-hidden">Vale</span></a>{% endif %}</td><td>{{ m.concepto }}</td><td>{{ m.id_usuario.nombre }}</td>{% if not propio_abierto %}<td class="table-numero">{{ m.monto|pesos }}</td>{% endif %}</tr>
     {% endfor %}
     </tbody>
 </table>

@@ -52,14 +52,9 @@ if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
 
 # Orígenes desde los que se aceptan formularios (con esquema):
 # https://cafeto.midominio.com.ar
-CSRF_TRUSTED_ORIGINS = _lista('DJANGO_CSRF_TRUSTED_ORIGINS')
-
-# ¿Hay un proxy propio adelante (el del NAS) que termina el HTTPS? Sólo en
-# ese caso se le cree el X-Forwarded-For / X-Forwarded-Proto.
-CONFIAR_EN_PROXY = _bool('DJANGO_CONFIAR_EN_PROXY', False)
-if CONFIAR_EN_PROXY:
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
+CSRF_TRUSTED_ORIGINS = _lista('DJANGO_CSRF_TRUSTED_ORIGINS') + ['https://*.trycloudflare.com', 'http://localhost:8000', 'http://127.0.0.1:8000']
+CONFIAR_EN_PROXY = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # ¿Se entra por HTTPS? En el local puede ser HTTP plano dentro de la LAN;
 # el acceso remoto, siempre HTTPS (o por VPN).
 USAR_HTTPS = _bool('DJANGO_HTTPS', False)
@@ -110,7 +105,17 @@ MIDDLEWARE = [
     # Va DESPUÉS de SeguridadMiddleware, que es el que deja
     # 'request.usuario_actual'.
     'seguridad.middleware_contexto.ContextoDeUsuarioMiddleware',
+    # Lo que una vista no atrapó y es de negocio (ValidationError,
+    # IntegrityError, ProtectedError, DecimalException) se muestra como
+    # aviso en castellano, nunca como traceback (DD-100).
+    'nucleo.errores.ExcepcionesDeNegocioMiddleware',
 ]
+
+# El formulario vencido (CSRF) también con la página de Cafeto.
+CSRF_FAILURE_VIEW = 'nucleo.errores.csrf_fallo'
+# En modo DEBUG la página 404 también es la de Cafeto; para ver la página
+# técnica de Django (con las rutas probadas): CAFETO_404_DE_DJANGO=1.
+CAFETO_404_DE_DJANGO = os.environ.get('CAFETO_404_DE_DJANGO', '') == '1'
 
 # A dónde manda Django cuando falta iniciar sesión.
 LOGIN_URL = 'seguridad:login'
@@ -354,6 +359,10 @@ CAFETO_N8N_TOKEN = os.environ.get('CAFETO_N8N_TOKEN', '')
 # (DD-94): el webhook de n8n que la manda por WhatsApp a la titular.
 # Vacío = sólo el correo. Dentro de Docker: http://n8n:5678/webhook/cafeto-autorizacion
 CAFETO_N8N_WEBHOOK_AUTORIZACION = os.environ.get('CAFETO_N8N_WEBHOOK_AUTORIZACION', '')
+# Adónde manda el sistema la foto o el PDF de una factura para que n8n la
+# lea (DD-98). Vacío = el lector local (texto, PDF y, si el equipo tiene
+# Tesseract, fotos). Dentro de Docker: http://n8n:5678/webhook/cafeto-leer-factura
+CAFETO_N8N_WEBHOOK_FACTURA = os.environ.get('CAFETO_N8N_WEBHOOK_FACTURA', '')
 
 # ---------------------------------------------------------------------------
 #  App móvil: las cuentas de los clientes (api_movil/firebase.py)

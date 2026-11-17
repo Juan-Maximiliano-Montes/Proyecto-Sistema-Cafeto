@@ -89,7 +89,7 @@ def _respuesta(contenido, tipo, nombre):
 # ---------------------------------------------------------------------------
 #  Excel
 # ---------------------------------------------------------------------------
-def a_excel(titulo, columnas, filas, descripcion=''):
+def a_excel(titulo, columnas, filas, descripcion='', tope=TOPE_DE_FILAS):
     """``filas`` es un iterable de listas, en el orden de ``columnas``."""
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -123,7 +123,7 @@ def a_excel(titulo, columnas, filas, descripcion=''):
     anchos = [len(c.etiqueta) for c in columnas]
     cantidad = 0
     for cantidad, fila in enumerate(filas, start=1):
-        if cantidad > TOPE_DE_FILAS:
+        if cantidad > tope:
             break
         for indice, (columna, valor) in enumerate(zip(columnas, fila), start=1):
             dato = normalizar(valor, columna.formato)
@@ -192,7 +192,51 @@ def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar
                       _nombre_de_archivo(titulo, 'pdf'))
 
 
-def exportar(formato, titulo, columnas, filas, descripcion='', grafico=None):
+# ---------------------------------------------------------------------------
+#  CSV (sin tope: se arma a medida que se manda)
+# ---------------------------------------------------------------------------
+def _celda_csv(valor, formato):
+    dato = normalizar(valor, formato)
+    if dato is None:
+        return ''
+    if isinstance(dato, Decimal):
+        # Como lo lee el Excel en castellano: coma decimal, sin miles.
+        return format(dato, 'f').replace('.', ',')
+    if formato == 'fecha_hora' and hasattr(dato, 'strftime'):
+        return dato.strftime('%d/%m/%Y %H:%M')
+    if formato == 'fecha' and hasattr(dato, 'strftime'):
+        return dato.strftime('%d/%m/%Y')
+    return str(dato)
+
+
+def a_csv(titulo, columnas, filas):
+    """CSV separado por punto y coma, con BOM para que Excel respete los
+    acentos. Las filas se escriben de a una: sirve para años enteros."""
+    import csv
+    from io import StringIO
+
+    from django.http import StreamingHttpResponse
+
+    def renglones():
+        buffer = StringIO()
+        escritor = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        escritor.writerow([texto_seguro(c.etiqueta) for c in columnas])
+        yield '\ufeff' + buffer.getvalue()
+        for fila in filas:
+            buffer.seek(0)
+            buffer.truncate()
+            escritor.writerow([_celda_csv(v, c.formato) for c, v in zip(columnas, fila)])
+            yield buffer.getvalue()
+
+    respuesta = StreamingHttpResponse(renglones(), content_type='text/csv; charset=utf-8')
+    respuesta['Content-Disposition'] = f'attachment; filename="{_nombre_de_archivo(titulo, "csv")}"'
+    respuesta['Cache-Control'] = 'no-store'
+    return respuesta
+
+
+def exportar(formato, titulo, columnas, filas, descripcion='', grafico=None, tope=TOPE_DE_FILAS):
+    if formato == 'csv':
+        return a_csv(titulo, columnas, filas)
     if formato == 'pdf':
         return a_pdf(titulo, columnas, filas, descripcion, grafico=grafico)
-    return a_excel(titulo, columnas, filas, descripcion)
+    return a_excel(titulo, columnas, filas, descripcion, tope=tope)

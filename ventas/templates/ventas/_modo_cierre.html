@@ -1,0 +1,45 @@
+{% comment %}
+Qué se hace con el turno (DD-101). Se elige o se cambia hasta el último
+momento: lo único fijo, una vez vista la diferencia, es lo contado.
+Cada opción lleva en data-* el texto del botón y de la confirmación, que
+cambia cierre.js (sin JavaScript en línea).
+{% endcomment %}
+{% with elegido=form.modo.value|default:modo nombre=abrio.nombre|add:" "|add:abrio.apellido %}
+<fieldset class="mb-3" id="modos">
+    <legend class="subtitulo h6">¿Qué hacemos con el turno?</legend>
+    {% if 'CIERRE' in modos %}
+    <div class="form-check opcion-modo">
+        <input class="form-check-input" type="radio" name="modo" id="modoCierre" value="CIERRE"{% if elegido == 'CIERRE' %} checked{% endif %}
+               data-boton="Cerrar la caja" data-titulo="¿Cerramos la caja?" data-aceptar="Sí, cerrar"
+               data-confirmar="{% if abrio_otra_persona %}El turno de {{ nombre }} se cierra a tu nombre con lo que contaste. {% endif %}Un turno cerrado no se vuelve a abrir.">
+        <label class="form-check-label" for="modoCierre"><strong>Cerrar la caja</strong>
+            <span class="d-block small text-secondary">{% if abrio_otra_persona %}Cerrás el turno de {{ nombre }} a tu nombre. Nadie sigue con este cajón.{% else %}Nadie sigue con este cajón por hoy.{% endif %}</span></label>
+    </div>
+    {% endif %}
+    {% if 'AUSENCIA' in modos %}
+    <div class="form-check opcion-modo">
+        <input class="form-check-input" type="radio" name="modo" id="modoAusencia" value="AUSENCIA"{% if elegido == 'AUSENCIA' %} checked{% endif %}
+               data-boton="Cerrar y abrir mi turno" data-titulo="¿Cerramos el turno de {{ abrio.nombre }} y abrimos el tuyo?" data-aceptar="Sí, cerrar y abrir el mío"
+               data-confirmar="El turno de {{ nombre }} se cierra a tu nombre y se abre el tuyo con lo que contaste como fondo.">
+        <label class="form-check-label" for="modoAusencia"><strong>Cerrar el turno de {{ abrio.nombre }} y seguir yo</strong>
+            <span class="d-block small text-secondary">Se cierra a tu nombre y abrís tu turno con lo que contaste. No hace falta la clave de nadie más.</span></label>
+    </div>
+    {% endif %}
+    {% if 'RELEVO' in modos %}
+    <div class="form-check opcion-modo">
+        <input class="form-check-input" type="radio" name="modo" id="modoRelevo" value="RELEVO"{% if elegido == 'RELEVO' %} checked{% endif %}
+               data-boton="Hacer el cambio de turno" data-titulo="¿Hacemos el cambio de turno?" data-aceptar="Sí, hacer el cambio"
+               data-confirmar="El turno se cierra con lo que contaste, el cajón pasa al compañero que entra y esta tablet queda con su cuenta.">
+        <label class="form-check-label" for="modoRelevo"><strong>Cambio de turno: sigue un compañero</strong>
+            <span class="d-block small text-secondary">Quien entra firma con su clave que recibe el cajón. Su clave no aprueba diferencias.</span></label>
+    </div>
+    {% endif %}
+</fieldset>
+<div data-modo="RELEVO"{% if elegido != 'RELEVO' %} hidden{% endif %}>
+    <h2 class="subtitulo h6">Quién sigue con el cajón</h2>
+    <div class="row g-2 mb-3">
+        <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_usuario.id_for_label }}">{{ form.entrante_usuario.label }}</label>{{ form.entrante_usuario }}</div>
+        <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_clave.id_for_label }}">{{ form.entrante_clave.label }}</label>{{ form.entrante_clave }}</div>
+    </div>
+</div>
+{% endwith %}

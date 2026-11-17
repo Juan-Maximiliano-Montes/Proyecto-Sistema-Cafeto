@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import CharField, F, Func, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -108,6 +109,7 @@ def cuenta(request, pk):
         token = request.POST.get('token_operacion')
         accion = request.POST.get('accion')
         antes = _foto(cliente)
+        recibo = None
         try:
             if not idempotencia.consumir(request, token):
                 raise ValidationError('Eso ya se había registrado: no se repitió.')
@@ -123,6 +125,7 @@ def cuenta(request, pk):
                            + f'. Queda debiendo {pesos(resultado["queda"])}.'
                            + (f' Se acreditaron {_puntos(resultado["puntos"])}.' if resultado['puntos'] else ''))
                 operacion = 'COBRO'
+                recibo = resultado.get('recibo')
                 aviso = (f'Listo: cobraste {pesos(resultado["total"])}.'
                          + (f' Queda debiendo {pesos(resultado["queda"])}.' if resultado['queda']
                             else ' Quedó al día.'))
@@ -156,19 +159,33 @@ def cuenta(request, pk):
         else:
             cliente.refresh_from_db()
             registrar_auditoria(request, operacion, 'CUENTA CORRIENTE', instancia=cliente, modulo='FIDELIZACION',
-                                anterior=antes, nuevo=_foto(cliente), detalle=detalle)
+                                anterior=antes, nuevo=_foto(cliente),
+                                detalle=detalle + (f' Recibo N° {recibo}.' if accion == 'cobrar' and recibo else ''))
             messages.success(request, aviso)
+            if accion == 'cobrar' and recibo:
+                return redirect(f"{reverse('fidelizacion:cuenta', args=[cliente.pk])}?recibo={recibo}")
         return redirect('fidelizacion:cuenta', pk=cliente.pk)
 
     s = credito.situacion(cliente, hoy)
+    movimientos = list(MovimientoCuenta.objects.filter(id_cliente=cliente)
+                       .select_related('id_medio_pago', 'id_usuario').order_by('-id_movimiento_cuenta')[:61])
+    # El recibo va en el primer COBRO de cada operación (el más viejo). Se
+    # trae uno de más para saber si el último de la lista empieza un cobro.
+    for i, m in enumerate(movimientos):
+        previo = movimientos[i + 1] if i + 1 < len(movimientos) else None
+        m.es_recibo = m.tipo_movimiento == credito.COBRO and not credito.mismo_cobro(previo, m)
+    movimientos = movimientos[:60]
+    recibo_nuevo = request.GET.get('recibo', '')
     pendientes = list(credito.pendientes(cliente).select_related('id_venta'))
     for fiado in pendientes:
         fiado.atraso = (hoy - fiado.fecha_vencimiento).days if fiado.fecha_vencimiento < hoy else 0
     return render(request, 'fidelizacion/cuenta.html', {
         'cliente': cliente, 's': s, 'pendientes': pendientes, 'gestiona': gestiona, 'turno': turno,
         'aviso': credito.aviso_de_mora(cliente, hoy),
-        'movimientos': (MovimientoCuenta.objects.filter(id_cliente=cliente)
-                        .select_related('id_medio_pago', 'id_usuario').order_by('-id_movimiento_cuenta')[:60]),
+        'movimientos': movimientos,
+        'recibo_nuevo': (MovimientoCuenta.objects.filter(pk=recibo_nuevo, id_cliente=cliente,
+                                                          tipo_movimiento=credito.COBRO).first()
+                         if recibo_nuevo.isdigit() else None),
         'medios': [m for m in MedioPago.objects.filter(borrado_logico=False).order_by('-afecta_caja', 'nombre_medio_pago')
                    if not m.es_cuenta_corriente],
         'puntos_por_defecto': not any(f.atraso for f in pendientes),
@@ -223,3 +240,19 @@ def parecidos(request):
                        'por': por, 'de_baja': cliente.borrado_logico, 'debe': str(s['saldo']),
                        'aviso': credito.aviso_de_mora(cliente), 'nota': s['nota']})
     return JsonResponse({'parecidos': salida})
+
+
+@requiere_permiso('cobrar_credito', redirigir_a='home')
+def recibo(request, pk):
+    """Recibo de pago de cuenta corriente, para imprimir y darle al cliente."""
+    cobro = get_object_or_404(MovimientoCuenta.objects.select_related(
+        'id_cliente', 'id_usuario', 'id_medio_pago', 'id_turno_caja__id_caja_registradora'),
+        pk=pk, tipo_movimiento=credito.COBRO)
+    primero = credito.ancla(cobro)
+    if primero.pk != cobro.pk:
+        return redirect('fidelizacion:recibo', pk=primero.pk)
+    from negocio.models import ParametrosNegocio
+    return render(request, 'fidelizacion/recibo.html', {
+        'cobro': cobro, 'cliente': cobro.id_cliente, 'r': credito.recibo(cobro),
+        'negocio': ParametrosNegocio.vigentes(), 'impreso': timezone.now(),
+    })

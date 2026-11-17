@@ -29,7 +29,7 @@ from nucleo.formularios import leer_numero
 from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import foto, registrar_auditoria
-from stock.models import Producto
+from stock.models import Producto, Rubro
 from nucleo.templatetags.cafeto import pesos
 
 MAXIMO_DE_RENGLONES = 120
@@ -117,7 +117,7 @@ def _renglones_de_la_orden(orden):
             'producto': d.id_producto_id, 'nombre': str(d.id_producto),
             'controla': d.id_producto.controla_vencimiento,
             'fraccionable': not d.id_producto.exige_cantidad_entera,
-            'cantidad': str(cantidad.normalize()), 'costo': str(d.precio_unitario),
+            'cantidad': format(cantidad.normalize(), 'f'), 'costo': str(d.precio_unitario),
             'lotes': [],
         })
     return renglones
@@ -133,18 +133,38 @@ def recepcion(request):
             pk=request.GET['orden'],
             estado_orden__in=('EMITIDA', 'CON_DIFERENCIAS')).first()
     datos = request.POST if request.method == 'POST' else {}
-    from compras import precarga
-    precargados, borrador = None, None
+    from compras import facturas, precarga
+    from compras.models import FacturaRecibida
+    precargados, borrador, recibida = None, None, None
     testigo = request.GET.get('precarga') or request.POST.get('precarga') or ''
-    if testigo:
+    numero_recibida = request.GET.get('factura') or request.POST.get('factura') or ''
+    if numero_recibida.isdigit():
+        recibida = FacturaRecibida.objects.filter(pk=numero_recibida).first()
+        if recibida is None or not recibida.pendiente:
+            if request.method == 'GET':
+                messages.warning(request, 'Esa factura recibida ya se confirmó o se descartó.' if recibida
+                                 else 'Esa factura recibida no existe.')
+            recibida = None
+        else:
+            borrador = recibida.datos_factura
+            testigo = precarga.firmar(borrador)
+            if request.method == 'GET':
+                datos, precargados = precarga.para_la_pantalla(borrador)
+    elif testigo:
         borrador = precarga.leer(testigo)
         if borrador is None and request.method == 'GET':
             messages.warning(request, 'Ese enlace de pre-carga venció o no es válido: cargá la compra a mano.')
         elif borrador is not None and request.method == 'GET':
             datos, precargados = precarga.para_la_pantalla(borrador)
     detectado = precarga.proveedor_detectado(borrador) if borrador else None
+    usuario = request.usuario_actual
     contexto = {
         'precarga': borrador, 'testigo': testigo if borrador else '', 'detectado': detectado,
+        'recibida': recibida,
+        'puede_crear_producto': usuario.puede('crear_producto'),
+        'puede_crear_proveedor': usuario.puede('crear_proveedor'),
+        'rubros_json': {'rubros': [{'id': r.pk, 'nombre': r.nombre_rubro} for r in
+                                   Rubro.objects.filter(borrado_logico=False, activo=True).order_by('nombre_rubro')]},
         'proveedores': proveedores, 'tipos': TipoComprobante.choices,
         'orden': orden, 'datos': datos, 'hoy': timezone.localdate().isoformat(),
         'catalogo': reverse('stock:buscar_productos') + '?tipos=REVENTA,INSUMO',
@@ -194,7 +214,10 @@ def recepcion(request):
                     fecha_compra=_fecha(request.POST.get('fecha'), 'la fecha de la factura'),
                     importe_otros_conceptos=otros, orden=orden,
                     fecha_vencimiento_pago=_fecha(request.POST.get('vence_pago'), 'el vencimiento del pago'),
-                    vincular_sin_proveedor=request.POST.get('vincular') == '1')
+                    vincular_sin_proveedor=request.POST.get('vincular') == '1',
+                    ocasional=request.POST.get('ocasional') == '1')
+                if recibida is not None:
+                    facturas.confirmar(facturas.para_revisar(recibida.pk), compra, request.usuario_actual)
                 if borrador:
                     from stock.reservados import asignar_marca
                     marcas = precarga.marcas_detectadas(borrador)
@@ -229,8 +252,14 @@ def recepcion(request):
                            if compra.vinculados else '')
                         + (' Pasó a ser el proveedor habitual de: '
                            + ', '.join(f'{p} (antes {a})' for p, a, _ in compra.rotados) + '.'
-                           if compra.rotados else ''))
-            messages.success(request, f'Compra cargada: entró la mercadería de {proveedor}.')
+                           if compra.rotados else '')
+                        + (' Compra ocasional (salvataje): no cambió costos ni proveedores habituales.'
+                           if compra.compra_ocasional else '')
+                        + (f' Venía de la factura recibida N° {recibida.pk} '
+                           f'({recibida.get_origen_factura_display()}).' if recibida else ''))
+            messages.success(request, f'Compra cargada: entró la mercadería de {proveedor}.'
+                             + (' Como es ocasional, los costos y los proveedores habituales no cambiaron.'
+                                if compra.compra_ocasional else ''))
             if getattr(compra, 'vinculados', 0):
                 messages.info(request, f'{compra.vinculados} producto(s) que no tenían proveedor '
                                        f'quedaron a nombre de {proveedor}.')
@@ -242,6 +271,8 @@ def recepcion(request):
             return redirect('compras:compras')
 
     contexto['token'] = request.POST.get('token_operacion') or idempotencia.emitir(request)
+    # La factura de muestra es para la demostración: sólo con ?demo=1.
+    contexto['demo'] = request.GET.get('demo') == '1'
     return render(request, 'compras/recepcion.html', contexto)
 
 
@@ -267,9 +298,12 @@ def _compras_filtradas(request):
 
 @requiere_alguno('ver_compras', 'registrar_compra')
 def compras(request):
+    from compras import facturas
     consulta = _compras_filtradas(request)
     contexto = paginar(request, Compra.con_pagado(consulta), TAMANIOS_TABLA, por_defecto=25)
+    recibidas = list(facturas.pendientes()[:20]) if request.usuario_actual.puede('registrar_compra') else []
     contexto.update({
+        'recibidas': recibidas, 'aviso_recibidas': facturas.aviso(len(recibidas)),
         'filtro': request.GET, 'estados': Compra.ESTADOS, 'hoy': timezone.localdate(),
         'proveedores': Proveedor.objects.filter(compras__isnull=False).distinct()
                                          .order_by('nombre_proveedor'),

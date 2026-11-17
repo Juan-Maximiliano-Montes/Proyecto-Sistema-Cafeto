@@ -38,6 +38,7 @@ def resumen(request):
         'vencimientos_proximos': _vencimientos(hoy),
         'proveedores_inactivos_6m': _inactivos(hoy),
         'cuentas_corrientes': _cuentas_corrientes(hoy),
+        'cajas_a_revisar': _cajas_a_revisar(),
         'fecha': timezone.localdate().isoformat(),
         'numeros': [{'titulo': n['titulo'], 'valor': str(n['valor']), 'detalle': n.get('detalle', '')}
                     for n in numeros],
@@ -46,6 +47,17 @@ def resumen(request):
 
 
 DIAS_DE_VENCIMIENTOS = 3
+
+
+def _cajas_a_revisar():
+    """Los cierres con una diferencia que nadie aprobó (DD-97)."""
+    from ventas import caja
+
+    return [{'turno': t.pk, 'caja': str(t.id_caja_registradora),
+             'cerro': f'{t.id_usuario_cierre.nombre} {t.id_usuario_cierre.apellido}'.strip(),
+             'fecha_cierre': timezone.localtime(t.fecha_cierre).isoformat(),
+             'diferencia': str(t.diferencia_caja), 'motivo': t.observacion_diferencia or ''}
+            for t in caja.pendientes_de_revision()[:TOPE]]
 
 
 def _cuentas_corrientes(hoy):
@@ -232,23 +244,71 @@ def enriquecer_producto(request, pk):
 @de_servicio
 @require_POST
 def precargar_compra(request):
-    """Arma el enlace a una recepción ya escrita. No registra la compra."""
+    """Deja la factura leída en la bandeja de «Compras» y devuelve el enlace
+    a la recepción ya escrita. No registra la compra (DD-88, DD-98).
+
+    Opcionales: ``origen`` (WHATSAPP, CORREO u OTRO) y ``remitente`` (el
+    número o la dirección de donde vino). Un reintento con la misma factura
+    no la deja dos veces: devuelve la que ya estaba esperando (200)."""
     from django.conf import settings
     from django.urls import reverse
-    from urllib.parse import urlencode
 
-    from compras import precarga
+    from compras import facturas
 
     try:
-        testigo, resumen = precarga.armar(json.loads(request.body or b'{}'))
+        datos = json.loads(request.body or b'{}')
     except ValueError:
         return JsonResponse({'detail': 'El cuerpo no es JSON.'}, status=400)
+    try:
+        factura, resumen, nueva = facturas.recibir(
+            datos, origen=(datos or {}).get('origen'), remitente=(datos or {}).get('remitente'))
     except ValidationError as error:
         return JsonResponse({'detail': ' '.join(error.messages)}, status=400)
-    ruta = reverse('compras:recepcion') + '?' + urlencode({'precarga': testigo})
+    if nueva:
+        from seguridad.servicios import instantanea, registrar_auditoria
+        registrar_auditoria(request, 'ALTA', 'FACTURA RECIBIDA', instancia=factura,
+                            nuevo=instantanea(factura), modulo='COMPRAS',
+                            detalle=f'Llegó por {factura.get_origen_factura_display()} la factura '
+                                    f'«{factura.resumen_factura}»: queda para revisar y confirmar.')
+    ruta = reverse('compras:recepcion') + f'?factura={factura.pk}'
     base = (getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').rstrip('/')
-    return JsonResponse({**resumen, 'url': base + ruta, 'registrada': False,
-                         'vence_en_dias': precarga.VIGENCIA // 86400}, status=201)
+    return JsonResponse({**resumen, 'id': factura.pk, 'url': base + ruta, 'registrada': False,
+                         'en_bandeja': True, 'ya_estaba': not nueva,
+                         'pendientes': facturas.pendientes().count()},
+                        status=201 if nueva else 200)
+
+
+@de_servicio
+@require_POST
+def leer_factura(request):
+    """El lector local de facturas, para la automatización (DD-98).
+
+    Recibe ``{"nombre", "tipo", "archivo"}`` (el archivo en base64) y
+    devuelve lo leído en el formato de ``pre-cargar``. No guarda nada ni
+    llama a otra automatización."""
+    import base64
+    import binascii
+
+    from compras import lector_facturas
+
+    try:
+        datos = json.loads(request.body or b'{}')
+        contenido = base64.b64decode(str((datos or {}).get('archivo') or ''), validate=False)
+    except (ValueError, binascii.Error):
+        return JsonResponse({'detail': 'El cuerpo no es JSON o el archivo no está en base64.'}, status=400)
+    try:
+        texto, qr = lector_facturas.texto_de(contenido, datos.get('tipo'), datos.get('nombre'))
+    except ValidationError as error:
+        return JsonResponse({'detail': ' '.join(error.messages)}, status=422)
+    lectura = lector_facturas.interpretar(texto, qr)
+    # Lo que la automatización necesita para el paso siguiente (pre-cargar).
+    for clave in ('origen', 'remitente'):
+        if datos.get(clave):
+            lectura[clave] = str(datos[clave])[:80]
+    if not lectura.get('renglones'):
+        return JsonResponse({'detail': 'Se leyó el archivo pero no se encontraron renglones con cantidad y precio.',
+                             **lectura}, status=422)
+    return JsonResponse(lectura)
 
 
 @de_servicio

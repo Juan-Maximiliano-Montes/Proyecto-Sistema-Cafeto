@@ -10,6 +10,7 @@
         <p class="bajada">Aperturas, arqueos y diferencias de cada cajón.</p>
     </div>
     <div class="acciones">
+        {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=turnos#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -30,6 +31,7 @@
         <option value="">Todos los turnos</option>
         <option value="abiertos"{% if filtro.estado == 'abiertos' %} selected{% endif %}>Abiertos</option>
         <option value="con_diferencia"{% if filtro.estado == 'con_diferencia' %} selected{% endif %}>Con diferencia</option>
+        <option value="a_revisar"{% if filtro.estado == 'a_revisar' %} selected{% endif %}>Con diferencia pendiente de revisión</option>
         <option value="recontados"{% if filtro.estado == 'recontados' %} selected{% endif %}>Contados más de una vez</option>
     </select>
     <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ filtro.desde }}" class="form-control"></label>
@@ -51,10 +53,10 @@
             <tr>
                 <td>{{ t.id_caja_registradora }}</td>
                 <td><span class="d-block">{{ t.fecha_apertura|date:"d/m/Y H:i" }}</span><span class="small text-tenue">{{ t.id_usuario_apertura }}</span></td>
-                <td>{% if t.fecha_cierre %}<span class="d-block">{{ t.fecha_cierre|date:"d/m/Y H:i" }}</span><span class="small text-tenue">{{ t.id_usuario_cierre }}{% if t.tipo_cierre != 'NORMAL' %} · {{ t.get_tipo_cierre_display }}{% endif %}</span>{% else %}<span class="insignia insignia-exito">Abierto</span>{% endif %}</td>
+                <td>{% if t.fecha_cierre %}<span class="d-block">{{ t.fecha_cierre|date:"d/m/Y H:i" }}</span><span class="small text-tenue">{{ t.id_usuario_cierre }}{% if t.tipo_cierre != 'NORMAL' %} · {{ t.get_tipo_cierre_display }}{% endif %}{% if t.relevo_en_ausencia %} · en ausencia de quien abrió{% endif %}</span>{% else %}<span class="insignia insignia-exito">Abierto</span>{% endif %}</td>
                 <td class="table-numero">{{ t.monto_esperado|pesos }}</td>
                 <td class="table-numero">{{ t.monto_final|pesos }}</td>
-                <td class="table-numero">{% if t.diferencia_caja is None %}—{% elif t.diferencia_caja == 0 %}<span class="text-exito">Justa</span>{% else %}<span class="{% if t.diferencia_caja < 0 %}text-peligro{% else %}text-marca{% endif %} fw-semibold">{{ t.diferencia_caja|pesos }}</span>{% endif %}</td>
+                <td class="table-numero">{% if t.diferencia_caja is None %}—{% elif t.diferencia_caja == 0 %}<span class="text-exito">Justa</span>{% else %}<span class="{% if t.diferencia_caja < 0 %}text-peligro{% else %}text-marca{% endif %} fw-semibold">{{ t.diferencia_caja|diferencia_caja }}</span>{% if t.pendiente_de_revision %}<span class="d-block"><span class="insignia insignia-peligro">Pendiente de revisión</span></span>{% elif t.id_usuario_revision_id %}<span class="d-block small text-tenue">Revisada</span>{% endif %}{% endif %}</td>
                 <td class="text-end"><button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'ventas:ficha_turno' t.pk %}" data-modal="#modalTurno" data-titulo="{{ t.id_caja_registradora }} · {{ t.fecha_apertura|date:'d/m/Y' }}" title="Ver detalle"><i class="bi bi-eye"></i></button></td>
             </tr>
         {% empty %}

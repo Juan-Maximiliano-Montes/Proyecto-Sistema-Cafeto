@@ -12,9 +12,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # WeasyPrint (los PDF: listados, etiquetas de oferta, órdenes de compra)
 # necesita Pango y HarfBuzz del sistema para componer el texto.
+# Tesseract (con el idioma español) lee las fotos de las facturas sin
+# depender de internet ni de un servicio pago (DD-98). Sólo corre cuando
+# alguien escanea una foto; no ocupa memoria el resto del tiempo.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fontconfig \
+        tesseract-ocr tesseract-ocr-spa \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/app

@@ -1,15 +1,16 @@
 {% extends 'base.html' %}
-{% load cafeto %}
+{% load cafeto static %}
 {% block titulo %}Cafeto · Reportes{% endblock %}
 
 {% block contenido %}
 <div class="encabezado">
     <div>
         <span class="eyebrow"><i class="bi bi-graph-up me-1"></i>Reportes</span>
-        <h1 class="titulo-pantalla mb-0">{{ reporte.titulo }}</h1>
+        <h1 class="titulo-pantalla mb-0">Reportes</h1>
         <p class="bajada">{% if sin_periodo %}Al día de hoy.{% else %}Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}.{% endif %}</p>
     </div>
     <div class="acciones">
+        {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=ventas#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
         <a href="{% url 'negocio:resumen_del_mes' %}" class="btn btn-secundario"><i class="bi bi-calendar3 me-1"></i>Resumen del mes</a>
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
@@ -21,6 +22,9 @@
     </div>
 </div>
 
+{% include 'negocio/_tablero.html' %}
+
+<h2 class="h5 mb-2" id="titDetalle"><i class="bi {{ reporte.icono }} me-1" aria-hidden="true"></i>{{ reporte.titulo }}</h2>
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Reportes">
     {% for r in reportes %}
     <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;grafico={{ estilo }}" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
@@ -86,3 +90,5 @@
 </div>
 <p class="small text-tenue mt-2">Los importes salen de lo que quedó registrado en cada ticket (precio y costo de ese momento). Los cambios y devoluciones se ven en Ventas.</p>
 {% endblock %}
+
+{% block scripts %}<script src="{% static 'cafeto/js/tablero.js' %}"></script>{% endblock %}

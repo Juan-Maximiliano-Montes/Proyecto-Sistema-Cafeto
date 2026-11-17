@@ -143,11 +143,13 @@ class ArqueoCiegoTest(Base):
         self.assertRedirects(respuesta, reverse('ventas:recaudacion',
                                                 args=[self.turno.pk]))
         documento = self.client.get(respuesta['Location'])
-        self.assertContains(documento, 'Documento de recaudación')
-        filas = {r['medio']: r for r in documento.context['filas']}
-        self.assertEqual(filas['Efectivo']['total'], D('1200'))
-        self.assertEqual(filas['QR']['total'], D('2400'))
-        self.assertEqual(documento.context['total'], D('3600'))
+        self.assertContains(documento, 'CIERRE DE TURNO')
+        efectivo = {r['etiqueta']: r for r in documento.context['desglose']}
+        self.assertEqual(efectivo['Ventas en efectivo']['monto'], D('1200'))
+        self.assertEqual(efectivo['Ventas en efectivo']['cantidad'], 1)
+        otros = {r['medio']: r for r in documento.context['otros']['medios']}
+        self.assertEqual(otros['QR']['total'], D('2400'))
+        self.assertNotIn('Efectivo', otros)
 
     def test_el_documento_de_otro_turno_no_se_ve(self):
         self.declarar('5000')
@@ -485,15 +487,18 @@ class CajasEnLaBarraTest(Base):
         self.entrar(self.encargada)
         inicio = self.client.get(reverse('home'), follow=True)
         self.assertEqual(inicio.context['cajas_abiertas'], 2)
-        self.assertContains(inicio, '2 cajas abiertas')
-        self.assertContains(inicio, 'este equipo')
+        # A la vista, sin desplegable: cada caja con quién la abrió (DD-101).
+        self.assertContains(inicio, 'aria-label="Cajas del local"')
+        self.assertContains(inicio, f'({self.operador.nombre})')
+        self.assertContains(inicio, f'({self.encargada.nombre})')
+        self.assertContains(inicio, 'Es la caja de este equipo')
 
     def test_la_cajera_solo_ve_la_de_su_equipo(self):
         f.abrir_turno(self.operador, self.cajon, fondo='5000')
         self.entrar(self.operador)
         pantalla = self.client.get(reverse('ventas:caja'))
         self.assertNotIn('cajas_del_local', pantalla.context)
-        self.assertNotContains(pantalla, 'cajas abiertas')
+        self.assertNotContains(pantalla, 'Cajas del local')
 
 
 class AvisoDeReconteoTest(Base):

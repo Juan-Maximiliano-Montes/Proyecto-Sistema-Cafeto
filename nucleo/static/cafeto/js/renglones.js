@@ -131,6 +131,17 @@
                 });
         }
 
+        // Otra parte de la pantalla (el lector de facturas) suma renglones
+        // ya armados: si el producto ya estaba, se reemplaza su renglón.
+        raiz.addEventListener('cafeto:sumar-renglones', function (evento) {
+            (evento.detail || []).forEach(function (nuevo) {
+                var previo = renglones.findIndex(function (r) { return r.producto === nuevo.producto; });
+                if (previo >= 0) { renglones[previo] = nuevo; } else { renglones.push(nuevo); }
+            });
+            dibujar();
+        });
+        raiz.addEventListener('cafeto:vaciar-renglones', function () { renglones = []; dibujar(); });
+
         if (typeof jQuery !== 'undefined') {
             jQuery(raiz).on('change', '.js-nuevo-producto', function () {
                 var id = Number(this.value);

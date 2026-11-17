@@ -306,7 +306,7 @@ class PantallasTest(Base):
         self.assertTrue(LogAuditoria.objects.filter(
             operacion_realizada='RECATEGORIZACION DE CLIENTE').exists())
         ticket = self.client.get(venta['ticket'])
-        self.assertContains(ticket, 'Puntos de esta compra')
+        self.assertContains(ticket, 'Puntos sumados en esta compra')
         # Reimpreso después de otra compra, dice el saldo de ESA venta.
         self.vender((self.alfajor, 3))
         ticket = self.client.get(venta['ticket'])

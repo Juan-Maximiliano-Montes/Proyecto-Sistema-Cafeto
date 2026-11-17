@@ -1,0 +1,102 @@
+{% load cafeto %}
+{% comment %}
+Tablero interactivo (DD-100). Recibe ``tablero`` (negocio.tablero.del_periodo)
+y, opcionalmente, ``periodos`` (botones de período: [(etiqueta, url, activo)]).
+Los SVG los dibuja tablero.js; las tablas «Ver los datos» llevan las mismas
+cifras y se leen sin JavaScript.
+{% endcomment %}
+<section class="tablero mb-3" aria-labelledby="titTablero">
+    <div class="tablero-cabecera">
+        <h2 id="titTablero" class="h5 mb-0"><i class="bi bi-speedometer2 me-1" aria-hidden="true"></i>{{ titulo_tablero|default:"Tablero del período" }}</h2>
+        {% if periodos %}
+        <nav class="d-flex flex-wrap gap-1" aria-label="Período del tablero">
+            {% for etiqueta, url, activo in periodos %}<a href="{{ url }}" class="btn btn-sm {% if activo %}btn-primary{% else %}btn-secundario{% endif %}"{% if activo %} aria-current="true"{% endif %}>{{ etiqueta }}</a>{% endfor %}
+        </nav>
+        {% endif %}
+    </div>
+    {{ tablero|json_script:"datosTablero" }}
+
+    <div class="tablero-grilla">
+        <figure class="tarjeta grafico-vivo tablero-ancho" data-grafico="evolucion">
+            <div class="grafico-cabecera">
+                <figcaption><strong>Ingresos, egresos y ganancia neta</strong> <span class="text-tenue small">por {{ tablero.evolucion.unidad }}</span></figcaption>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Qué series mostrar">
+                    <button type="button" class="btn btn-secundario" data-serie="ingresos" aria-pressed="true"><span class="muestra muestra-ingresos" aria-hidden="true"></span>Ingresos</button>
+                    <button type="button" class="btn btn-secundario" data-serie="egresos" aria-pressed="true"><span class="muestra muestra-egresos" aria-hidden="true"></span>Egresos</button>
+                    <button type="button" class="btn btn-secundario" data-serie="neta" aria-pressed="true"><span class="muestra muestra-neta" aria-hidden="true"></span>Ganancia neta</button>
+                </div>
+            </div>
+            <div class="grafico-lienzo"></div>
+            {% with t=tablero.evolucion.total %}
+            <p class="grafico-resumen">Ingresos <strong class="text-nowrap">{{ t.ingresos|pesos }}</strong> · Egresos <strong class="text-nowrap">{{ t.egresos|pesos }}</strong> · Ganancia neta <strong class="text-nowrap {% if t.neta|slice:':1' == '-' %}text-peligro{% else %}text-exito{% endif %}">{{ t.neta|pesos }}</strong></p>
+            <p class="small text-tenue mb-1">Egresos = costo de lo vendido + gastos + mermas + incobrables. Los pagos a proveedores no se restan otra vez: ese costo ya está en lo vendido.</p>
+            <details class="grafico-datos">
+                <summary>Ver los datos</summary>
+                <div class="table-responsive"><table class="table table-sm mb-0">
+                    <caption class="visually-hidden">Ingresos, egresos y ganancia neta por {{ tablero.evolucion.unidad }}</caption>
+                    <thead><tr><th scope="col">Desde</th><th scope="col" class="table-numero">Vendido</th><th scope="col" class="table-numero">Recargos</th><th scope="col" class="table-numero">Costo</th><th scope="col" class="table-numero">Gastos</th><th scope="col" class="table-numero">Mermas</th><th scope="col" class="table-numero">Incobrable</th><th scope="col" class="table-numero">Neta</th></tr></thead>
+                    <tbody>{% for p in tablero.evolucion.puntos %}<tr><th scope="row">{{ p.etiqueta }}</th><td class="table-numero">{{ p.desglose.vendido|pesos }}</td><td class="table-numero">{{ p.desglose.interes|pesos }}</td><td class="table-numero">{{ p.desglose.costo|pesos }}</td><td class="table-numero">{{ p.desglose.gastos|pesos }}</td><td class="table-numero">{{ p.desglose.mermas|pesos }}</td><td class="table-numero">{{ p.desglose.incobrable|pesos }}</td><td class="table-numero">{{ p.neta|pesos }}</td></tr>{% endfor %}</tbody>
+                    <tfoot><tr class="fw-semibold"><th scope="row">Total</th><td class="table-numero">{{ t.desglose.vendido|pesos }}</td><td class="table-numero">{{ t.desglose.interes|pesos }}</td><td class="table-numero">{{ t.desglose.costo|pesos }}</td><td class="table-numero">{{ t.desglose.gastos|pesos }}</td><td class="table-numero">{{ t.desglose.mermas|pesos }}</td><td class="table-numero">{{ t.desglose.incobrable|pesos }}</td><td class="table-numero">{{ t.neta|pesos }}</td></tr></tfoot>
+                </table></div>
+            </details>
+            {% endwith %}
+        </figure>
+
+        <figure class="tarjeta grafico-vivo" data-grafico="medios">
+            <div class="grafico-cabecera"><figcaption><strong>Cobrado por medio de pago</strong> <span class="text-tenue small">{{ tablero.medios.total|pesos }}</span></figcaption></div>
+            <div class="grafico-lienzo"></div>
+            <details class="grafico-datos">
+                <summary>Ver los datos</summary>
+                <table class="table table-sm mb-0"><caption class="visually-hidden">Cobrado por medio de pago</caption>
+                    <thead><tr><th scope="col">Medio</th><th scope="col" class="table-numero">%</th><th scope="col" class="table-numero">Cobrado</th></tr></thead>
+                    <tbody>{% for p in tablero.medios.partes %}<tr><th scope="row">{{ p.nombre }}</th><td class="table-numero">{{ p.porcentaje|cantidad }} %</td><td class="table-numero">{{ p.monto|pesos }}</td></tr>{% empty %}<tr><td colspan="3">Sin cobros.</td></tr>{% endfor %}</tbody>
+                </table>
+            </details>
+        </figure>
+
+        <figure class="tarjeta grafico-vivo" data-grafico="franjas">
+            <div class="grafico-cabecera">
+                <figcaption><strong>Ventas por franja horaria</strong></figcaption>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Medir por" data-exclusivo>
+                    <button type="button" class="btn btn-secundario" data-franja-por="tickets" aria-pressed="true">Tickets</button>
+                    <button type="button" class="btn btn-secundario" data-franja-por="monto" aria-pressed="false">Monto</button>
+                </div>
+            </div>
+            <div class="grafico-lienzo"></div>
+            <p class="small text-secondary mb-1 js-pico" aria-live="polite"></p>
+            <details class="grafico-datos">
+                <summary>Ver los datos</summary>
+                <table class="table table-sm mb-0"><caption class="visually-hidden">Ventas por hora</caption>
+                    <thead><tr><th scope="col">Hora</th><th scope="col" class="table-numero">Tickets</th><th scope="col" class="table-numero">Vendido</th></tr></thead>
+                    <tbody>{% for h in tablero.franjas.horas %}<tr><th scope="row">{{ h.etiqueta }}</th><td class="table-numero">{{ h.tickets }}</td><td class="table-numero">{{ h.monto|pesos }}</td></tr>{% empty %}<tr><td colspan="3">Sin ventas.</td></tr>{% endfor %}</tbody>
+                </table>
+            </details>
+        </figure>
+
+        <figure class="tarjeta grafico-vivo tablero-ancho" data-grafico="top">
+            <div class="grafico-cabecera">
+                <figcaption><strong>Lo que más se vende</strong></figcaption>
+                <div class="d-flex flex-wrap gap-2">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Ver" data-exclusivo>
+                        <button type="button" class="btn btn-secundario" data-top-de="productos" aria-pressed="true">Productos</button>
+                        <button type="button" class="btn btn-secundario" data-top-de="rubros" aria-pressed="false">Rubros</button>
+                    </div>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Ordenar" data-exclusivo>
+                        <button type="button" class="btn btn-secundario" data-top-por="monto" aria-pressed="true">Por monto vendido</button>
+                        <button type="button" class="btn btn-secundario" data-top-por="unidades" aria-pressed="false">Por unidades</button>
+                        <button type="button" class="btn btn-secundario" data-top-por="ganancia" aria-pressed="false">Por margen de ganancia</button>
+                    </div>
+                </div>
+            </div>
+            <div class="grafico-lienzo"></div>
+            <p class="small text-tenue mb-1">«Por margen» ordena por la ganancia en pesos y muestra el % sobre la venta: así un producto vendido una sola vez no tapa a los que de verdad dejan plata.</p>
+            <details class="grafico-datos">
+                <summary>Ver los datos</summary>
+                <table class="table table-sm mb-0"><caption class="visually-hidden">Productos que más vendieron</caption>
+                    <thead><tr><th scope="col">Producto</th><th scope="col" class="table-numero">Vendido</th><th scope="col" class="table-numero">Unidades</th><th scope="col" class="table-numero">Ganancia</th><th scope="col" class="table-numero">Margen</th></tr></thead>
+                    <tbody>{% for f in tablero.top.productos.monto %}<tr><th scope="row">{{ f.nombre }}</th><td class="table-numero">{{ f.monto|pesos }}</td><td class="table-numero">{{ f.unidades|cantidad }}</td><td class="table-numero">{{ f.ganancia|pesos }}</td><td class="table-numero">{% if f.margen %}{{ f.margen|cantidad }} %{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Sin ventas.</td></tr>{% endfor %}</tbody>
+                </table>
+            </details>
+        </figure>
+    </div>
+</section>

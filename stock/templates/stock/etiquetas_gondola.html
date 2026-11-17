@@ -26,7 +26,7 @@
     </div>
     <div class="acciones">
         <a href="{% url 'stock:productos_lista' %}" class="btn btn-secundario"><i class="bi bi-arrow-left me-1"></i>Productos</a>
-        {% if productos %}<button type="button" class="btn btn-primary" onclick="window.print()"><i class="bi bi-printer me-1"></i>Imprimir {{ productos|length }} etiqueta{{ productos|length|pluralize }}</button>{% endif %}
+        {% if productos %}<button type="button" class="btn btn-primary" data-imprimir><i class="bi bi-printer me-1"></i>Imprimir {{ productos|length }} etiqueta{{ productos|length|pluralize }}</button>{% endif %}
     </div>
 </div>
 

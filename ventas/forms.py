@@ -108,7 +108,7 @@ class MovimientoEfectivoForm(ConToken):
     TIPOS = (('REFUERZO', 'Refuerzo: entra cambio al cajón'),
              ('RETIRO', 'Retiro: sale efectivo del cajón'))
     tipo = forms.ChoiceField(label='Movimiento', choices=TIPOS,
-                             widget=forms.RadioSelect)
+                             widget=forms.RadioSelect(attrs={'class': 'form-check-input'}))
     monto = CampoImporte(label='Monto')
     concepto = forms.CharField(
         label='Concepto', max_length=100,
@@ -123,22 +123,73 @@ class MovimientoEfectivoForm(ConToken):
 
 
 class ArqueoForm(ConToken):
-    """Paso 1 del cierre: lo que hay en el cajón, contado sin mirar el libro."""
+    """Paso 1 del cierre: lo que hay en el cajón, contado sin mirar el libro.
+
+    ``modo`` dice qué pasa después de contar (DD-97):
+
+    * CIERRE: se cierra la caja.
+    * RELEVO: sigue otra persona; firma con su clave que recibió el cajón y
+      el navegador pasa a su cuenta.
+    * AUSENCIA: quien abrió se fue sin cerrar; quien llega cuenta, cierra
+      ese turno a su nombre y abre el suyo con lo contado.
+    """
+    CIERRE, RELEVO, AUSENCIA = 'CIERRE', 'RELEVO', 'AUSENCIA'
+    MODOS = ((CIERRE, 'Cerrar la caja'),
+             (RELEVO, 'Cambio de turno: otra persona sigue con este cajón'),
+             (AUSENCIA, 'Cerrar turno anterior por relevo y abrir mi turno'))
     monto_contado = CampoImporte(label='¿Cuánto efectivo contaste?')
-    relevo = forms.BooleanField(
-        label='Es un cambio de turno: otra persona sigue con este cajón',
-        required=False)
+    modo = forms.ChoiceField(label='Después de contar', choices=MODOS, required=False,
+                             widget=forms.RadioSelect(attrs={'class': 'form-check-input'}))
+    # El tilde de antes («es un cambio de turno»): se sigue aceptando.
+    relevo = forms.BooleanField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, ausencia=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not ausencia:
+            self.fields['modo'].choices = self.MODOS[:2]
+        self.fields['modo'].initial = self.CIERRE
+
+    def clean(self):
+        datos = super().clean()
+        modo = datos.get('modo') or (self.RELEVO if datos.get('relevo') else self.CIERRE)
+        datos['modo'] = modo
+        datos['relevo'] = modo == self.RELEVO
+        return datos
+
+
+class CorteXForm(ConToken):
+    """Arqueo parcial: se cuenta el cajón sin cerrar el turno."""
+    monto_contado = CampoImporte(label='¿Cuánto efectivo contaste?')
+    observacion = forms.CharField(
+        label='Nota (opcional)', required=False, max_length=120,
+        widget=forms.TextInput(attrs={'class': 'form-control',
+                                      'placeholder': 'Control de media tarde'}))
 
 
 class ConfirmacionCierreForm(ConToken, AutorizacionForm):
     """Paso 2: con la diferencia a la vista, se explica y, si hace falta,
     autoriza alguien más."""
+    FORMAS = (('ACA', 'Autoriza alguien que está acá'),
+              ('DISTANCIA', 'Pedir autorización a distancia'),
+              ('REVISAR', 'Cerrar igual y dejarlo pendiente de revisión'))
     observacion = forms.CharField(
         label='¿A qué se debe la diferencia?', required=False, max_length=120,
         widget=forms.TextInput(attrs={'class': 'form-control'}))
+    forma = forms.ChoiceField(label='¿Quién aprueba la diferencia?', choices=FORMAS,
+                              required=False, initial='ACA', widget=forms.RadioSelect(attrs={'class': 'form-check-input'}))
+    remota = forms.IntegerField(required=False, widget=forms.HiddenInput)
+    # Qué se hace con el turno (DD-101): se puede cambiar hasta el último
+    # momento. Lo único fijo después de ver la diferencia es lo contado.
+    modo = forms.ChoiceField(label='¿Qué hacemos con el turno?', choices=ArqueoForm.MODOS, required=False,
+                             widget=forms.RadioSelect(attrs={'class': 'form-check-input'}))
     entrante_usuario = forms.CharField(
         label='Usuario o DNI de quien sigue', required=False, max_length=35,
         widget=forms.TextInput(attrs=USUARIO_DE_OTRA_PERSONA))
     entrante_clave = forms.CharField(
         label='Su clave', required=False,
         widget=forms.PasswordInput(attrs=CLAVE_DE_OTRA_PERSONA))
+
+    def __init__(self, *args, modos=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if modos is not None:
+            self.fields['modo'].choices = [m for m in ArqueoForm.MODOS if m[0] in modos]

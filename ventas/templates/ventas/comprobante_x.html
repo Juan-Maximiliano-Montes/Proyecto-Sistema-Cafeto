@@ -1,0 +1,71 @@
+{% extends 'comprobantes/base.html' %}
+{% load cafeto %}
+{% block titulo %}Arqueo parcial · Turno N° {{ turno.pk }}{% endblock %}
+{% block tipo %}ARQUEO PARCIAL<small>Control sin cerrar el turno</small>{% endblock %}
+
+{% block cuerpo %}
+<table>
+    <tr><td>Comercio</td><td class="der">{{ negocio.nombre_fantasia }}</td></tr>
+    <tr><td>Caja</td><td class="der">{{ turno.id_caja_registradora }}</td></tr>
+    <tr><td>N° de turno</td><td class="der">{{ turno.pk }}</td></tr>
+    <tr><td>N° de arqueo</td><td class="der">X-{{ asiento.pk }}</td></tr>
+    <tr><td>Fecha y hora</td><td class="der">{{ asiento.fecha_hora|date:"d/m/Y H:i:s" }}</td></tr>
+</table>
+
+<div class="linea"></div>
+<div class="seccion">Responsables</div>
+<div>Abrió el turno:</div>
+<div class="sangria fuerte">{{ turno.id_usuario_apertura|persona }}</div>
+<div class="sangria">{{ turno.fecha_apertura|date:"d/m/Y H:i:s" }}</div>
+<div>Contó el cajón:</div>
+<div class="sangria fuerte">{{ asiento.id_usuario|persona }}</div>
+<div class="sangria">{{ asiento.fecha_hora|date:"d/m/Y H:i:s" }}</div>
+
+<div class="linea"></div>
+<div class="seccion">Efectivo del cajón</div>
+{% if ve_esperado %}
+<table>
+    {% for r in desglose %}
+    <tr><td>({{ r.signo }}) {{ r.etiqueta }}{% if r.etiqueta != 'Fondo inicial' %} ({{ r.cantidad }}){% endif %}</td><td class="der">{{ r.monto|pesos }}</td></tr>
+    {% endfor %}
+</table>
+<div class="doble"></div>
+<table>
+    <tr class="fuerte"><td>(=) Efectivo esperado</td><td class="der">{{ esperado|pesos }}</td></tr>
+    <tr class="fuerte"><td>Efectivo contado declarado</td><td class="der">{{ contado|pesos }}</td></tr>
+    <tr class="total"><td>Diferencia: {% if diferencia == 0 %}EXACTA{% elif diferencia > 0 %}SOBRANTE{% else %}FALTANTE{% endif %}</td><td class="der">{{ diferencia|sin_signo|pesos }}</td></tr>
+</table>
+{% else %}
+<table>
+    {% for r in desglose %}{% if r.etiqueta != 'Fondo inicial' %}
+    <tr><td>({{ r.signo }}) {{ r.etiqueta }}</td><td class="der">{{ r.cantidad }}</td></tr>
+    {% endif %}{% endfor %}
+</table>
+<div class="doble"></div>
+<table>
+    <tr class="total"><td>Efectivo contado declarado</td><td class="der">{{ contado|pesos }}</td></tr>
+</table>
+<div class="tenue">Arqueo ciego: lo esperado y la diferencia los ve quien supervisa la caja.</div>
+{% endif %}
+{% if observacion %}<div>Nota: {{ observacion }}</div>{% endif %}
+
+<div class="linea"></div>
+<div class="seccion">Otros medios (informativo)</div>
+<table>
+    {% for f in medios %}
+    <tr><td>{% if f.fiado %}Ventas fiadas, cuenta corriente{% else %}{{ f.medio }}{% endif %} ({{ f.ventas }})</td><td class="der">{{ f.total|pesos }}</td></tr>
+    {% empty %}
+    <tr><td colspan="2" class="tenue">Sin cobros con otros medios.</td></tr>
+    {% endfor %}
+    <tr><td>Ventas anuladas ({{ anuladas.cantidad|default:0 }})</td><td class="der">{{ anuladas.monto|default:"0"|pesos }}</td></tr>
+    <tr><td>Cambios y devoluciones ({{ cambios.cantidad|default:0 }})</td><td class="der">{{ cambios.devuelto|default:"0"|pesos }}</td></tr>
+</table>
+
+<div class="firmas">
+    <div class="firma">Firma de quien contó<span>{{ asiento.id_usuario.nombre }} {{ asiento.id_usuario.apellido }}</span></div>
+    <div class="firma">Firma cajero entrante / supervisor<span>Aclaración: ______________________</span></div>
+</div>
+{% endblock %}
+
+{% block pie %}Control parcial: el turno sigue abierto.{% endblock %}
+{% block acciones %}<a href="{% url 'ventas:caja' %}">Volver a la caja</a>{% endblock %}

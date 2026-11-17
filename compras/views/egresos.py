@@ -29,7 +29,7 @@ from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import instantanea, registrar_acceso_denegado, registrar_auditoria
 from ventas import puesto
-from ventas.models import MedioPago
+from ventas.models import MedioPago, MovimientoCaja
 from nucleo.templatetags.cafeto import pesos
 
 PERMISOS = ('ver_egresos', 'registrar_egreso', 'registrar_gasto_caja',
@@ -98,6 +98,9 @@ def egresos(request):
         'vence_pronto': hoy + timedelta(days=7),
         'compra_elegida': servicio.compras_por_pagar().filter(pk=request.GET.get('compra') or 0).first(),
         'dias_sin_confirmar': servicio.DIAS_SIN_CONFIRMAR,
+        'vale': (MovimientoCaja.objects.filter(pk=request.GET['vale'], id_usuario=request.usuario_actual,
+                                               tipo_movimiento='GASTO').first()
+                 if request.GET.get('vale', '').isdigit() else None),
     })
     return render(request, 'compras/egresos.html', contexto)
 
@@ -167,7 +170,13 @@ def registrar(request):
         'anotar': 'Anotado: aparece en «A pagar» hasta que se pague.',
         'caja': f'Gasto registrado: salieron {pesos(egreso.monto)} del cajón.',
     }.get(modo, f'Pago registrado ({egreso.get_estado_pago_display().lower()}).'))
-    return redirect('compras:egresos')
+    return _con_vale(egreso)
+
+
+def _con_vale(egreso, destino='compras:egresos'):
+    """Si la plata salió del cajón, se vuelve con el vale para imprimir."""
+    vale = egreso.movimientos_caja.values_list('pk', flat=True).first()
+    return redirect(f"{reverse(destino)}?vale={vale}") if vale else redirect(destino)
 
 
 @require_POST
@@ -192,7 +201,7 @@ def pagar(request, pk):
                         anterior=antes, nuevo=instantanea(egreso),
                         detalle=f'Pagó {pesos(egreso.monto)} con {egreso.id_medio_pago}: {egreso.concepto}.')
     messages.success(request, f'Pagado: {egreso.concepto}.')
-    return redirect('compras:egresos')
+    return _con_vale(egreso)
 
 
 @require_POST

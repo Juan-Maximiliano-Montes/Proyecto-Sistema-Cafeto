@@ -1,0 +1,32 @@
+{% load static %}<!DOCTYPE html>
+<html lang="es-AR" data-tema="oscuro" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#121128">
+    <meta name="robots" content="noindex">
+    <title>Cafeto · {{ titulo }}</title>
+    <link rel="icon" type="image/png" href="{% static 'cafeto/marca/cafeto-favicon-32.png' %}">
+    <link rel="stylesheet" href="{% static 'cafeto/vendor/bootstrap/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'cafeto/vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
+    <link rel="stylesheet" href="{% static 'cafeto/css/cafeto.css' %}">
+</head>
+<body>
+<main class="acceso">
+    <img class="acceso-marca-agua" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="" aria-hidden="true">
+    <div class="acceso-caja">
+        <img class="acceso-logo" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="Cafeto Las Lomitas">
+        <div class="card pagina-error" role="alert" aria-labelledby="tituloError">
+            <span class="eyebrow">{% block icono %}<i class="bi bi-exclamation-circle me-1" aria-hidden="true"></i>{% endblock %}Error {{ codigo }}</span>
+            <h1 id="tituloError" class="titulo-pantalla mb-2">{{ titulo }}</h1>
+            <p class="mb-4">{{ texto }}</p>
+            {% if referencia %}<p class="small text-secondary mb-4">Referencia <strong class="font-monospace">{{ referencia }}</strong> · {{ hora|date:"d/m/Y H:i" }}</p>{% endif %}
+            <div class="d-grid gap-2">
+                <a class="btn btn-primary btn-xl" href="{% url 'home' %}"><i class="bi bi-house-door me-1" aria-hidden="true"></i>Volver al inicio</a>
+                <a class="btn btn-secundario" href="{% url 'ventas:mostrador' %}"><i class="bi bi-shop me-1" aria-hidden="true"></i>Ir al mostrador</a>
+            </div>
+        </div>
+    </div>
+</main>
+</body>
+</html>

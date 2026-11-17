@@ -23,6 +23,27 @@ def _numero(valor, decimales):
 
 
 @register.filter
+def sin_signo(valor):
+    """El valor absoluto: el signo ya lo dice la etiqueta (FALTANTE / SOBRANTE)."""
+    try:
+        return abs(Decimal(str(valor)))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor
+
+
+@register.filter
+def diferencia_caja(valor):
+    """«Faltan $ 12.000,00» / «Sobran $ 500,00» / «Justa»: nunca «-$» (DD-101)."""
+    try:
+        numero = Decimal(str(valor))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor
+    if numero == 0:
+        return 'Justa'
+    return f'{"Sobran" if numero > 0 else "Faltan"} {pesos(abs(numero))}'
+
+
+@register.filter
 def pesos(valor):
     """1234.5 -> '$ 1.234,50'. ``None`` -> '—'.
 
@@ -52,6 +73,16 @@ def cantidad(valor):
         return _numero(numero, 0)
     texto = _numero(numero, 3).rstrip('0')
     return texto.rstrip(',')
+
+
+@register.filter
+def persona(usuario):
+    """«Nombre Apellido @usuario»: como se firma en un comprobante."""
+    if not usuario:
+        return ''
+    nombre = f'{getattr(usuario, "nombre", "")} {getattr(usuario, "apellido", "")}'.strip()
+    alias = getattr(usuario, 'nombre_usuario', '')
+    return f'{nombre} @{alias}' if alias else nombre
 
 
 @register.filter

@@ -95,6 +95,17 @@
     <i class="bi bi-hourglass-split"></i>
     <span>Tenés un cierre empezado: ya declaraste lo contado. <a href="{% url 'ventas:cierre' %}" class="fw-semibold">Terminar el cierre</a></span>
 </div>
+{% elif puede_ausencia and puede_cerrar %}
+<div class="aviso aviso-info">
+    <i class="bi bi-person-exclamation"></i>
+    <span>Este turno lo abrió <strong>{{ turno.id_usuario_apertura.nombre }} {{ turno.id_usuario_apertura.apellido }}</strong>. Si se fue sin cerrar, contá el cajón y elegí <a href="#cerrar" class="fw-semibold">«Cerrar turno anterior por relevo y abrir mi turno»</a>.</span>
+</div>
+{% endif %}
+{% if vale %}
+<div class="aviso aviso-exito">
+    <i class="bi bi-receipt"></i>
+    <span>{{ vale.get_tipo_movimiento_display }} registrado. <a href="{% url 'ventas:vale_movimiento' vale.pk %}" target="_blank" rel="noopener" class="fw-semibold">Imprimir el vale para el cajón</a></span>
+</div>
 {% endif %}
 
 <div class="grilla grilla-compacta mb-3">
@@ -167,20 +178,50 @@
         {% endif %}
 
         {% if puede_cerrar and not arqueo %}
-        <form method="post" action="{% url 'ventas:declarar_arqueo' %}" class="tarjeta" novalidate
-              data-titulo="¿Cerrar con este conteo?" data-aceptar="Sí, es lo que conté"
+        <form method="post" action="{% url 'ventas:declarar_arqueo' %}" class="tarjeta" id="cerrar" novalidate
+              data-titulo="¿Es lo que contaste?" data-aceptar="Sí, es lo que conté"
               data-confirmar="Lo que declares queda registrado. Contá dos veces antes de declarar.">
             {% csrf_token %}
             {{ form_arqueo.token_operacion }}
-            <h2 class="subtitulo h5 mb-0">Cerrar la caja</h2>
+            <h2 class="subtitulo h5 mb-0">Cerrar o cambiar de turno</h2>
             <p class="small text-secondary mb-0">Contá el efectivo del cajón sin mirar el sistema. Te vamos a decir si coincide; si no coincide, podés volver a contar una vez.</p>
             <div>
                 <label class="form-label" for="{{ form_arqueo.monto_contado.id_for_label }}">{{ form_arqueo.monto_contado.label }}</label>
                 <div class="input-group input-group-lg"><span class="input-group-text">$</span>{{ form_arqueo.monto_contado }}</div>
             </div>
-            <div class="form-check">{{ form_arqueo.relevo }}<label class="form-check-label" for="{{ form_arqueo.relevo.id_for_label }}">{{ form_arqueo.relevo.label }}</label></div>
+            <fieldset>
+                <legend class="form-label">{{ form_arqueo.modo.label }}</legend>
+                {% for opcion in form_arqueo.modo %}
+                <div class="form-check">{{ opcion.tag }}<label class="form-check-label" for="{{ opcion.id_for_label }}">{{ opcion.choice_label }}</label></div>
+                {% endfor %}
+            </fieldset>
             <button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-lock me-1"></i>Declarar lo contado</button>
         </form>
+        {% endif %}
+
+        {% if puede_cerrar %}
+        <details class="tarjeta" {% if cortes %}open{% endif %}>
+            <summary class="subtitulo h6 mb-0">Arqueo parcial (control sin cerrar)</summary>
+            <form method="post" action="{% url 'ventas:corte_x' %}" class="d-flex flex-column gap-2 mt-2 form-una-vez" novalidate
+                  data-titulo="¿Registramos el arqueo parcial?" data-aceptar="Sí, registrar"
+                  data-confirmar="Queda registrado con la fecha y la hora de ahora. El turno sigue abierto.">
+                {% csrf_token %}
+                {{ form_corte.token_operacion }}
+                <p class="small text-secondary mb-0">Un control sin cerrar: contás el cajón, sale un comprobante para imprimir y seguís vendiendo.</p>
+                <div>
+                    <label class="form-label" for="{{ form_corte.monto_contado.id_for_label }}">{{ form_corte.monto_contado.label }}</label>
+                    <div class="input-group"><span class="input-group-text">$</span>{{ form_corte.monto_contado }}</div>
+                </div>
+                <div>
+                    <label class="form-label" for="{{ form_corte.observacion.id_for_label }}">{{ form_corte.observacion.label }}</label>
+                    {{ form_corte.observacion }}
+                </div>
+                <button type="submit" class="btn btn-secundario" data-requiere-red><i class="bi bi-printer me-1"></i>Registrar e imprimir</button>
+            </form>
+            {% if cortes %}
+            <ul class="list-unstyled small mt-2 mb-0">{% for c in cortes %}<li><a href="{% url 'ventas:comprobante_x' c.pk %}" target="_blank" rel="noopener">X-{{ c.pk }} · {{ c.fecha_hora|date:"H:i:s" }} · {{ c.id_usuario.nombre }}</a></li>{% endfor %}</ul>
+            {% endif %}
+        </details>
         {% endif %}
     </div>
 </div>

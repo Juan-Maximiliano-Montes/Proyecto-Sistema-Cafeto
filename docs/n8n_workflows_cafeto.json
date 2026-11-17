@@ -765,5 +765,345 @@
       "timezone": "America/Argentina/Salta"
     },
     "active": false
+  },
+  {
+    "name": "Cafeto · Factura por WhatsApp o correo → bandeja de compras",
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "cafeto-whatsapp-factura",
+          "responseMode": "onReceived",
+          "options": {}
+        },
+        "name": "Llega un WhatsApp con la factura",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ $json.body.payload.hasMedia }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              },
+              {
+                "leftValue": "={{ $json.body.payload.from }}",
+                "rightValue": "={{ $env.CAFETO_WHATSAPP_COMPRAS }}@c.us",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "¿Trae un adjunto y viene del número de compras?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.body.payload.media.url }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "options": {
+            "response": {
+              "response": {
+                "responseFormat": "file"
+              }
+            }
+          }
+        },
+        "name": "Bajar la foto o el PDF",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const archivo = $input.first().binary.data;\nconst mensaje = $('Llega un WhatsApp con la factura').first().json.body.payload;\nreturn [{ json: { nombre: archivo.fileName || 'factura', tipo: archivo.mimeType, archivo: archivo.data, origen: 'WHATSAPP', remitente: String(mensaje.from || '').replace('@c.us', '') } }];"
+        },
+        "name": "Armar el archivo (WhatsApp)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          660,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mailbox": "INBOX",
+          "postProcessAction": "read",
+          "downloadAttachments": true,
+          "options": {
+            "customEmailConfig": "[\"UNSEEN\", [\"SUBJECT\", \"factura\"]]"
+          }
+        },
+        "name": "Llega un correo con la factura",
+        "type": "n8n-nodes-base.emailReadImap",
+        "typeVersion": 2,
+        "position": [
+          0,
+          260
+        ],
+        "credentials": {
+          "imap": {
+            "id": "",
+            "name": "Correo de compras del local"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const salida = [];\nfor (const item of $input.all()) {\n  for (const [clave, archivo] of Object.entries(item.binary || {})) {\n    if (!/pdf|image|text/.test(archivo.mimeType || '')) continue;\n    salida.push({ json: { nombre: archivo.fileName || clave, tipo: archivo.mimeType, archivo: archivo.data, origen: 'CORREO', remitente: String(item.json.from || '').slice(0, 80) } });\n  }\n}\nreturn salida;"
+        },
+        "name": "Armar el archivo (correo)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          220,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/compras/leer-factura/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ nombre: $json.nombre, tipo: $json.tipo, archivo: $json.archivo, origen: $json.origen, remitente: $json.remitente }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "name": "Leer la factura (lector de Cafeto)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          880,
+          120
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/compras/pre-cargar/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json) }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "name": "Dejarla en la bandeja de Compras",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1100,
+          120
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const r = $input.first().json;\nif (!r.en_bandeja) {\n  return [{ json: { texto: 'No pude leer la factura que mandaste (' + (r.detail || 'sin detalle') + '). Cargala a mano en Compras.' } }];\n}\nreturn [{ json: { texto: (r.ya_estaba ? 'Esa factura ya estaba esperando. ' : 'Recibí la factura. ') + 'Tenés ' + r.pendientes + ' para revisar y confirmar en Compras: ' + r.url } }];"
+        },
+        "name": "Armar el aviso",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1320,
+          120
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Avisar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1540,
+          120
+        ]
+      }
+    ],
+    "connections": {
+      "Llega un WhatsApp con la factura": {
+        "main": [
+          [
+            {
+              "node": "¿Trae un adjunto y viene del número de compras?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Trae un adjunto y viene del número de compras?": {
+        "main": [
+          [
+            {
+              "node": "Bajar la foto o el PDF",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "Bajar la foto o el PDF": {
+        "main": [
+          [
+            {
+              "node": "Armar el archivo (WhatsApp)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el archivo (WhatsApp)": {
+        "main": [
+          [
+            {
+              "node": "Leer la factura (lector de Cafeto)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Llega un correo con la factura": {
+        "main": [
+          [
+            {
+              "node": "Armar el archivo (correo)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el archivo (correo)": {
+        "main": [
+          [
+            {
+              "node": "Leer la factura (lector de Cafeto)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Leer la factura (lector de Cafeto)": {
+        "main": [
+          [
+            {
+              "node": "Dejarla en la bandeja de Compras",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Dejarla en la bandeja de Compras": {
+        "main": [
+          [
+            {
+              "node": "Armar el aviso",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el aviso": {
+        "main": [
+          [
+            {
+              "node": "Avisar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
   }
 ]

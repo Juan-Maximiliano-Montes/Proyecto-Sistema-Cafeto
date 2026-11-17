@@ -33,7 +33,7 @@ DIAS_DE_INACTIVIDAD = 180
 
 
 def _compras_de(producto):
-    return (DetalleCompra.objects.filter(id_producto=producto)
+    return (DetalleCompra.objects.filter(id_producto=producto, id_compra__compra_ocasional=False)
             .exclude(id_compra__estado_compra='ANULADA')
             .order_by('-id_compra__fecha_compra', '-id_compra_id'))
 

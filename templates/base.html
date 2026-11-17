@@ -91,24 +91,21 @@
             <span class="sin-conexion" role="status"><i class="bi bi-wifi-off"></i>Sin conexión: no cobres hasta que vuelva</span>
             <div class="ms-auto d-flex align-items-center gap-2">
                 {% if cajas_del_local %}
-                <div class="dropdown">
-                    <button type="button" class="chip-caja{% if cajas_abiertas %} abierta{% endif %} dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" title="Estado de las cajas">
-                        <span class="punto"></span>{% if cajas_abiertas == 1 %}1 caja abierta{% elif cajas_abiertas %}{{ cajas_abiertas }} cajas abiertas{% else %}Cajas cerradas{% endif %}
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end lista-cajas">
-                        {% for caja, turno in cajas_del_local %}
-                        <li>
-                            <a class="dropdown-item" href="{% if turno %}{% url 'ventas:turnos' %}?caja={{ caja.pk }}&amp;estado=abiertos{% else %}{% url 'ventas:turnos' %}?caja={{ caja.pk }}{% endif %}">
-                                <span class="chip-caja-fila{% if turno %} abierta{% endif %}"><span class="punto"></span></span>
-                                <span><strong>{{ caja }}</strong>{% if caja == caja_de_la_sesion %} <span class="insignia insignia-neutra">este equipo</span>{% endif %}<br>
-                                <small class="text-secondary">{% if turno %}{{ turno.id_usuario_apertura.nombre }} · desde {{ turno.fecha_apertura|date:"d/m H:i" }}{% else %}Cerrada{% endif %}</small></span>
-                            </a>
-                        </li>
-                        {% endfor %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item small" href="{% url 'ventas:caja' %}"><i class="bi bi-cash-stack me-1"></i>{% if caja_de_la_sesion %}Ir a la caja de este equipo{% else %}Elegir la caja de este equipo{% endif %}</a></li>
-                    </ul>
-                </div>
+                {# Las cajas del local a la vista, sin desplegable (DD-101): verde = turno abierto. #}
+                <nav class="chips-cajas" aria-label="Cajas del local">
+                    {% for caja, turno, propia in cajas_del_local %}
+                    <a class="chip-caja{% if turno %} abierta{% endif %}{% if propia %} propia{% endif %}"
+                       href="{% if propia %}{% url 'ventas:caja' %}{% else %}{% url 'ventas:turnos' %}?caja={{ caja.pk }}{% if turno %}&amp;estado=abiertos{% endif %}{% endif %}"
+                       {% if propia %}aria-current="true"{% endif %}
+                       aria-label="{{ caja }}: {% if turno %}abierta por {{ turno.id_usuario_apertura.nombre }} desde el {{ turno.fecha_apertura|date:'d/m H:i' }}{% else %}cerrada{% endif %}{% if propia %}. Es la caja de este equipo{% endif %}"
+                       title="{% if turno %}Abierta por {{ turno.id_usuario_apertura.nombre }} {{ turno.id_usuario_apertura.apellido }} desde el {{ turno.fecha_apertura|date:'d/m H:i' }}{% else %}Cerrada{% endif %}{% if propia %} · este equipo{% endif %}">
+                        <span class="punto" aria-hidden="true"></span>
+                        {% if propia %}<i class="bi bi-display" aria-hidden="true"></i>{% endif %}
+                        <span>{{ caja }} <span class="chip-caja-quien">({% if turno %}{{ turno.id_usuario_apertura.nombre }}{% else %}Cerrada{% endif %})</span></span>
+                    </a>
+                    {% endfor %}
+                    {% if not caja_de_la_sesion %}<a class="chip-caja chip-caja-elegir" href="{% url 'ventas:caja' %}"><i class="bi bi-plus-circle" aria-hidden="true"></i><span>Elegir la caja de este equipo</span></a>{% endif %}
+                </nav>
                 {% elif caja_de_la_sesion %}
                 <a href="{% url 'ventas:caja' %}" class="chip-caja{% if turno_de_la_sesion %} abierta{% endif %}" title="{% if turno_de_la_sesion %}Turno abierto{% else %}Caja cerrada{% endif %}">
                     <span class="punto"></span>{{ caja_de_la_sesion }}

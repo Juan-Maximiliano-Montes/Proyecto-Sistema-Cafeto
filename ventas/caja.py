@@ -158,8 +158,9 @@ def registrar_movimiento(turno, usuario, tipo, monto, concepto, **documento):
 #  APERTURA
 # ===========================================================================
 @transaction.atomic
-def abrir(caja, usuario, monto_inicial, concepto='Fondo de cambio inicial'):
-    """Abre el turno del cajón y asienta el fondo de cambio."""
+def abrir(caja, usuario, monto_inicial, concepto='Fondo de cambio inicial', anterior=None):
+    """Abre el turno del cajón y asienta el fondo de cambio. ``anterior``
+    es el turno que se relevó (DD-97)."""
     caja = (CajaRegistradora.objects.select_for_update()
             .filter(pk=getattr(caja, 'pk', caja)).first())
     if caja is None or caja.borrado_logico:
@@ -175,7 +176,7 @@ def abrir(caja, usuario, monto_inicial, concepto='Fondo de cambio inicial'):
         with transaction.atomic():
             turno = TurnoCaja.objects.create(
                 id_caja_registradora=caja, id_usuario_apertura=usuario,
-                monto_inicial=monto_inicial)
+                monto_inicial=monto_inicial, id_turno_anterior=anterior)
     except IntegrityError:
         # Dos aperturas al mismo tiempo: la segunda choca con el índice.
         raise ValidationError(
@@ -209,16 +210,38 @@ def retiro(turno, usuario, monto, concepto):
 # ===========================================================================
 #  ARQUEO Y CIERRE
 # ===========================================================================
+def en_palabras(diferencia):
+    """«un faltante de $ 12.000,00» / «un sobrante de $ 500,00»: nunca un
+    «-$ 12.000,00» con el signo pegado, que se lee mal y asusta (DD-101)."""
+    diferencia = Decimal(diferencia or 0)
+    if diferencia == 0:
+        return 'la caja justa'
+    return f'un {"sobrante" if diferencia > 0 else "faltante"} de {pesos(abs(diferencia))}'
+
+
+# Un motivo para cerrar sin que nadie apruebe la diferencia tiene que decir
+# algo: «.» o «x» no le sirven a la titular cuando lo revise.
+MOTIVO_MINIMO = 10
+
+
 @transaction.atomic
 def cerrar(turno, usuario, monto_contado, observacion=None,
-           supervisor=None, relevo=False, confirmo_titular=False):
+           supervisor=None, relevo=False, confirmo_titular=False,
+           a_revisar=False, en_ausencia=False):
     """Cierra el turno con lo contado y deja escrita la diferencia.
 
     * diferencia = contado - esperado (el saldo del libro).
     * Si no da cero, hay que explicar por qué.
     * Si supera la tolerancia, el cierre es SUPERVISADO: ``supervisor`` es
-      quien lo autorizó (ya re-autenticado por la vista) y no puede ser
-      quien cierra.
+      quien lo autorizó (ya re-autenticado por la vista o a distancia) y no
+      puede ser quien cierra.
+    * Si no hay nadie que pueda supervisar y la fila no puede esperar
+      (``a_revisar``), cierra igual con un motivo que diga algo, y el turno
+      queda PENDIENTE DE REVISIÓN de la titular o la encargada (DD-97). La
+      clave de otro cajero nunca aprueba una diferencia: sólo firma que
+      recibió el cajón.
+    * ``en_ausencia``: lo cierra quien llega porque quien abrió se fue sin
+      cerrar; queda marcado y tiene que ser otra persona.
     """
     turno = TurnoCaja.objects.select_for_update().get(pk=turno.pk)
     if not turno.abierto:
@@ -235,20 +258,27 @@ def cerrar(turno, usuario, monto_contado, observacion=None,
 
     if diferencia != 0 and not observacion:
         raise ValidationError(
-            f'La caja cierra con una diferencia de {pesos(diferencia)}: contá a '
-            'qué se debe.')
+            f'La caja cierra con {en_palabras(diferencia)}: contá a qué se debe.')
     if supervisor is not None and supervisor.pk == usuario.pk:
         raise ValidationError(
             'Quien supervisa el cierre tiene que ser otra persona.')
+    if en_ausencia and turno.id_usuario_apertura_id == usuario.pk:
+        raise ValidationError(
+            'Ese turno lo abriste vos: cerralo normalmente o hacé el relevo con quien entra.')
     # La titular cierra sola aunque haya diferencia (DD-80): la vista ya le
     # pidió su clave. Queda como cierre NORMAL, sin supervisor, porque en la
     # base "supervisó" es siempre OTRA persona.
     titular_sola = confirmo_titular and getattr(usuario, 'es_titular', False)
-    if abs(diferencia) > tolerancia and supervisor is None and not titular_sola:
+    fuera_de_tolerancia = abs(diferencia) > tolerancia and supervisor is None and not titular_sola
+    if fuera_de_tolerancia and not a_revisar:
         raise ValidationError(
-            f'La diferencia de {pesos(diferencia)} supera lo tolerado '
+            f'{en_palabras(diferencia).capitalize()} supera lo tolerado '
             f'({pesos(tolerancia)}): el cierre lo tiene que supervisar alguien '
-            'con permiso.')
+            'con permiso, pedir la autorización a distancia o dejarlo a revisar.')
+    if fuera_de_tolerancia and len(observacion) < MOTIVO_MINIMO:
+        raise ValidationError(
+            'Para cerrar sin que nadie apruebe la diferencia, contá qué pasó '
+            f'(al menos {MOTIVO_MINIMO} letras): la titular lo va a revisar.')
 
     if supervisor is not None:
         tipo = TipoCierre.SUPERVISADO
@@ -266,25 +296,193 @@ def cerrar(turno, usuario, monto_contado, observacion=None,
     turno.tipo_cierre = tipo
     turno.fecha_cierre = timezone.now()
     turno.estado_turno = 'CERRADA'
+    turno.requiere_revision = fuera_de_tolerancia
+    turno.relevo_en_ausencia = en_ausencia
     turno.save()
     return turno
 
 
 @transaction.atomic
 def relevar(turno, saliente, monto_contado, entrante, observacion=None,
-            supervisor=None, confirmo_titular=False):
+            supervisor=None, confirmo_titular=False, a_revisar=False,
+            en_ausencia=False):
     """Cambio de turno: cierra con lo contado y abre con eso mismo.
 
-    El efectivo no se mueve del cajón: lo que el que se va contó es el
-    fondo del que llega. Si hubo diferencia, queda en el turno que cierra.
+    El efectivo no se mueve del cajón: lo que se contó es el fondo del que
+    llega, que firma haberlo recibido (custodia, no perdón: su clave no
+    aprueba ninguna diferencia). Si hubo diferencia, queda en el turno que
+    cierra. ``en_ausencia``: quien llega cuenta y cierra el turno de quien
+    se fue sin cerrar (saliente y entrante son la misma persona).
     """
     cerrado = cerrar(turno, saliente, monto_contado, observacion,
                      supervisor=supervisor, relevo=supervisor is None,
-                     confirmo_titular=confirmo_titular)
+                     confirmo_titular=confirmo_titular, a_revisar=a_revisar,
+                     en_ausencia=en_ausencia)
     nuevo = abrir(cerrado.id_caja_registradora, entrante,
                   cerrado.monto_final,
-                  concepto=f'Relevo del turno {cerrado.pk}')
+                  concepto=f'Relevo del turno {cerrado.pk}', anterior=cerrado)
     return cerrado, nuevo
+
+
+def puede_revisar(usuario):
+    return usuario is not None and (usuario.es_titular or usuario.puede('supervisar_cierre'))
+
+
+@transaction.atomic
+def revisar(turno, usuario):
+    """La titular o la encargada miró la diferencia que quedó sin aprobar y
+    la da por revisada (con su nombre y la hora)."""
+    turno = TurnoCaja.objects.select_for_update().get(pk=turno.pk)
+    if not turno.pendiente_de_revision:
+        raise ValidationError('Ese turno no tiene una diferencia pendiente de revisión.')
+    if not puede_revisar(usuario):
+        raise ValidationError('Revisar diferencias de caja lo hace la titular o quien supervisa cierres.')
+    if usuario.pk == turno.id_usuario_cierre_id:
+        raise ValidationError('La diferencia la revisa otra persona que la que cerró.')
+    turno.id_usuario_revision = usuario
+    turno.fecha_revision = timezone.now()
+    turno.save(update_fields=['id_usuario_revision', 'fecha_revision'])
+    return turno
+
+
+def pendientes_de_revision():
+    return (TurnoCaja.objects.filter(requiere_revision=True, id_usuario_revision__isnull=True)
+            .select_related('id_caja_registradora', 'id_usuario_cierre').order_by('fecha_cierre'))
+
+
+# ===========================================================================
+#  ARQUEO PARCIAL (CONTROL SIN CERRAR)
+# ===========================================================================
+OPERACION_CORTE_X = 'ARQUEO PARCIAL DE TURNO DE CAJA'
+
+
+def cortes_x(turno):
+    """Los arqueos parciales del turno (no lo cierran), en orden."""
+    from seguridad.models import LogAuditoria
+    return (LogAuditoria.objects
+            .filter(tabla_afectada=turno._meta.db_table[:40], id_registro=turno.pk,
+                    operacion_realizada=OPERACION_CORTE_X)
+            .select_related('id_usuario').order_by('fecha_hora', 'pk'))
+
+
+def foto_del_cajon(turno):
+    """Lo que el libro dice del cajón ahora: cada renglón con su cantidad e
+    importe, para los comprobantes Z y X."""
+    filas = (MovimientoCaja.objects.filter(id_turno_caja=turno)
+             .values('tipo_movimiento').annotate(total=Sum('monto'), cantidad=Count('pk')))
+    por_tipo = {f['tipo_movimiento']: f for f in filas}
+
+    def de(tipo):
+        f = por_tipo.get(tipo) or {}
+        return {'monto': f.get('total') or CERO, 'cantidad': f.get('cantidad') or 0}
+
+    return {
+        'fondo': de(TipoMovimientoCaja.APERTURA),
+        'ventas': de(TipoMovimientoCaja.VENTA),
+        'cobros_cuenta': de(TipoMovimientoCaja.COBRO_CUENTA),
+        'cobros_cambio': de(TipoMovimientoCaja.COBRO_CAMBIO),
+        'refuerzos': de(TipoMovimientoCaja.REFUERZO),
+        'gastos': de(TipoMovimientoCaja.GASTO),
+        'retiros': de(TipoMovimientoCaja.RETIRO),
+        'devoluciones': de(TipoMovimientoCaja.DEVOLUCION),
+        'anulaciones': de(TipoMovimientoCaja.ANULACION),
+        'esperado': saldo(turno),
+    }
+
+
+def otros_medios(turno):
+    """Lo informativo del comprobante: lo que no es efectivo, el fiado, y las
+    anulaciones y cambios del turno. No suma al cajón."""
+    from ventas.models import Cambio, Venta
+
+    medios = []
+    for f in recaudacion(turno):
+        if clave_efectivo(f['medio']):
+            continue
+        medios.append(f)
+    anuladas = Venta.objects.filter(id_turno_caja=turno, estado_venta='ANULADA').aggregate(
+        cantidad=Count('pk'), total=Sum('total_venta'))
+    cambios = Cambio.objects.filter(id_turno_caja=turno).aggregate(
+        cantidad=Count('pk'), devuelto=Sum('importe_devuelto'), cobrado=Sum('importe_cobrado'))
+    return {
+        'medios': medios,
+        'anuladas': {'cantidad': anuladas['cantidad'] or 0, 'monto': anuladas['total'] or CERO},
+        'cambios': {'cantidad': cambios['cantidad'] or 0, 'devuelto': cambios['devuelto'] or CERO,
+                    'cobrado': cambios['cobrado'] or CERO},
+    }
+
+
+def clave_efectivo(nombre):
+    from nucleo.validaciones import clave_normalizada
+    return clave_normalizada(nombre or '') == clave_normalizada(MedioPago.NOMBRE_PROTEGIDO)
+
+
+def desglose_del_cajon(foto):
+    """Los renglones del efectivo, con su signo, en el orden del comprobante.
+    Siempre suman lo esperado: lo que no tiene etiqueta propia (cambios,
+    anulaciones) va en su renglón, y sólo si hubo."""
+    def renglon(etiqueta, clave, signo, siempre=False):
+        dato = foto[clave]
+        monto = abs(dato['monto'])
+        if not siempre and not dato['cantidad']:
+            return None
+        return {'etiqueta': etiqueta, 'signo': signo, 'monto': monto, 'cantidad': dato['cantidad']}
+
+    filas = [
+        renglon('Fondo inicial', 'fondo', '+', siempre=True),
+        renglon('Ventas en efectivo', 'ventas', '+', siempre=True),
+        renglon('Cobros de cuentas corrientes', 'cobros_cuenta', '+', siempre=True),
+        renglon('Ingresos manuales (refuerzos)', 'refuerzos', '+', siempre=True),
+        renglon('Diferencias cobradas en cambios', 'cobros_cambio', '+'),
+        renglon('Gastos pagados por caja', 'gastos', '−', siempre=True),
+        renglon('Retiros a tesorería', 'retiros', '−', siempre=True),
+        renglon('Devoluciones en cambios', 'devoluciones', '−'),
+        renglon('Ventas anuladas', 'anulaciones', '−'),
+    ]
+    return [f for f in filas if f is not None]
+
+
+def responsables(turno):
+    """Quién hizo qué en el turno, para el bloque de responsables del Z."""
+    from ventas.models import EstadoSolicitud, SolicitudAutorizacion
+
+    remota = None
+    if turno.id_usuario_supervisor_id:
+        remota = (SolicitudAutorizacion.objects
+                  .filter(id_turno_caja=turno, estado_solicitud=EstadoSolicitud.USADA,
+                          pedido__tipo='cierre', id_usuario_autorizante=turno.id_usuario_supervisor_id)
+                  .order_by('-pk').first())
+    siguiente = turno.siguiente
+    return {
+        'anterior': turno.id_turno_anterior,
+        'siguiente': siguiente,
+        'otro_cerro': (turno.id_usuario_cierre_id is not None
+                       and turno.id_usuario_cierre_id != turno.id_usuario_apertura_id),
+        'remota': remota,
+        'titular_sola': (turno.diferencia_caja and not turno.id_usuario_supervisor_id
+                         and not turno.requiere_revision and turno.id_usuario_cierre is not None
+                         and turno.id_usuario_cierre.es_titular),
+    }
+
+
+def tipo_de_comprobante(turno):
+    if turno.abierto:
+        return 'ARQUEO PARCIAL'
+    if turno.relevo_en_ausencia or turno.tipo_cierre == TipoCierre.RELEVO or turno.siguiente is not None:
+        return 'CIERRE POR RELEVO'
+    return 'CIERRE DE TURNO'
+
+
+def foto_serializable(foto):
+    return {clave: (str(valor) if not isinstance(valor, dict)
+                    else {'monto': str(valor['monto']), 'cantidad': valor['cantidad']})
+            for clave, valor in foto.items()}
+
+
+def foto_desde(datos):
+    return {clave: (Decimal(valor) if not isinstance(valor, dict)
+                    else {'monto': Decimal(valor['monto']), 'cantidad': valor['cantidad']})
+            for clave, valor in datos.items()}
 
 
 OPERACION_ARQUEO = 'ARQUEO DE TURNO DE CAJA'
@@ -326,7 +524,9 @@ def conteo_revelado(turno):
     declarado = (asiento.registro_nuevo or {}).get('arqueo_declarado') or {}
     if declarado.get('monto_contado') is None:
         return None
-    return {'contado': str(declarado['monto_contado']), 'relevo': bool(declarado.get('relevo'))}
+    relevo = bool(declarado.get('relevo'))
+    return {'contado': str(declarado['monto_contado']), 'relevo': relevo,
+            'modo': declarado.get('modo') or ('RELEVO' if relevo else 'CIERRE')}
 
 
 def conteos_declarados(turno):

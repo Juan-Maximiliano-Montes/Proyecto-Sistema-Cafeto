@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from negocio.graficos import estilo_pedido, estilos_de, opciones_de_estilo
 from negocio.graficos import grafico as armar_grafico
+from negocio import tablero as tablero_
 from negocio.reportes import CONSULTAS, REPORTES
 from nucleo.exportar import exportar
 from seguridad.decorators import requiere_permiso
@@ -65,7 +66,11 @@ def reportes(request):
     # El gráfico es otra vista de las MISMAS filas (pandas + matplotlib).
     grafico = _grafico(reporte, columnas, filas, desde, hasta, estilo)
     hoy = timezone.localdate()
+    periodos = [(etiqueta, f'?ver={reporte.clave}&desde={d:%Y-%m-%d}&hasta={h:%Y-%m-%d}&grafico={estilo}',
+                 (d, h) == (desde, hasta))
+                for etiqueta, d, h in tablero_.periodos_rapidos(hoy)]
     return render(request, 'negocio/reportes.html', {
+        'tablero': tablero_.del_periodo(desde, hasta), 'periodos': periodos,
         'reportes': REPORTES, 'reporte': reporte, 'desde': desde, 'hasta': hasta,
         'columnas': columnas, 'filas': filas, 'totales': totales,
         'sin_periodo': reporte.clave == 'stock',
@@ -110,6 +115,7 @@ def resumen_del_mes(request):
     except ValueError:
         anio, numero = hoy.year, hoy.month
     contexto = mensual.del_mes(anio, numero)
+    contexto['tablero'] = tablero_.del_periodo(contexto['desde'], max(contexto['desde'], min(contexto['hasta'], hoy)))
     contexto['mes'] = f'{anio:04d}-{numero:02d}'
     contexto['mes_actual'] = f'{hoy.year:04d}-{hoy.month:02d}'
     return render(request, 'negocio/resumen_del_mes.html', contexto)

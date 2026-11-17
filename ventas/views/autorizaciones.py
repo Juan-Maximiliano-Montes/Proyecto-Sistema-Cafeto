@@ -51,9 +51,10 @@ def _puede_autorizar(solicitud):
 
 
 def _resumen(solicitud):
-    es_ajuste = (solicitud.pedido or {}).get('tipo') == a_distancia.AJUSTE
+    tipo = (solicitud.pedido or {}).get('tipo')
     return {
-        'id': solicitud.pk, 'motivo': solicitud.motivo_solicitud, 'es_ajuste': es_ajuste,
+        'id': solicitud.pk, 'motivo': solicitud.motivo_solicitud, 'es_ajuste': tipo == a_distancia.AJUSTE,
+        'es_cierre': tipo == a_distancia.CIERRE,
         'total': pesos(solicitud.monto_solicitud),
         'caja': str(solicitud.id_turno_caja.id_caja_registradora),
         'pidio': f'{solicitud.id_usuario_solicitante.nombre} {solicitud.id_usuario_solicitante.apellido}'.strip(),
@@ -83,7 +84,7 @@ def pedir(request):
             producto, cantidad = _producto_para_ajuste(crudo)
             pedido = {'producto': producto.pk, 'cantidad': format(cantidad.normalize(), 'f'),
                       'resumen': [f'{producto.nombre_producto}: de 0 a {producto.cantidad_con_unidad(cantidad)}']}
-            solicitud, _pin = a_distancia.pedir_ajuste(turno, request.usuario_actual, producto, cantidad,
+            solicitud, pin = a_distancia.pedir_ajuste(turno, request.usuario_actual, producto, cantidad,
                                                        pedido, base)
         else:
             items, pagos, datos = _leer_pedido(request)
@@ -93,15 +94,16 @@ def pedir(request):
             pedido = {k: v for k, v in datos.items() if k not in NO_SE_GUARDA}
             pedido['resumen'] = [f'{i.producto.nombre_producto} × {format(i.cantidad.normalize(), "f")}'
                                  for i in items]
-            solicitud, _pin = a_distancia.pedir(
+            solicitud, pin = a_distancia.pedir(
                 turno, request.usuario_actual, items, pagos, cliente, beneficios, _vence_fiado(datos),
                 pedido, base)
     except ValidationError as error:
         return JsonResponse({'ok': False, 'error': _texto(error)})
-    registrar_auditoria(
-        request, 'SOLICITUD', 'AUTORIZACION A DISTANCIA', instancia=solicitud, modulo='VENTAS',
-        detalle=f'{solicitud.motivo_solicitud}. Total del ticket {pesos(solicitud.monto_solicitud)}. '
-                f'Pedido N° {solicitud.pk}, vence a las {timezone.localtime(solicitud.fecha_vencimiento):%H:%M}.')
+    if pin is not None:      # None: ya estaba aprobado y se reutiliza (DD-101)
+        registrar_auditoria(
+            request, 'SOLICITUD', 'AUTORIZACION A DISTANCIA', instancia=solicitud, modulo='VENTAS',
+            detalle=f'{solicitud.motivo_solicitud}. Total del ticket {pesos(solicitud.monto_solicitud)}. '
+                    f'Pedido N° {solicitud.pk}, vence a las {timezone.localtime(solicitud.fecha_vencimiento):%H:%M}.')
     personas = a_distancia.candidatos(solicitud, a_distancia.control_de(solicitud))
     return JsonResponse({
         'ok': True, 'id': solicitud.pk, **a_distancia.estado(solicitud),
@@ -114,20 +116,22 @@ def pedir(request):
 
 
 def _propia(request, pk):
+    """El pedido de quien opera, o uno de CIERRE del turno de esta caja (lo
+    pudo pedir otra persona que después dejó el cierre a medias, DD-101)."""
     solicitud = get_object_or_404(SolicitudAutorizacion.objects.select_related('id_usuario_autorizante'), pk=pk)
-    if solicitud.id_usuario_solicitante_id != request.usuario_actual.pk:
+    if not a_distancia.es_de(solicitud, request.usuario_actual, puesto.turno_de(request)):
         raise Http404
     return solicitud
 
 
 @require_GET
-@requiere_permiso('vender', redirigir_a='ventas:caja')
+@requiere_alguno('vender', 'cerrar_caja')
 def estado(request, pk):
     return JsonResponse({'ok': True, **a_distancia.estado(_propia(request, pk))})
 
 
 @require_POST
-@requiere_permiso('vender', redirigir_a='ventas:caja')
+@requiere_alguno('vender', 'cerrar_caja')
 def pin(request, pk):
     solicitud = _propia(request, pk)
     antes = instantanea(solicitud)
@@ -136,8 +140,10 @@ def pin(request, pk):
     except (ValueError, UnicodeDecodeError):
         datos = {}
     try:
+        ya_estaba = solicitud.estado_solicitud == EstadoSolicitud.APROBADA
         aprobada, error = a_distancia.verificar_pin(
-            solicitud, request.usuario_actual, (datos or {}).get('pin'), a_distancia.control_de(solicitud))
+            solicitud, request.usuario_actual, (datos or {}).get('pin'), a_distancia.control_de(solicitud),
+            turno=puesto.turno_de(request))
     except ValidationError as e:
         return JsonResponse({'ok': False, 'error': _texto(e), **a_distancia.estado(solicitud)})
     if error:
@@ -148,6 +154,8 @@ def pin(request, pk):
             detalle=f'Pedido N° {solicitud.pk}: PIN incorrecto ({solicitud.intentos_pin} de '
                     f'{SolicitudAutorizacion.INTENTOS_DE_PIN} intentos).')
         return JsonResponse({'ok': False, 'error': error, **a_distancia.estado(solicitud)})
+    if ya_estaba:
+        return JsonResponse({'ok': True, **a_distancia.estado(aprobada)})
     registrar_auditoria(
         request, 'APROBACION', 'AUTORIZACION A DISTANCIA', instancia=aprobada, modulo='VENTAS',
         anterior=antes, nuevo=instantanea(aprobada),
@@ -157,7 +165,7 @@ def pin(request, pk):
 
 
 @require_POST
-@requiere_permiso('vender', redirigir_a='ventas:caja')
+@requiere_alguno('vender', 'cerrar_caja')
 def cancelar(request, pk):
     solicitud = _propia(request, pk)
     (SolicitudAutorizacion.objects.filter(pk=solicitud.pk, estado_solicitud__in=(

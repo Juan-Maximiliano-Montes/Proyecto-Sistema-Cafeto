@@ -140,10 +140,6 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 </div>
             </div>
 
-            <div class="form-check form-switch small mb-1">
-                <input class="form-check-input" type="checkbox" role="switch" id="autoTicket">
-                <label class="form-check-label text-secondary" for="autoTicket">Imprimir el ticket al cobrar</label>
-            </div>
             <button type="button" class="btn btn-primary btn-xl w-100" id="cobrar" disabled data-requiere-red>
                 <i class="bi bi-check2-circle me-1"></i>Cobrar
             </button>
@@ -275,9 +271,12 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 <p class="mt-3 mb-0 d-none" id="cobradoFiado"></p>
                 <p class="mt-3 mb-0 d-none" id="cobradoPuntos"></p>
             </div>
-            <div class="modal-footer justify-content-center">
-                <a href="#" target="_blank" rel="noopener" class="btn btn-secundario" id="cobradoTicket"><i class="bi bi-printer me-1"></i>Imprimir ticket <kbd>P</kbd></a>
-                <button type="button" class="btn btn-primary btn-xl" id="nuevaVenta">Nueva venta <kbd>Enter</kbd></button>
+            <div class="modal-footer flex-column align-items-stretch gap-2">
+                <div class="botones-cobrado">
+                    <a href="#" target="_blank" rel="noopener" class="btn btn-primary btn-xl" id="cobradoTicket"><i class="bi bi-printer me-1" aria-hidden="true"></i>Imprimir ticket <kbd>P</kbd></a>
+                    <button type="button" class="btn btn-secundario btn-xl" id="nuevaVenta"><i class="bi bi-arrow-right me-1" aria-hidden="true"></i>No imprimir · Nueva venta <kbd>Enter</kbd></button>
+                </div>
+                <p class="small text-secondary mb-0">El ticket queda guardado en Ventas por si necesitás reimprimirlo o revisarlo después.</p>
             </div>
         </div>
     </div>
@@ -1032,7 +1031,38 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         $('cobrar').disabled = !(r && r.cobros && r.cobros.length) || !navigator.onLine;
     }
 
+    // Antes de cobrar, el resumen de lo que se va a cobrar (DD-101): un toque
+    // de más o un medio mal elegido se ve acá y no en el arqueo.
+    function resumenDelCobro() {
+        var r = ultima || {};
+        var filas = [['Total a cobrar', plata(r.total)]];
+        (r.cobros || []).forEach(function (c) {
+            var boton = document.querySelector('.js-medio[data-medio="' + c.medio + '"]');
+            var nombre = boton ? boton.childNodes[0].textContent.trim() : 'Medio';
+            filas.push([nombre, plata(c.importe) + (Number(c.recargo) ? ' (con ' + plata(c.recargo) + ' de recargo)' : '')]);
+        });
+        var efectivo = estado.pagos.filter(function (p) {
+            var b = document.querySelector('.js-medio[data-medio="' + p.medio + '"]');
+            return b && b.dataset.efectivo === '1' && p.recibido;
+        })[0];
+        if (efectivo) { filas.push(['Efectivo recibido', plata(String(efectivo.recibido).replace(',', '.'))]); }
+        if (Number(r.vuelto) > 0) { filas.push(['Vuelto', plata(r.vuelto)]); }
+        if (estado.cliente) { filas.push(['Cliente', estado.cliente.nombre]); }
+        if (hayFiado()) { filas.push(['Cuenta corriente', 'Se anota en la cuenta' + (estado.cliente ? ' de ' + estado.cliente.nombre : '')]); }
+        return '<dl class="tarjeta-datos fs-6 mb-0">' + filas.map(function (f) {
+            return '<dt>' + Cafeto.escapar(f[0]) + '</dt><dd class="monto">' + Cafeto.escapar(f[1]) + '</dd>';
+        }).join('') + '</dl>';
+    }
+    var confirmando = false;
     $('cobrar').addEventListener('click', function () {
+        if ($('cobrar').disabled || confirmando) { return; }
+        confirmando = true;
+        var resumen;
+        try { resumen = resumenDelCobro(); } catch (e) { resumen = ''; }
+        Cafeto.confirmar({titulo: '¿Confirmamos el cobro?', html: resumen, aceptar: 'Sí, cobrar'})
+            .then(function (ok) { confirmando = false; if (ok) { cobrarYa(); } else { $('buscar').focus(); } });
+    });
+    function cobrarYa() {
         var boton = $('cobrar');
         boton.disabled = true;
         boton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Cobrando…';
@@ -1065,7 +1095,6 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                       (p.ascendio ? ' ¡Subió a ' + p.categoria + '!' : '');
             }
             bootstrap.Modal.getOrCreateInstance($('modalCobrado')).show();
-            if ($('autoTicket').checked && r.ticket) { window.open(r.ticket, '_blank', 'noopener'); }
             // Lo vendido ya bajó el stock: la grilla tiene que mostrarlo.
             cargarCatalogo(false);
         }).catch(function () {
@@ -1075,7 +1104,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             boton.disabled = false;
             mostrarError('No llegó la respuesta del servidor. Tocá «Reintentar cobro»: si ya se había cobrado, no se cobra dos veces.');
         });
-    });
+    }
     function nuevaVenta() {
         estado = {items: [], pagos: [], cliente: null, beneficios: [], token: (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : ''};
         if (!estado.token) { location.reload(); return; }
@@ -1094,11 +1123,6 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
     //  Teclado de caja: F2 buscar, F4 efectivo, F9 cobrar. Con la venta
     //  cobrada a la vista: Enter o espacio = nueva venta, P = ticket.
     // ------------------------------------------------------------------
-    var CLAVE_TICKET = 'cafeto.mostrador.ticket-automatico';
-    try { $('autoTicket').checked = window.localStorage.getItem(CLAVE_TICKET) === '1'; } catch (e) { /* nada */ }
-    $('autoTicket').addEventListener('change', function () {
-        try { window.localStorage.setItem(CLAVE_TICKET, this.checked ? '1' : '0'); } catch (e) { /* nada */ }
-    });
     $('modalCobrado').addEventListener('shown.bs.modal', function () { $('nuevaVenta').focus(); });
     $('modalCobrado').addEventListener('hidden.bs.modal', function () { $('buscar').focus(); });
     document.addEventListener('keydown', function (e) {
@@ -1106,7 +1130,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         var cobrado = $('modalCobrado').classList.contains('show');
         if (cobrado) {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('nuevaVenta').click(); }
-            else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); window.open($('cobradoTicket').href, '_blank', 'noopener'); }
+            else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); $('cobradoTicket').click(); }
             return;
         }
         if (document.querySelector('.modal.show')) { return; }

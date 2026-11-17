@@ -60,8 +60,9 @@ SAL_PIN = 'cafeto.ventas.autorizacion-a-distancia.pin'
 SAL_PERSONA = 'cafeto.ventas.autorizacion-a-distancia.persona'
 # Quien tenga alguno de estos permisos puede contestar (además de la
 # titular); si le alcanza para ESTE pedido se decide volviendo a cotizar.
-PERMISOS_PARA_AUTORIZAR = ('gestionar_credito', 'autorizar_ajustes')
+PERMISOS_PARA_AUTORIZAR = ('gestionar_credito', 'autorizar_ajustes', 'supervisar_cierre')
 AJUSTE = 'ajuste'
+CIERRE = 'cierre'
 # Una vez aprobada, la caja tiene este margen extra para cobrar (por si la
 # aprobación llegó en el último segundo de los 10 minutos).
 GRACIA = timedelta(minutes=5)
@@ -101,6 +102,18 @@ def _hash_pin(solicitud_token_hash, pin):
 def huella_ajuste(producto, cantidad):
     """El «ticket» de un ajuste desde el mostrador: qué producto y cuánto."""
     canon = {'a': producto.pk, 'q': _numero(cantidad)}
+    return hashlib.sha256(json.dumps(canon, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def huella_cierre(turno, contado, modo=None):
+    """El «ticket» de un cierre con diferencia: qué turno y cuánto se contó.
+    Si se cuenta otra cosa, la aprobación ya no sirve.
+
+    El ``modo`` (cerrar, relevo, ausencia) NO entra: lo que se aprueba es la
+    diferencia de ese conteo, no quién sigue con el cajón. Así, si quien
+    destraba un turno viejo cambia de «relevo» a «cerrar», la aprobación que
+    ya dio la titular sigue sirviendo (DD-101)."""
+    canon = {'t': turno.pk, 'c': _numero(contado)}
     return hashlib.sha256(json.dumps(canon, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
@@ -193,6 +206,31 @@ def que_hace_falta(items, pagos, operador, cliente, beneficios):
 # ---------------------------------------------------------------------------
 #  Pedir
 # ---------------------------------------------------------------------------
+def ya_aprobada(turno, huella_operacion):
+    """La aprobación vigente que ya cubre esta misma operación en este turno
+    (DD-101). Si la titular ya dijo que sí, pedir de nuevo sólo haría un
+    pedido duplicado en su bandeja y una segunda validación de lo mismo."""
+    if turno is None:
+        return None
+    return (SolicitudAutorizacion.objects
+            .filter(id_turno_caja=turno, huella_operacion=huella_operacion,
+                    estado_solicitud=EstadoSolicitud.APROBADA,
+                    fecha_vencimiento__gt=timezone.now() - GRACIA)
+            .select_related('id_usuario_autorizante').order_by('-fecha_resolucion').first())
+
+
+def _anular_pendientes(operador, turno, tipo=None):
+    """Un pedido abierto por caja: el nuevo reemplaza al anterior. Los de
+    cierre son del TURNO (los puede seguir otra persona), no de quien pidió."""
+    ahora = timezone.now()
+    pendientes = SolicitudAutorizacion.objects.filter(estado_solicitud=EstadoSolicitud.PENDIENTE)
+    if tipo == CIERRE and turno is not None:
+        pendientes = pendientes.filter(id_turno_caja=turno, pedido__tipo=CIERRE)
+    else:
+        pendientes = pendientes.filter(id_usuario_solicitante=operador)
+    pendientes.update(estado_solicitud=EstadoSolicitud.ANULADA, fecha_resolucion=ahora)
+
+
 @transaction.atomic
 def pedir(turno, operador, items, pagos, cliente, beneficios, vence_fiado, pedido, enlace_base):
     """Deja la solicitud y avisa. Devuelve ``(solicitud, pin)``; el PIN es
@@ -200,15 +238,16 @@ def pedir(turno, operador, items, pagos, cliente, beneficios, vence_fiado, pedid
     cotizacion, motivos = que_hace_falta(items, pagos, operador, cliente, beneficios)
     if not motivos:
         raise ValidationError('Este ticket no necesita autorización: ya lo podés cobrar.')
+    marca = huella(items, pagos, cliente, beneficios, vence_fiado)
+    aprobada = ya_aprobada(turno, marca)
+    if aprobada is not None:
+        return aprobada, None
     ahora = timezone.now()
     recientes = SolicitudAutorizacion.objects.filter(
         id_usuario_solicitante=operador, fecha_solicitud__gte=ahora - timedelta(hours=1)).count()
     if recientes >= POR_HORA:
         raise ValidationError('Pediste muchas autorizaciones en la última hora. Esperá un rato o llamala.')
-    # Un pedido abierto por caja: el nuevo reemplaza al anterior.
-    (SolicitudAutorizacion.objects
-     .filter(id_usuario_solicitante=operador, estado_solicitud=EstadoSolicitud.PENDIENTE)
-     .update(estado_solicitud=EstadoSolicitud.ANULADA, fecha_resolucion=ahora))
+    _anular_pendientes(operador, turno)
     token = secrets.token_urlsafe(32)
     pin = f'{secrets.randbelow(10000):04d}'
     token_hash = _hash_token(token)
@@ -217,7 +256,7 @@ def pedir(turno, operador, items, pagos, cliente, beneficios, vence_fiado, pedid
     solicitud = SolicitudAutorizacion.objects.create(
         id_usuario_solicitante=operador, id_turno_caja=turno, id_cliente=cliente,
         motivo_solicitud=motivo, monto_solicitud=cotizacion.total, pedido=pedido,
-        huella_operacion=huella(items, pagos, cliente, beneficios, vence_fiado),
+        huella_operacion=marca,
         token_hash=token_hash, pin_hash=_hash_pin(token_hash, pin),
         fecha_solicitud=ahora,
         fecha_vencimiento=ahora + timedelta(minutes=SolicitudAutorizacion.VIGENCIA_MINUTOS))
@@ -231,14 +270,15 @@ def pedir_ajuste(turno, operador, producto, cantidad, pedido, enlace_base):
     """Lo mismo para el ajuste de stock desde el mostrador (DD-90): el
     producto figura en 0, la cajera lo tiene en la mano y quien puede
     aprobar ajustes no está."""
+    aprobada = ya_aprobada(turno, huella_ajuste(producto, cantidad))
+    if aprobada is not None:
+        return aprobada, None
     ahora = timezone.now()
     recientes = SolicitudAutorizacion.objects.filter(
         id_usuario_solicitante=operador, fecha_solicitud__gte=ahora - timedelta(hours=1)).count()
     if recientes >= POR_HORA:
         raise ValidationError('Pediste muchas autorizaciones en la última hora. Esperá un rato o llamala.')
-    (SolicitudAutorizacion.objects
-     .filter(id_usuario_solicitante=operador, estado_solicitud=EstadoSolicitud.PENDIENTE)
-     .update(estado_solicitud=EstadoSolicitud.ANULADA, fecha_resolucion=ahora))
+    _anular_pendientes(operador, turno)
     token = secrets.token_urlsafe(32)
     pin = f'{secrets.randbelow(10000):04d}'
     token_hash = _hash_token(token)
@@ -256,9 +296,71 @@ def pedir_ajuste(turno, operador, producto, cantidad, pedido, enlace_base):
     return solicitud, pin
 
 
+@transaction.atomic
+def pedir_cierre(turno, operador, contado, esperado, modo, enlace_base):
+    """El cierre (o el relevo) con una diferencia que supera lo tolerado y
+    nadie que supervise al lado de la caja (DD-97). Aprueba la titular o
+    quien supervise cierres; la clave de otro cajero nunca alcanza.
+
+    Si ya hay una aprobación vigente para este mismo conteo de este turno
+    (la pidió otra persona, o se volvió a tocar el botón), se usa esa: no
+    se manda un pedido nuevo (DD-101)."""
+    aprobada = ya_aprobada(turno, huella_cierre(turno, contado))
+    if aprobada is not None:
+        return aprobada, None
+    ahora = timezone.now()
+    recientes = SolicitudAutorizacion.objects.filter(
+        id_usuario_solicitante=operador, fecha_solicitud__gte=ahora - timedelta(hours=1)).count()
+    if recientes >= POR_HORA:
+        raise ValidationError('Pediste muchas autorizaciones en la última hora. Esperá un rato o llamala.')
+    _anular_pendientes(operador, turno, tipo=CIERRE)
+    contado, esperado = Decimal(contado), Decimal(esperado)
+    diferencia = contado - esperado
+    token = secrets.token_urlsafe(32)
+    pin = f'{secrets.randbelow(10000):04d}'
+    token_hash = _hash_token(token)
+    quien = f'{operador.nombre} {operador.apellido}'.strip()
+    que = {'RELEVO': 'hacer el relevo de', 'AUSENCIA': 'cerrar por relevo'}.get(modo, 'cerrar')
+    motivo = (f'{quien} pide {que} {turno.id_caja_registradora} con un '
+              f'{"sobrante" if diferencia > 0 else "faltante"} de {pesos(abs(diferencia))}')[:200]
+    renglones = [f'Contó {pesos(contado)}', f'Según el libro {pesos(esperado)}',
+                 f'{"Sobran" if diferencia > 0 else "Faltan"} {pesos(abs(diferencia))}']
+    solicitud = SolicitudAutorizacion.objects.create(
+        id_usuario_solicitante=operador, id_turno_caja=turno, id_cliente=None,
+        motivo_solicitud=motivo, monto_solicitud=abs(diferencia),
+        pedido={'tipo': CIERRE, 'turno': turno.pk, 'contado': _numero(contado), 'modo': modo,
+                'resumen': renglones},
+        huella_operacion=huella_cierre(turno, contado),
+        token_hash=token_hash, pin_hash=_hash_pin(token_hash, pin), fecha_solicitud=ahora,
+        fecha_vencimiento=ahora + timedelta(minutes=SolicitudAutorizacion.VIGENCIA_MINUTOS))
+    transaction.on_commit(lambda: avisar(solicitud, token, pin, enlace_base, renglones))
+    return solicitud, pin
+
+
+def anular_pedidos_de_cierre(turno):
+    """El turno ya se cerró: los pedidos de cierre que quedaron sin usar se anulan.
+
+    Uno ya APROBADO que no se usó (se cerró de otra forma) pasa a ANULADA
+    conservando quién lo aprobó y cómo: es historia. Antes se lo anulaba
+    igual que a uno pendiente y la base lo rechazaba (``ck_solautoriz_resolucion``
+    pide ``via_aprobacion`` vacía en un anulado), lo que trababa el cierre
+    entero (DD-101). La regla de la base ahora admite ese caso."""
+    de_cierre = SolicitudAutorizacion.objects.filter(id_turno_caja=turno, pedido__tipo=CIERRE)
+    anuladas = (de_cierre.filter(estado_solicitud=EstadoSolicitud.PENDIENTE)
+                .update(estado_solicitud=EstadoSolicitud.ANULADA, fecha_resolucion=timezone.now()))
+    # La aprobada conserva quién, cómo y cuándo la aprobó.
+    return anuladas + (de_cierre.filter(estado_solicitud=EstadoSolicitud.APROBADA)
+                       .update(estado_solicitud=EstadoSolicitud.ANULADA))
+
+
 def control_de(solicitud):
     """Cómo se decide si a una persona le alcanza para ESTA solicitud."""
     pedido = solicitud.pedido or {}
+    if pedido.get('tipo') == CIERRE:
+        def control(usuario):
+            if usuario is None or not (usuario.es_titular or usuario.puede('supervisar_cierre')):
+                raise ValidationError('Una diferencia de caja la aprueba la titular o quien supervisa cierres.')
+        return control
     if pedido.get('tipo') == AJUSTE:
         def control(usuario):
             if usuario is None or not (usuario.es_titular or usuario.puede('autorizar_ajustes')):
@@ -300,7 +402,10 @@ def avisar(solicitud, token, pin, enlace_base, renglones):
             continue
         contexto = {'solicitud': solicitud, 'pin': su_pin, 'enlace': enlace, 'vence': vence,
                     'renglones': renglones, 'titular': persona}
-        asunto = f'Cafeto · ¿Autorizás? {pesos(solicitud.monto_solicitud) if solicitud.monto_solicitud else "Ajuste de stock"} — PIN {su_pin}'
+        tipo = (solicitud.pedido or {}).get('tipo')
+        que = ('Diferencia de caja ' + pesos(solicitud.monto_solicitud) if tipo == CIERRE
+               else 'Ajuste de stock' if tipo == AJUSTE else pesos(solicitud.monto_solicitud))
+        asunto = f'Cafeto · ¿Autorizás? {que} — PIN {su_pin}'
         texto = render_to_string('ventas/correo_autorizacion.txt', contexto)
         html = render_to_string('ventas/correo_autorizacion.html', contexto)
 
@@ -412,7 +517,7 @@ def _ya_no_esta(solicitud):
     }.get(solicitud.estado_solicitud, 'Este pedido venció o la caja lo canceló: que lo pidan de nuevo.')
 
 
-def verificar_pin(solicitud, operador, pin, puede_autorizar):
+def verificar_pin(solicitud, operador, pin, puede_autorizar, turno=None):
     """La cajera escribe el PIN que le dictó la dueña. Aprueba en nombre de
     la titular. Cada error cuenta; al quinto la solicitud se anula.
 
@@ -421,9 +526,13 @@ def verificar_pin(solicitud, operador, pin, puede_autorizar):
     """
     with transaction.atomic():
         solicitud = SolicitudAutorizacion.objects.select_for_update().get(pk=solicitud.pk)
-        if solicitud.id_usuario_solicitante_id != operador.pk:
+        if not es_de(solicitud, operador, turno):
             raise ValidationError('Ese pedido no es tuyo.')
         _vencer_si_corresponde(solicitud)
+        if solicitud.estado_solicitud == EstadoSolicitud.APROBADA:
+            # Ya lo aprobaron (por el enlace, la bandeja o un PIN anterior):
+            # no se valida dos veces la misma operación (DD-101).
+            return solicitud, None
         if solicitud.estado_solicitud != EstadoSolicitud.PENDIENTE:
             raise ValidationError(_ya_no_esta(solicitud))
         pin = ''.join(c for c in str(pin or '') if c.isdigit())
@@ -452,13 +561,27 @@ def verificar_pin(solicitud, operador, pin, puede_autorizar):
 # ---------------------------------------------------------------------------
 #  Usar en la venta
 # ---------------------------------------------------------------------------
-def aprobada_para(id_solicitud, operador, huella_del_ticket, bloquear=False):
+def es_de(solicitud, operador, turno=None):
+    """¿Esta persona puede usar (o seguir) este pedido? El que lo pidió,
+    siempre. Uno de CIERRE es del turno: si otra persona toma la posta en
+    esa misma caja para terminar el cierre, lo usa (DD-101)."""
+    if solicitud is None:
+        return False
+    if solicitud.id_usuario_solicitante_id == operador.pk:
+        return True
+    return ((solicitud.pedido or {}).get('tipo') == CIERRE and turno is not None
+            and solicitud.id_turno_caja_id == turno.pk)
+
+
+def aprobada_para(id_solicitud, operador, huella_del_ticket, bloquear=False, turno=None):
     """La solicitud aprobada que cubre este ticket, o ``ValidationError``."""
     consulta = SolicitudAutorizacion.objects.select_related('id_usuario_autorizante')
     if bloquear:
         consulta = consulta.select_for_update(of=('self',))
+    if isinstance(id_solicitud, str) and id_solicitud.isdigit():
+        id_solicitud = int(id_solicitud)
     solicitud = consulta.filter(pk=id_solicitud if isinstance(id_solicitud, int) else 0).first()
-    if solicitud is None or solicitud.id_usuario_solicitante_id != operador.pk:
+    if not es_de(solicitud, operador, turno):
         raise ValidationError('La autorización a distancia no corresponde a esta caja.')
     if solicitud.estado_solicitud != EstadoSolicitud.APROBADA:
         raise ValidationError(_ya_no_esta(solicitud) if solicitud.estado_solicitud != EstadoSolicitud.PENDIENTE

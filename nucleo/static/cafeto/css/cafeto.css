@@ -288,6 +288,18 @@ code, .codigo { color: var(--c-marca); background: transparent; }
     color: var(--c-aviso); background: var(--c-aviso-fondo); border-color: var(--c-aviso-borde);
 }
 .aviso .btn-close { margin-left: auto; }
+/* El aviso que se puede cerrar (mensajes de Django): usa la clase .alert de
+   Bootstrap para que la X funcione (data-bs-dismiss="alert"), pero con la
+   forma de .aviso y la X ADENTRO, centrada a la derecha (DD-101). */
+.aviso.alert { padding: .85rem 1rem; margin-bottom: .5rem; color: inherit; }
+.aviso.aviso-error.alert { color: var(--c-peligro); }
+.aviso.aviso-exito.alert { color: var(--c-exito); }
+.aviso.aviso-aviso.alert { color: var(--c-aviso); }
+.aviso.alert-dismissible { position: relative; padding-right: 2.75rem; }
+.aviso.alert-dismissible .btn-close {
+    position: absolute; top: 50%; right: .6rem; transform: translateY(-50%);
+    width: 1.5rem; height: 1.5rem; padding: .25rem; margin: 0; background-size: .7rem; z-index: 1;
+}
 .alert { border-radius: .85rem; }
 
 /* ==========================================================================
@@ -338,6 +350,21 @@ code, .codigo { color: var(--c-marca); background: transparent; }
 .chip-caja .punto { width: .5rem; height: .5rem; border-radius: 50%; background: var(--c-texto-3); }
 .chip-caja.abierta .punto { background: var(--c-exito); box-shadow: 0 0 0 3px var(--c-exito-fondo); }
 button.chip-caja { cursor: pointer; }
+/* Las cajas del local en la barra (DD-101): a la vista y de un toque. */
+.chips-cajas { display: flex; gap: .4rem; overflow-x: auto; max-width: min(60vw, 46rem); scrollbar-width: thin; }
+.chips-cajas .chip-caja { white-space: nowrap; text-decoration: none; min-height: 2rem; }
+.chips-cajas .chip-caja:hover { border-color: var(--c-marca); color: var(--c-texto); }
+.chips-cajas .chip-caja.abierta { color: var(--c-texto); }
+.chips-cajas .chip-caja.propia { border-color: var(--c-marca); box-shadow: inset 0 0 0 1px var(--c-marca); }
+.chips-cajas .chip-caja:focus-visible { outline: 2px solid var(--c-marca); outline-offset: 2px; }
+.chip-caja-quien { color: var(--c-texto-2); font-weight: 400; }
+@media (max-width: 575.98px) {
+    /* En el celular las fichas se deslizan: el borde se esfuma para que se note que hay más. */
+    .chips-cajas { max-width: 48vw; padding-right: 1.25rem;
+                   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+                   mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent); }
+    .chip-caja-quien { display: none; }
+}
 .lista-cajas { min-width: 17rem; }
 .lista-cajas .dropdown-item { display: flex; align-items: flex-start; gap: .6rem; white-space: normal; }
 .chip-caja-fila { padding-top: .45rem; }
@@ -436,7 +463,12 @@ main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
 /* Pantalla de acceso */
 .acceso { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem;
           background: radial-gradient(1200px 600px at 10% -10%, rgba(250, 180, 31, .10), transparent 60%), var(--c-fondo); }
-.acceso-caja { width: 100%; max-width: 420px; }
+.acceso-caja { width: 100%; max-width: 420px; position: relative; z-index: 1; }
+/* Marca de agua del login: el logo centrado de fondo, apenas visible y sin
+   capturar clics ni la selección. */
+.acceso { position: relative; overflow: hidden; }
+.acceso-marca-agua { position: absolute; top: 50%; left: 50%; width: min(78vmin, 640px); height: auto;
+                     transform: translate(-50%, -50%); opacity: .05; pointer-events: none; user-select: none; z-index: 0; }
 .acceso-caja .card { padding: 1.75rem; }
 .acceso-logo { display: block; margin: 0 auto 1.25rem; height: 112px; }
 
@@ -458,7 +490,13 @@ main.pagina { padding: 1.5rem; max-width: 1440px; width: 100%; margin: 0 auto; }
 .select2-container--default .select2-results__option--highlighted.select2-results__option--selectable { background: var(--c-marca); color: var(--c-sobre-marca); }
 .select2-container--default .select2-results__option--selected { background: var(--c-superficie-activa); }
 .select2-search--dropdown .select2-search__field { background: var(--c-fondo); border: 1px solid var(--c-borde) !important; color: var(--c-texto); border-radius: .5rem; }
-.select2-container { z-index: 1100; width: 100% !important; }
+/* El combo en la página no lleva z-index: si no, atraviesa los modales de
+   Bootstrap (1050/1055) y tapa «Cancelar» y «Sí, guardar» (DD-101). Sólo la
+   lista desplegada (que select2 pega al final del body) va arriba del
+   contenido, y debajo de un modal abierto salvo que viva adentro de él. */
+.select2-container { width: 100% !important; }
+body > .select2-container--open { z-index: 1040; }
+.modal .select2-container--open, .modal-open .modal ~ .select2-container--open { z-index: 1060; }
 
 /* ==========================================================================
    MOSTRADOR (vender)
@@ -520,6 +558,51 @@ kbd { font-size: .7em; opacity: .75; }
     padding: 1.75rem 1rem; text-align: center; color: var(--c-texto-2);
 }
 .grafico-vacio > .bi { font-size: 1.75rem; opacity: .5; }
+
+/* Tablero interactivo (DD-100): SVG dibujado por tablero.js. Los colores de
+   las series pasan 3:1 contra la tarjeta en los dos temas (WCAG 1.4.11). */
+:root { --c-serie-ingresos: #FAB41F; --c-serie-egresos: var(--c-info); --c-serie-neta: var(--c-exito); }
+[data-tema="claro"] { --c-serie-ingresos: #B07A00; }
+.tablero-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
+.tablero-grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 1rem; align-items: start; }
+.tablero-ancho { grid-column: 1 / -1; }
+.grafico-vivo { margin: 0; color: var(--c-texto-2); min-width: 0; }
+.grafico-lienzo { position: relative; }
+.grafico-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.grafico-svg .grilla { stroke: var(--c-divisor); stroke-width: 1; }
+.grafico-svg .eje-cero { stroke: var(--c-texto-3); stroke-width: 1; }
+.grafico-svg .rotulo { fill: var(--c-texto-2); font-size: 11px; }
+.grafico-svg .rotulo-fuerte { fill: var(--c-texto); font-size: 13px; font-weight: 600; }
+.grafico-svg .zona { fill: transparent; pointer-events: all; }
+.grafico-svg .pista { fill: var(--c-superficie-activa); }
+.grafico-svg .serie-ingresos { fill: var(--c-serie-ingresos); }
+.grafico-svg .serie-egresos { fill: var(--c-serie-egresos); }
+.grafico-svg .serie-negativa { fill: var(--c-peligro); }
+.grafico-svg .serie-neta { fill: none; stroke: var(--c-serie-neta); stroke-width: 2.25; stroke-linejoin: round; pointer-events: none; }
+.grafico-svg .punto-neta { fill: var(--c-serie-neta); pointer-events: none; }
+.grafico-svg .punto-negativo { fill: var(--c-peligro); pointer-events: none; }
+.grafico-svg .grafico-punto { cursor: pointer; outline: none; }
+.grafico-svg .grafico-punto.activo .zona { fill: var(--c-marca-suave); }
+.grafico-svg .grafico-punto:focus-visible .zona { fill: var(--c-marca-suave); stroke: var(--c-marca); stroke-width: 2; }
+.grafico-tip {
+    position: absolute; z-index: 5; min-width: 12rem; max-width: 18rem; padding: .5rem .65rem;
+    background: var(--c-superficie); color: var(--c-texto); border: 1px solid var(--c-borde);
+    border-radius: .5rem; box-shadow: var(--c-sombra); font-size: .8rem; pointer-events: none;
+}
+.grafico-tip strong { display: block; margin-bottom: .25rem; }
+.grafico-tip-fila { display: flex; justify-content: space-between; gap: 1rem; }
+.grafico-tip-fila > span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.grafico-resumen { margin: .5rem 0 .25rem; color: var(--c-texto); }
+.grafico-sin-datos { padding: 2rem 1rem; text-align: center; margin: 0; }
+.grafico-datos summary { cursor: pointer; font-size: .85rem; color: var(--c-texto-2); padding: .25rem 0; min-height: 24px; }
+.muestra { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
+.muestra-ingresos { background: var(--c-serie-ingresos); }
+.muestra-egresos { background: var(--c-serie-egresos); }
+.muestra-neta { background: var(--c-serie-neta); border-radius: 50%; }
+.grafico-vivo button[aria-pressed="false"] .muestra { opacity: .3; }
+.grafico-vivo [data-exclusivo] button[aria-pressed="true"],
+.grafico-vivo button[data-serie][aria-pressed="true"] { background: var(--c-marca-suave); border-color: var(--c-marca); color: var(--c-texto); }
+@media (prefers-reduced-motion: no-preference) { .grafico-svg rect { transition: fill .15s; } }
 
 /* Panel lateral por áreas desplegables (<details>). */
 .lateral-desplegable > summary {
@@ -622,3 +705,8 @@ kbd { font-size: .7em; opacity: .75; }
 
 /* Tarjeta de algo que ya venció: el borde lo dice antes de leer. */
 .tarjeta.tarjeta-vencida { border-color: var(--c-peligro-borde); background: var(--c-peligro-fondo); }
+
+/* Después de cobrar: imprimir o seguir, dos botones del mismo tamaño (DD-101). */
+.botones-cobrado { display: grid; grid-template-columns: 1fr; gap: .5rem; }
+.botones-cobrado .btn { display: flex; align-items: center; justify-content: center; gap: .35rem; flex-wrap: wrap; }
+@media (min-width: 576px) { .botones-cobrado { grid-template-columns: 1fr 1fr; } }

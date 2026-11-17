@@ -1,36 +1,22 @@
-{% load cafeto static %}<!DOCTYPE html>
-<html lang="es-AR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ticket N° {{ venta.pk }}</title>
-<style>
-    @page { size: 80mm auto; margin: 4mm; }
-    body { font: 12px/1.35 'Courier New', monospace; color: #000; background: #fff; max-width: 76mm; margin: 0 auto; padding: 8px; }
-    h1 { font-size: 15px; text-align: center; margin: 0; }
-    .centro { text-align: center; }
-    .linea { border-top: 1px dashed #000; margin: 6px 0; }
-    table { width: 100%; border-collapse: collapse; }
-    td { vertical-align: top; padding: 1px 0; }
-    .der { text-align: right; white-space: nowrap; }
-    .total { font-size: 16px; font-weight: bold; }
-    .nota { font-size: 10px; text-align: center; margin-top: 8px; }
-    .acciones { text-align: center; margin: 12px 0; }
-    .anulada { border: 2px solid #000; text-align: center; padding: 4px; margin: 6px 0; font-weight: bold; }
-    .anulada span { display: block; font-weight: normal; font-size: 11px; }
-    @media print { .acciones { display: none; } }
-</style>
-</head>
-<body>
-<h1>{{ negocio.nombre_fantasia }}</h1>
-<div class="centro">{{ negocio.razon_social }}{% if negocio.cuit %}<br>CUIT {{ negocio.cuit }}{% endif %}{% if negocio.domicilio %}<br>{{ negocio.domicilio }}{% endif %}</div>
-<div class="linea"></div>
-<div>Venta N° {{ venta.pk }} · {{ venta.fecha_venta|date:"d/m/Y" }} {{ venta.hora_venta|time:"H:i" }}</div>
-<div>{{ venta.id_turno_caja.id_caja_registradora }} · Atendió {{ venta.id_usuario.nombre }}</div>
+{% extends 'comprobantes/base.html' %}
+{% load cafeto %}
+{% block titulo %}Ticket N° {{ venta.pk }}{% endblock %}
+{% block tipo %}TICKET DE VENTA<small>N° {{ venta.pk }}</small>{% endblock %}
+
+{% block cuerpo %}
+<table>
+    <tr><td>Venta N°</td><td class="der">{{ venta.pk }}</td></tr>
+    <tr><td>Fecha y hora</td><td class="der">{{ venta.fecha_venta|date:"d/m/Y" }} {{ venta.hora_venta|time:"H:i:s" }}</td></tr>
+    <tr><td>Caja</td><td class="der">{{ venta.id_turno_caja.id_caja_registradora }}</td></tr>
+    <tr><td>Atendió</td><td class="der">{{ venta.id_usuario.nombre }} {{ venta.id_usuario.apellido }}</td></tr>
+</table>
+{% if cliente %}
+<div>Cliente: <span class="fuerte">{{ cliente.nombre_cliente }} {{ cliente.apellido_cliente }}</span>{% if cliente.dni_cliente %}<br><span class="sangria">DNI {{ cliente.dni_cliente }}</span>{% endif %}</div>
+{% endif %}
 {% if venta.anulada %}
-<div class="anulada">*** VENTA ANULADA ***
-    <span>{{ venta.fecha_anulacion|date:"d/m/Y H:i" }} · autorizó {{ venta.id_usuario_anulacion }}</span>
-    {% if venta.id_usuario_solicitante_id != venta.id_usuario_anulacion_id %}<span>pidió {{ venta.id_usuario_solicitante }}</span>{% endif %}
+<div class="alerta">*** VENTA ANULADA ***
+    <span>{{ venta.fecha_anulacion|date:"d/m/Y H:i" }} · autorizó {{ venta.id_usuario_anulacion.nombre }} {{ venta.id_usuario_anulacion.apellido }}</span>
+    {% if venta.id_usuario_solicitante_id != venta.id_usuario_anulacion_id %}<span>pidió {{ venta.id_usuario_solicitante.nombre }} {{ venta.id_usuario_solicitante.apellido }}</span>{% endif %}
     <span>{{ motivo_anulacion }}</span>
 </div>
 {% endif %}
@@ -38,35 +24,48 @@
 <table>
 {% for r in renglones %}
     <tr><td colspan="2">{{ r.descripcion_item }}</td></tr>
-    <tr><td>&nbsp;&nbsp;{{ r.cantidad|cantidad }} x {{ r.precio_unitario|pesos }}</td><td class="der">{{ r.subtotal|pesos }}</td></tr>
-    {% if r.monto_descuento_linea %}<tr><td>&nbsp;&nbsp;Desc. {{ r.get_motivo_descuento_display }}</td><td class="der">−{{ r.monto_descuento_linea|pesos }}</td></tr>{% endif %}
+    <tr><td class="sangria">{{ r.cantidad|cantidad }} x {{ r.precio_unitario|pesos }}</td><td class="der">{{ r.subtotal|pesos }}</td></tr>
+    {% if r.monto_descuento_linea %}<tr><td class="sangria">Desc. {{ r.get_motivo_descuento_display }}</td><td class="der">−{{ r.monto_descuento_linea|pesos }}</td></tr>{% endif %}
 {% endfor %}
 </table>
 <div class="linea"></div>
 <table>
-    {% if venta.monto_descuento %}<tr><td>{{ venta.id_beneficio }}</td><td class="der">−{{ venta.monto_descuento|pesos }}</td></tr>{% endif %}
+    {% if venta.monto_descuento %}<tr><td>Beneficio: {{ venta.id_beneficio }}</td><td class="der">−{{ venta.monto_descuento|pesos }}</td></tr>{% endif %}
     {% if venta.ajuste_redondeo %}<tr><td>Redondeo</td><td class="der">{{ venta.ajuste_redondeo|pesos }}</td></tr>{% endif %}
     {% if venta.monto_recargo %}<tr><td>Recargo por financiación</td><td class="der">{{ venta.monto_recargo|pesos }}</td></tr>{% endif %}
     <tr class="total"><td>TOTAL</td><td class="der">{{ venta.total_venta|pesos }}</td></tr>
+</table>
+<div class="seccion">{% if pagos|length > 1 %}Pago mixto{% else %}Forma de pago{% endif %}</div>
+<table>
     {% for p in pagos %}
     <tr><td>{{ p.id_medio_pago }}</td><td class="der">{{ p.monto|pesos }}</td></tr>
-    {% if p.id_medio_pago.cantidad_cuotas > 1 %}<tr><td>&nbsp;&nbsp;En {{ p.id_medio_pago.cantidad_cuotas }} cuotas{% if p.recargo_porcentaje %} · recargo {{ p.recargo_porcentaje|cantidad }} %{% endif %}</td><td class="der">{{ p.importe_cobrado|pesos }}</td></tr>{% endif %}
-    {% if p.monto_recibido %}<tr><td>&nbsp;&nbsp;Recibido</td><td class="der">{{ p.monto_recibido|pesos }}</td></tr>
-    <tr><td>&nbsp;&nbsp;Vuelto</td><td class="der">{{ p.monto_vuelto|pesos }}</td></tr>{% endif %}
+    {% if p.id_medio_pago.cantidad_cuotas > 1 %}<tr><td class="sangria">En {{ p.id_medio_pago.cantidad_cuotas }} cuotas{% if p.recargo_porcentaje %} · recargo {{ p.recargo_porcentaje|cantidad }} %{% endif %}</td><td class="der">{{ p.importe_cobrado|pesos }}</td></tr>{% endif %}
+    {% if p.monto_recibido %}<tr><td class="sangria">Recibido</td><td class="der">{{ p.monto_recibido|pesos }}</td></tr>
+    <tr><td class="sangria">Vuelto</td><td class="der">{{ p.monto_vuelto|pesos }}</td></tr>{% endif %}
     {% endfor %}
 </table>
+{% if cuenta %}
+<div class="linea"></div>
+<div class="seccion">Cuenta corriente</div>
+<table>
+    <tr><td>Saldo anterior</td><td class="der">{{ cuenta.anterior|pesos }}</td></tr>
+    <tr><td>(+) Cargo de esta compra</td><td class="der">{{ cuenta.cargo|pesos }}</td></tr>
+    <tr class="fuerte"><td>(=) Nuevo saldo total</td><td class="der">{{ cuenta.nuevo|pesos }}</td></tr>
+    <tr><td>Vence el</td><td class="der">{{ cuenta.vence|date:"d/m/Y" }}</td></tr>
+</table>
+<div class="firmas"><div class="firma">Firma de conformidad del cliente<span>{{ cliente.nombre_cliente }} {{ cliente.apellido_cliente }}{% if cliente.dni_cliente %} · DNI {{ cliente.dni_cliente }}{% endif %}</span></div></div>
+{% endif %}
 {% if puntos %}
 <div class="linea"></div>
-<div class="centro">Club Cafeto · {{ puntos.cliente.nombre_cliente }} {{ puntos.cliente.apellido_cliente }}</div>
+<div class="seccion">Club Cafeto · {{ puntos.cliente.id_categoria }}</div>
 <table>
     {% if puntos.canjeados %}<tr><td>Puntos canjeados</td><td class="der">−{{ puntos.canjeados }}</td></tr>{% endif %}
-    <tr><td>Puntos de esta compra</td><td class="der">+{{ puntos.ganados }}</td></tr>
-    {% if puntos.saldo is not None %}<tr><td>Saldo de puntos</td><td class="der">{{ puntos.saldo }}</td></tr>{% endif %}
-    <tr><td>Categoría</td><td class="der">{{ puntos.cliente.id_categoria }}</td></tr>
+    <tr><td>Puntos sumados en esta compra</td><td class="der">+{{ puntos.ganados }}</td></tr>
+    {% if cuenta and not puntos.ganados %}<tr><td colspan="2" class="tenue">Los puntos de una compra fiada se suman cuando se paga en término.</td></tr>{% endif %}
+    {% if puntos.saldo is not None %}<tr class="fuerte"><td>Saldo de puntos</td><td class="der">{{ puntos.saldo }}</td></tr>{% endif %}
 </table>
 {% endif %}
-<div class="nota">Comprobante interno, no válido como factura.<br>Cambios dentro de los {{ negocio.dias_para_cambios }} días con este ticket.<br>¡Gracias por elegirnos!</div>
-<div class="acciones"><button onclick="window.print()">Imprimir</button></div>
-<script>window.addEventListener('load', function () { try { window.print(); } catch (e) {} });</script>
-</body>
-</html>
+{% endblock %}
+
+{% block pie %}Comprobante interno, no válido como factura.<br>Cambios dentro de los {{ negocio.dias_para_cambios }} días con este ticket.<br>¡Gracias por elegirnos!{% endblock %}
+{% block autoimprimir %}<script>window.addEventListener('load', function () { try { window.print(); } catch (e) {} });</script>{% endblock %}

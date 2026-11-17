@@ -1,0 +1,56 @@
+{% load cafeto static %}<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block titulo %}Comprobante{% endblock %} · {{ negocio.nombre_fantasia }}</title>
+<style>
+    @page { size: 80mm auto; margin: 3mm; }
+    * { box-sizing: border-box; }
+    html { background: #e9e9ee; }
+    body { font: 12px/1.35 'Courier New', Courier, monospace; color: #000; background: #fff;
+           width: 80mm; max-width: 100%; margin: 16px auto; padding: 4mm; box-shadow: 0 1px 6px rgba(0,0,0,.18); }
+    h1 { font-size: 15px; text-align: center; margin: 0; text-transform: uppercase; letter-spacing: .5px; }
+    .comercio { text-align: center; font-size: 11px; }
+    .tipo { border: 2px solid #000; text-align: center; font-weight: bold; font-size: 13px; padding: 3px 2px; margin: 6px 0 4px; }
+    .tipo small { display: block; font-weight: normal; font-size: 11px; }
+    .centro { text-align: center; }
+    .linea { border-top: 1px dashed #000; margin: 6px 0; }
+    .doble { border-top: 3px double #000; margin: 6px 0; }
+    .seccion { font-weight: bold; text-transform: uppercase; font-size: 11px; margin: 2px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { vertical-align: top; padding: 1px 0; text-align: left; font-weight: normal; }
+    .der { text-align: right; white-space: nowrap; padding-left: 4px; }
+    .sangria { padding-left: 2ch; }
+    .tenue { font-size: 10.5px; }
+    .total td { font-size: 14px; font-weight: bold; }
+    .fuerte { font-weight: bold; }
+    .destacado { border: 1px solid #000; padding: 2px 3px; margin: 3px 0; font-weight: bold; }
+    .alerta { border: 2px solid #000; text-align: center; font-weight: bold; padding: 3px; margin: 6px 0; }
+    .alerta span { display: block; font-weight: normal; font-size: 11px; }
+    .firmas { margin-top: 10px; }
+    .firma { margin-top: 30px; border-top: 1px solid #000; text-align: center; font-size: 10.5px; padding-top: 2px; }
+    .firma span { display: block; }
+    .pie { font-size: 10px; text-align: center; margin-top: 10px; }
+    .acciones { font-family: system-ui, sans-serif; text-align: center; margin: 12px auto; width: 80mm; max-width: 100%; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    .acciones a, .acciones button { font: 600 14px system-ui, sans-serif; padding: 10px 16px; min-height: 44px; border-radius: 8px; border: 1px solid #1b1b3a; background: #fff; color: #1b1b3a; text-decoration: none; cursor: pointer; }
+    .acciones button { background: #1b1b3a; color: #fff; }
+    @media print {
+        html, body { background: #fff; }
+        body { width: auto; margin: 0; padding: 0; box-shadow: none; }
+        .acciones { display: none; }
+    }
+</style>
+</head>
+<body>
+<h1>{{ negocio.nombre_fantasia }}</h1>
+<div class="comercio">{{ negocio.razon_social }}{% if negocio.cuit %}<br>CUIT {{ negocio.cuit }}{% endif %}{% if negocio.domicilio %}<br>{{ negocio.domicilio }}{% endif %}</div>
+<div class="tipo">{% block tipo %}{% endblock %}</div>
+{% block cuerpo %}{% endblock %}
+<div class="pie">{% block pie %}Comprobante interno, no válido como factura.{% endblock %}{% if impreso %}<br>Emitido {{ impreso|date:"d/m/Y H:i:s" }}{% endif %}</div>
+<div class="acciones"><button type="button" data-imprimir>Imprimir</button>{% block acciones %}{% endblock %}</div>
+{% block autoimprimir %}{% endblock %}
+<script src="{% static 'cafeto/js/imprimir.js' %}"></script>
+</body>
+</html>

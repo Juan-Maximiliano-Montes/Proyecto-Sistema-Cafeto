@@ -12,8 +12,31 @@
 </div>
 {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
 
+{% if not orden %}
+<section class="tarjeta tarjeta-destacada mb-3" id="escaner" aria-labelledby="tituloEscaner"
+         data-url="{% url 'compras:escanear_factura' %}" data-alta-proveedor="{% url 'compras:alta_proveedor_factura' %}"
+         data-alta-producto="{% url 'compras:alta_producto_factura' %}"
+         data-puede-proveedor="{{ puede_crear_proveedor|yesno:'1,0' }}" data-puede-producto="{{ puede_crear_producto|yesno:'1,0' }}">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="me-auto">
+            <h2 class="subtitulo h5 mb-0" id="tituloEscaner"><i class="bi bi-camera me-1" aria-hidden="true"></i>Escanear o subir la factura</h2>
+            <p class="small text-secondary mb-0">Sacale una foto o subí el PDF: el formulario se llena solo y vos lo controlás contra el papel antes de guardar.</p>
+        </div>
+        <label class="btn btn-primary mb-0" for="archivoFactura"><i class="bi bi-camera me-1" aria-hidden="true"></i>Foto o PDF de la factura</label>
+        <input type="file" id="archivoFactura" class="visually-hidden" accept="image/*,application/pdf,text/*" capture="environment">
+        {% if demo %}<button type="button" class="btn btn-secundario" id="facturaMuestra"><i class="bi bi-file-earmark-text me-1" aria-hidden="true"></i>Probar con factura de muestra</button>{% endif %}
+    </div>
+    <div id="estadoEscaner" class="mt-2" role="status" aria-live="polite"></div>
+    <div id="nuevosEscaner" class="mt-2" hidden>
+        <h3 class="subtitulo h6 mb-1">Productos de la factura que no están en el catálogo</h3>
+        <p class="small text-secondary mb-2">Revisá el rubro y el precio de venta sugerido (costo + 40 %) y dalos de alta: se suman solos a la compra.</p>
+        <div class="js-nuevos d-flex flex-column gap-2"></div>
+    </div>
+</section>
+{% endif %}
+
 {% if precarga %}
-<div class="aviso aviso-aviso"><i class="bi bi-robot"></i><span><strong>Esta compra la pre-cargó una automatización a partir de la factura.</strong> Todavía no se registró nada: revisá proveedor, número, cantidades y costos contra el papel antes de confirmar.
+<div class="aviso aviso-aviso"><i class="bi bi-robot"></i><span><strong>{% if recibida %}Esta factura llegó por {{ recibida.get_origen_factura_display }}{% if recibida.remitente %} ({{ recibida.remitente }}){% endif %} el {{ recibida.fecha_recepcion|date:"d/m/Y H:i" }} y la pre-cargó una automatización.{% else %}Esta compra la pre-cargó una automatización a partir de la factura.{% endif %}</strong> Todavía no se registró nada: revisá proveedor, número, cantidades y costos contra el papel antes de confirmar.
 {% if not precarga.p and not detectado %}<span class="d-block">No se reconoció al proveedor{% if precarga.n %} («{{ precarga.n }}»){% endif %} y la factura no trae un CUIT legible: elegilo de la lista o dalo de alta en Proveedores.</span>{% endif %}
 {% if precarga.s %}<span class="d-block">Renglones de la factura que no se pudieron reconocer y hay que agregar a mano: {% for linea in precarga.s %}«{{ linea }}»{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</span></div>
 {% endif %}
@@ -22,6 +45,7 @@
       data-confirmar="Entra el stock con estas cantidades y queda anotada la factura. Fijate bien el número, las cantidades y los costos: una compra guardada no se edita.">
     {% csrf_token %}
     {% if testigo %}<input type="hidden" name="precarga" value="{{ testigo }}">{% endif %}
+    {% if recibida %}<input type="hidden" name="factura" value="{{ recibida.pk }}">{% endif %}
     {% if detectado %}
     <div class="col-12"><div class="tarjeta tarjeta-destacada">
         <div class="form-check">
@@ -59,11 +83,16 @@
                 <div class="col-5"><label class="form-label" for="punto">Punto de venta</label><input type="text" inputmode="numeric" name="punto_venta" id="punto" value="{{ datos.punto_venta|default:'' }}" class="form-control" placeholder="0001"></div>
                 <div class="col-7"><label class="form-label" for="numero">Número</label><input type="text" inputmode="numeric" name="numero" id="numero" value="{{ datos.numero|default:'' }}" class="form-control" placeholder="00012345"></div>
                 <div class="col-6"><label class="form-label" for="fecha">Fecha</label><input type="date" name="fecha" id="fecha" value="{{ datos.fecha|default:hoy }}" class="form-control"></div>
-                <div class="col-6"><label class="form-label" for="vence_pago">Se paga hasta</label><input type="date" name="vence_pago" id="vence_pago" value="{{ datos.vence_pago|default:'' }}" class="form-control"></div>
+                <div class="col-6"><label class="form-label" for="vence_pago">Se paga hasta</label><input type="date" name="vence_pago" id="vence_pago" value="{{ datos.vence_pago|default:'' }}" class="form-control" aria-describedby="ayudaVence"></div>
+                <div class="col-12 small text-secondary" id="ayudaVence">Si no lo completás, vence según la condición de pago del proveedor (contado: el mismo día de la factura).</div>
                 <div class="col-12"><div class="form-check">
                     <input class="form-check-input" type="checkbox" name="vincular" value="1" id="vincular"{% if request.method != 'POST' or datos.vincular %} checked{% endif %}>
                     <label class="form-check-label" for="vincular">Vincular a este proveedor los productos que todavía no tienen uno asignado</label>
                     <div class="form-text">Los que ya tienen su proveedor habitual no cambian.</div></div></div>
+                <div class="col-12"><div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="ocasional" value="1" id="ocasional"{% if datos.ocasional %} checked{% endif %} aria-describedby="ayudaOcasional">
+                    <label class="form-check-label" for="ocasional">Compra ocasional / de salvataje</label>
+                    <div class="form-text" id="ayudaOcasional">Suma el stock sin cambiar el proveedor habitual ni el costo de referencia de los productos (el que usan los precios sugeridos).</div></div></div>
                 <div class="col-12"><label class="form-label" for="otros">Otros conceptos (percepciones, flete)</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="otros" id="otros" value="{{ datos.otros|default:'' }}" class="form-control" placeholder="0"></div></div>
             </div>
         </div>
@@ -96,4 +125,6 @@
 </form>
 {% endblock %}
 
-{% block scripts %}<script src="{% static 'cafeto/js/renglones.js' %}"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'cafeto/js/renglones.js' %}"></script>
+{{ rubros_json|json_script:"rubrosEscaner" }}
+<script src="{% static 'cafeto/js/escanear-factura.js' %}"></script>{% endblock %}

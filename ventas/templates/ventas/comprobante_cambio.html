@@ -1,0 +1,57 @@
+{% extends 'comprobantes/base.html' %}
+{% load cafeto %}
+{% block titulo %}Cambio N° {{ cambio.pk }}{% endblock %}
+{% block tipo %}{% if cambio.importe_devuelto and not entrega %}COMPROBANTE DE DEVOLUCIÓN{% else %}COMPROBANTE DE CAMBIO{% endif %}<small>N° {{ cambio.pk }} · venta N° {{ cambio.id_venta_id }}</small>{% endblock %}
+
+{% block cuerpo %}
+<table>
+    <tr><td>Fecha</td><td class="der">{{ cambio.fecha_cambio|date:"d/m/Y" }}</td></tr>
+    <tr><td>Hora</td><td class="der">{{ cambio.fecha_cambio|date:"H:i:s" }}</td></tr>
+    <tr><td>Caja</td><td class="der">{{ cambio.id_turno_caja.id_caja_registradora }}</td></tr>
+    <tr><td>Ticket original</td><td class="der">N° {{ cambio.id_venta_id }} del {{ cambio.id_venta.fecha_venta|date:"d/m/Y" }}</td></tr>
+</table>
+{% if cliente %}<div>Cliente: <span class="fuerte">{{ cliente.nombre_cliente }} {{ cliente.apellido_cliente }}</span>{% if cliente.dni_cliente %} · DNI {{ cliente.dni_cliente }}{% endif %}</div>{% endif %}
+<div>Motivo: <span class="fuerte">{{ cambio.get_motivo_display }}</span></div>
+{% if cambio.detalle_motivo %}<div class="sangria">{{ cambio.detalle_motivo }}</div>{% endif %}
+
+{% if devuelve %}
+<div class="linea"></div>
+<div class="seccion">Devuelve</div>
+<table>
+    {% for r in devuelve %}
+    <tr><td colspan="2">{{ r.id_producto.nombre_producto }}</td></tr>
+    <tr><td class="sangria">{{ r.cantidad|cantidad }} x {{ r.precio_unitario|pesos }}{% if r.reingresa_stock is False %} · no vuelve al stock{% endif %}</td><td class="der">{{ r.subtotal|pesos }}</td></tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% if entrega %}
+<div class="linea"></div>
+<div class="seccion">Se lleva</div>
+<table>
+    {% for r in entrega %}
+    <tr><td colspan="2">{{ r.id_producto.nombre_producto }}</td></tr>
+    <tr><td class="sangria">{{ r.cantidad|cantidad }} x {{ r.precio_unitario|pesos }}</td><td class="der">{{ r.subtotal|pesos }}</td></tr>
+    {% endfor %}
+</table>
+{% endif %}
+<div class="doble"></div>
+<table>
+    {% if cambio.importe_devuelto %}<tr class="total"><td>Se le devuelve</td><td class="der">{{ cambio.importe_devuelto|pesos }}</td></tr>
+    {% elif cambio.importe_cobrado %}<tr class="total"><td>Pagó la diferencia</td><td class="der">{{ cambio.importe_cobrado|pesos }}</td></tr>
+    {% else %}<tr class="total"><td>Sin diferencia de dinero</td><td class="der">{{ 0|pesos }}</td></tr>{% endif %}
+    {% if cambio.id_medio_pago %}<tr><td>Medio</td><td class="der">{{ cambio.id_medio_pago }}</td></tr>{% endif %}
+</table>
+<div class="linea"></div>
+<div>Responsable:</div>
+<div class="sangria fuerte">{{ cambio.id_usuario|persona }}</div>
+<div>Autorizó:</div>
+<div class="sangria fuerte">{% if cambio.id_usuario_autorizante %}{{ cambio.id_usuario_autorizante|persona }}{% else %}{{ cambio.id_usuario|persona }} (dentro de su permiso){% endif %}</div>
+
+<div class="firmas">
+    <div class="firma">Firma del responsable<span>{{ cambio.id_usuario.nombre }} {{ cambio.id_usuario.apellido }}</span></div>
+    <div class="firma">Firma del cliente{% if cambio.importe_devuelto %} (recibí conforme){% endif %}<span>Aclaración y DNI: ______________________</span></div>
+</div>
+{% endblock %}
+
+{% block pie %}Comprobante interno, no válido como factura.{% endblock %}
+{% block acciones %}<a href="{% url 'ventas:cambios' %}">Volver a cambios</a>{% endblock %}

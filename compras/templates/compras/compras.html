@@ -9,6 +9,7 @@
         <h1 class="titulo-pantalla mb-0">Compras</h1>
     </div>
     <div class="acciones">
+        {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=compras#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -19,6 +20,22 @@
         {% if 'registrar_compra' in permisos_usuario %}<a href="{% url 'compras:recepcion' %}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Recibir mercadería</a>{% endif %}
     </div>
 </div>
+
+{% if recibidas %}
+<section class="tarjeta mb-3" aria-labelledby="tituloRecibidas">
+    <div class="aviso aviso-info mb-2"><i class="bi bi-inbox-fill" aria-hidden="true"></i><span id="tituloRecibidas"><strong>{{ aviso_recibidas }}</strong> Nada se cargó todavía: abrí cada una, controlala contra el papel y confirmala.</span></div>
+    <ul class="list-unstyled mb-0">
+    {% for f in recibidas %}
+        <li class="d-flex flex-wrap align-items-center gap-2 py-2{% if not forloop.first %} border-top{% endif %}">
+            <span class="insignia insignia-neutra">{{ f.get_origen_factura_display }}</span>
+            <span class="me-auto"><strong>{{ f.resumen_factura }}</strong><span class="d-block small text-secondary">Llegó el {{ f.fecha_recepcion|date:"d/m/Y H:i" }}{% if f.remitente %} · de {{ f.remitente }}{% endif %}</span></span>
+            <a href="{% url 'compras:recepcion' %}?factura={{ f.pk }}" class="btn btn-sm btn-primary">Revisar y confirmar</a>
+            <form method="post" action="{% url 'compras:descartar_factura' f.pk %}" data-titulo="¿Descartamos esta factura?" data-aceptar="Sí, descartar" data-confirmar="No se carga como compra y deja de aparecer acá. Queda registrado quién la descartó.">{% csrf_token %}<button type="submit" class="btn btn-sm btn-secundario">Descartar</button></form>
+        </li>
+    {% endfor %}
+    </ul>
+</section>
+{% endif %}
 
 <form method="get" id="herramientas" class="herramientas">
     <input type="hidden" name="pagina" value="1">

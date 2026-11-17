@@ -23,7 +23,7 @@
             <h1 class="titulo-pantalla mb-2">¿Autorizás{% if persona and not persona.es_titular %}, {{ persona.nombre }}{% endif %}?</h1>
             <p class="mb-2">{{ resumen.motivo|pesos_juntos }}.</p>
             <dl class="tarjeta-datos mb-3">
-                {% if resumen.es_ajuste %}<dt>Qué es</dt><dd>Ajuste de stock</dd>{% else %}<dt>Total del ticket</dt><dd class="monto">{{ resumen.total }}</dd>{% endif %}
+                {% if resumen.es_ajuste %}<dt>Qué es</dt><dd>Ajuste de stock</dd>{% elif resumen.es_cierre %}<dt>Diferencia de caja</dt><dd class="monto">{{ resumen.total }}</dd>{% else %}<dt>Total del ticket</dt><dd class="monto">{{ resumen.total }}</dd>{% endif %}
                 <dt>Pedido a las</dt><dd>{{ resumen.cuando|date:"H:i" }}</dd>
                 <dt>Vale hasta las</dt><dd>{{ resumen.vence|date:"H:i" }}</dd>
             </dl>

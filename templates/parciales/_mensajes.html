@@ -5,8 +5,8 @@ rojo y con ícono: quien está cobrando tiene que verlo sin leer de más.
 {% if messages %}
 <div class="mensajes mb-3">
     {% for message in messages %}
-    <div class="aviso {% if message.level_tag == 'error' %}aviso-error{% elif message.level_tag == 'success' %}aviso-exito{% else %}aviso-aviso{% endif %} alert-dismissible fade show mb-2" role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}">
-        <i class="bi {% if message.level_tag == 'error' %}bi-exclamation-octagon-fill{% elif message.level_tag == 'success' %}bi-check-circle-fill{% else %}bi-info-circle-fill{% endif %}"></i>
+    <div class="aviso {% if message.level_tag == 'error' %}aviso-error{% elif message.level_tag == 'success' %}aviso-exito{% else %}aviso-aviso{% endif %} alert alert-dismissible fade show mb-2" role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}">
+        <i aria-hidden="true" class="bi {% if message.level_tag == 'error' %}bi-exclamation-octagon-fill{% elif message.level_tag == 'success' %}bi-check-circle-fill{% else %}bi-info-circle-fill{% endif %}"></i>
         <span>{{ message }}</span>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
     </div>

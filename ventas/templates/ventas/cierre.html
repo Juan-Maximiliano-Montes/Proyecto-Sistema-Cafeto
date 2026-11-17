@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
-{% load cafeto %}
+{% load cafeto static %}
 {% block titulo %}Cafeto · Cierre de caja{% endblock %}
 
 {% block contenido %}
 <div class="encabezado">
     <div>
         <span class="eyebrow"><i class="bi bi-cash-stack me-1"></i>{{ turno.id_caja_registradora }}</span>
-        <h1 class="titulo-pantalla mb-0">{% if relevo %}Cambio de turno{% else %}Cierre de caja{% endif %}</h1>
+        <h1 class="titulo-pantalla mb-0">Cierre de caja</h1>
+        {% if abrio_otra_persona %}<p class="bajada">Este turno lo abrió {{ abrio.nombre }} {{ abrio.apellido }} el {{ turno.fecha_apertura|date:"d/m" }} a las {{ turno.fecha_apertura|date:"H:i" }}. Lo podés cerrar vos.</p>{% endif %}
     </div>
 </div>
 
@@ -25,20 +26,19 @@
                 {% else %}
                 <div class="aviso {% if pide_supervisor %}aviso-error{% else %}aviso-aviso{% endif %} mb-0">
                     <i class="bi bi-exclamation-triangle-fill"></i>
-                    <span>{% if diferencia > 0 %}Sobran{% else %}Faltan{% endif %} <strong>{{ diferencia|pesos }}</strong>.
-                    {% if titular_sola %}Supera lo tolerado ({{ tolerancia|pesos }}): como sos la titular alcanza con tu clave.{% elif pide_supervisor %}Supera lo tolerado ({{ tolerancia|pesos }}): lo tiene que autorizar alguien que supervise.{% endif %}</span>
+                    <span>{% if diferencia > 0 %}Sobran{% else %}Faltan{% endif %} <strong>{{ diferencia_abs|pesos }}</strong>.
+                    {% if titular_sola %}Supera lo tolerado ({{ tolerancia|pesos }}): como sos la titular alcanza con tu clave.{% elif pide_supervisor %}Supera lo tolerado ({{ tolerancia|pesos }}): la aprueba la titular o quien supervise cierres.{% endif %}</span>
                 </div>
                 {% endif %}
             </div>
         </div>
     </div>
     <div class="col-lg-7">
-        <form method="post" class="tarjeta p-4" novalidate
-              data-titulo="{% if relevo %}¿Hacemos el relevo?{% else %}¿Cerramos la caja?{% endif %}" data-aceptar="{% if relevo %}Sí, hacer el relevo{% else %}Sí, cerrar{% endif %}"
-              data-confirmar="{% if relevo %}Tu turno se cierra con lo que contaste y el cajón pasa a la otra persona.{% else %}El turno se cierra con lo que contaste. Un turno cerrado no se vuelve a abrir.{% endif %}">
+        <form method="post" class="tarjeta p-4" novalidate data-confirmar="¿Seguimos?">
             {% csrf_token %}
             {{ form.token_operacion }}
-            {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+            {% if form.non_field_errors %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+            {% include 'ventas/_modo_cierre.html' %}
             {% if diferencia != 0 %}
             <div class="mb-3">
                 <label class="form-label" for="{{ form.observacion.id_for_label }}">{{ form.observacion.label }}</label>
@@ -52,22 +52,39 @@
                 <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_clave.id_for_label }}">Tu clave</label>{{ form.autoriza_clave }}</div>
             </div>
             {% elif pide_supervisor %}
-            <h2 class="subtitulo h6">Autoriza</h2>
-            <div class="row g-2 mb-3">
-                <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_usuario.id_for_label }}">{{ form.autoriza_usuario.label }}</label>{{ form.autoriza_usuario }}</div>
-                <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_clave.id_for_label }}">{{ form.autoriza_clave.label }}</label>{{ form.autoriza_clave }}</div>
+            <fieldset class="mb-3" id="formas">
+                <legend class="subtitulo h6">{{ form.forma.label }}</legend>
+                {% for opcion in form.forma %}
+                <div class="form-check">{{ opcion.tag }}<label class="form-check-label" for="{{ opcion.id_for_label }}">{{ opcion.choice_label }}</label></div>
+                {% endfor %}
+            </fieldset>
+            <div data-forma="ACA">
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_usuario.id_for_label }}">{{ form.autoriza_usuario.label }}</label>{{ form.autoriza_usuario }}</div>
+                    <div class="col-sm-6"><label class="form-label" for="{{ form.autoriza_clave.id_for_label }}">{{ form.autoriza_clave.label }}</label>{{ form.autoriza_clave }}</div>
+                </div>
             </div>
-            {% endif %}
-            {% if relevo %}
-            <h2 class="subtitulo h6">Quién sigue con el cajón</h2>
-            <p class="small text-secondary">Lo que contaste pasa a ser su fondo inicial.</p>
-            <div class="row g-2 mb-3">
-                <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_usuario.id_for_label }}">{{ form.entrante_usuario.label }}</label>{{ form.entrante_usuario }}</div>
-                <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_clave.id_for_label }}">{{ form.entrante_clave.label }}</label>{{ form.entrante_clave }}</div>
+            <div data-forma="DISTANCIA" class="d-none mb-3">
+                {{ form.remota }}
+                {% if aprobada %}<div class="aviso aviso-exito mb-2" id="remotaYaAprobada" data-id="{{ aprobada.pk }}"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>{{ aprobada.id_usuario_autorizante.nombre }} {{ aprobada.id_usuario_autorizante.apellido }} ya aprobó esta diferencia a distancia (pedido N° {{ aprobada.pk }}). Ya podés cerrar: no hace falta pedirla de nuevo.</span></div>{% endif %}
+                <button type="button" class="btn btn-secundario w-100" id="remotaPedir" data-url="{% url 'ventas:pedir_autorizacion_cierre' %}" data-estado="{% url 'ventas:estado_autorizacion' 0 %}"><i class="bi bi-phone me-1" aria-hidden="true"></i>Pedir autorización a distancia</button>
+                <div id="remota" class="d-none mt-2 aviso aviso-info" role="status" aria-live="polite">
+                    <i class="bi bi-hourglass-split" id="remotaIcono" aria-hidden="true"></i>
+                    <div class="flex-grow-1">
+                        <span id="remotaTexto"></span>
+                        <div class="input-group mt-2" id="remotaPinGrupo">
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" class="form-control" id="remotaPin" placeholder="PIN de 4 números" aria-label="PIN que te dictaron" autocomplete="one-time-code">
+                            <button type="button" class="btn btn-primary" id="remotaPinOk">Validar PIN</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div data-forma="REVISAR" class="d-none mb-3">
+                <div class="aviso aviso-error mb-0"><i class="bi bi-flag-fill" aria-hidden="true"></i><span>La caja se cierra igual y el turno queda <strong>con diferencia — pendiente de revisión de titular</strong>, con aviso en el Inicio hasta que la titular o quien supervise lo revise. Contá en el motivo qué pasó (al menos {{ motivo_minimo }} letras).</span></div>
             </div>
             {% endif %}
             <div class="d-flex gap-2 flex-wrap">
-                <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1"></i>{% if relevo %}Hacer el relevo{% else %}Cerrar la caja{% endif %}</button>
+                <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1" aria-hidden="true"></i><span class="js-texto-boton">Cerrar la caja</span></button>
             </div>
         </form>
     </div>
@@ -84,7 +101,7 @@
         </form>
         <form method="post"
               data-titulo="¿Cerrar con este conteo?" data-aceptar="Sí, es definitivo"
-              data-confirmar="Vas a ver la diferencia y ya no vas a poder volver a contar. La tiene que autorizar alguien que supervise.">
+              data-confirmar="Vas a ver la diferencia y ya no vas a poder volver a contar. La aprueba la titular o quien supervise, acá o a distancia, o queda pendiente de revisión.">
             {% csrf_token %}
             <input type="hidden" name="cerrar_igual" value="1">
             <button type="submit" class="btn btn-outline-secondary btn-xl">Estoy seguro de lo que conté</button>
@@ -96,21 +113,12 @@
     <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i>
         <span><strong>Tu conteo coincide con el libro.</strong> Los números completos salen en el documento de cierre.</span></div>
     {% include 'ventas/_composicion_cajon.html' %}
-    <form method="post" novalidate
-          data-titulo="{% if relevo %}¿Hacemos el relevo?{% else %}¿Cerramos la caja?{% endif %}" data-aceptar="{% if relevo %}Sí, hacer el relevo{% else %}Sí, cerrar{% endif %}"
-          data-confirmar="{% if relevo %}Tu turno se cierra con lo que contaste y el cajón pasa a la otra persona.{% else %}El turno se cierra con lo que contaste. Un turno cerrado no se vuelve a abrir.{% endif %}">
+    <form method="post" novalidate data-confirmar="¿Seguimos?">
         {% csrf_token %}
         {{ form.token_operacion }}
-        {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
-        {% if relevo %}
-        <h2 class="subtitulo h6">Quién sigue con el cajón</h2>
-        <p class="small text-secondary">Lo que contaste pasa a ser su fondo inicial.</p>
-        <div class="row g-2 mb-3">
-            <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_usuario.id_for_label }}">{{ form.entrante_usuario.label }}</label>{{ form.entrante_usuario }}</div>
-            <div class="col-sm-6"><label class="form-label" for="{{ form.entrante_clave.id_for_label }}">{{ form.entrante_clave.label }}</label>{{ form.entrante_clave }}</div>
-        </div>
-        {% endif %}
-        <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1"></i>{% if relevo %}Hacer el relevo{% else %}Cerrar la caja{% endif %}</button>
+        {% if form.non_field_errors %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+        {% include 'ventas/_modo_cierre.html' %}
+        <button type="submit" class="btn btn-primary btn-xl" data-requiere-red><i class="bi bi-lock-fill me-1" aria-hidden="true"></i><span class="js-texto-boton">Cerrar la caja</span></button>
     </form>
     <form method="post" action="{% url 'ventas:descartar_arqueo' %}" class="mt-2"
           data-titulo="¿Volver sin cerrar?" data-aceptar="Sí, volver"
@@ -120,4 +128,95 @@
     </form>
 </div>
 {% endif %}
+{% if etapa == 'REVELADA' and pide_supervisor and not titular_sola %}
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    var radios = document.querySelectorAll('#formas input[type=radio]');
+    var envio = document.querySelector('form [type=submit][data-requiere-red]');
+    var remota = {id: null, reloj: null, aprobada: false};
+    function forma() { var r = document.querySelector('#formas input:checked'); return r ? r.value : 'ACA'; }
+    function mostrar() {
+        document.querySelectorAll('[data-forma]').forEach(function (bloque) {
+            bloque.classList.toggle('d-none', bloque.dataset.forma !== forma());
+        });
+        envio.disabled = forma() === 'DISTANCIA' && !remota.aprobada;
+    }
+    radios.forEach(function (r) { r.addEventListener('change', mostrar); });
+    if (!document.querySelector('#formas input:checked') && radios.length) { radios[0].checked = true; }
+    var yaAprobada = $('remotaYaAprobada');
+    if (yaAprobada) {
+        remota = {id: Number(yaAprobada.dataset.id), reloj: null, aprobada: true};
+        document.querySelector('[name=remota]').value = remota.id;
+        $('remotaPedir').classList.add('d-none');
+    }
+    mostrar();
+    function pintar(texto, tipo, conPin) {
+        var caja = $('remota');
+        caja.classList.remove('d-none', 'aviso-info', 'aviso-exito', 'aviso-error', 'aviso-aviso');
+        caja.classList.add('aviso-' + (tipo || 'info'));
+        $('remotaIcono').className = 'bi ' + ({exito: 'bi-check-circle-fill', error: 'bi-x-circle-fill', aviso: 'bi-exclamation-triangle-fill'}[tipo] || 'bi-hourglass-split');
+        $('remotaTexto').textContent = texto;
+        $('remotaPinGrupo').classList.toggle('d-none', !conPin);
+        $('remotaPedir').classList.toggle('d-none', !!conPin);
+    }
+    function minutos(seg) { var m = Math.floor(seg / 60), s = seg % 60; return m + ':' + ('0' + s).slice(-2); }
+    function url(sufijo) { return $('remotaPedir').dataset.estado.replace('/0/', '/' + remota.id + '/') + (sufijo || ''); }
+    function enviar(direccion, datos) {
+        return fetch(direccion, {method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+            body: JSON.stringify(datos || {})}).then(function (r) { return r.json(); });
+    }
+    function seguir(r) {
+        if (r.estado === 'PENDIENTE') {
+            pintar('Esperando respuesta. Le avisamos por ' + (remota.avisos || 'la bandeja del sistema') + '. Vence en ' + minutos(r.restan) + ' min. Si te dictan el PIN, escribilo acá.', 'info', true);
+        } else if (r.estado === 'APROBADA') {
+            clearInterval(remota.reloj);
+            remota.aprobada = true;
+            document.querySelector('[name=remota]').value = remota.id;
+            pintar('Aprobó ' + r.autorizo + ' (' + (r.via || '').toLowerCase() + '). Ya podés cerrar.', 'exito', false);
+            $('remotaPedir').classList.add('d-none');
+            mostrar();
+        } else if (r.estado === 'RECHAZADA') {
+            clearInterval(remota.reloj); remota.id = null;
+            pintar('Rechazaron el pedido. Volvé a contar con quien supervise o dejalo pendiente de revisión.', 'error', false);
+        } else if (r.estado === 'ANULADA') {
+            clearInterval(remota.reloj); remota.id = null;
+            pintar('El pedido venció sin respuesta. Podés pedirlo de nuevo.', 'aviso', false);
+        }
+    }
+    function preguntar() {
+        if (!remota.id) { return; }
+        fetch(url(), {credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (r) { if (r.ok && remota.id) { seguir(r); } })
+            .catch(function () {});
+    }
+    $('remotaPedir').addEventListener('click', function () {
+        var boton = this;
+        boton.disabled = true;
+        var modo = document.querySelector('#modos input[name=modo]:checked');
+        enviar(boton.dataset.url, {modo: modo ? modo.value : ''}).then(function (r) {
+            boton.disabled = false;
+            if (!r.ok) { pintar(r.error, 'error', false); return; }
+            remota = {id: r.id, reloj: null, aprobada: false, avisos: (r.avisos || []).join(' y ') || 'la bandeja del sistema'};
+            seguir(r);
+            remota.reloj = setInterval(preguntar, 2000);
+            $('remotaPin').value = ''; $('remotaPin').focus();
+        }).catch(function () { boton.disabled = false; pintar('No se pudo pedir la autorización. Revisá la conexión.', 'error', false); });
+    });
+    $('remotaPinOk').addEventListener('click', function () {
+        if (!remota.id) { return; }
+        enviar(url('pin/'), {pin: $('remotaPin').value}).then(function (r) {
+            if (!r.ok) { pintar(r.error, 'error', r.estado === 'PENDIENTE'); return; }
+            seguir(r);
+        }).catch(function () { pintar('No se pudo validar el PIN. Revisá la conexión.', 'error', true); });
+    });
+    $('remotaPin').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('remotaPinOk').click(); } });
+})();
+</script>
+{% endif %}
 {% endblock %}
+
+{% block scripts %}<script src="{% static 'cafeto/js/cierre.js' %}"></script>{% endblock %}

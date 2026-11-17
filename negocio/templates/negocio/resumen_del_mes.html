@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load cafeto %}
+{% load cafeto static %}
 {% block titulo %}Cafeto · Resumen del mes{% endblock %}
 
 {% block contenido %}
@@ -78,4 +78,10 @@
         </div>
     </div>
 </div>
+
+<div class="mt-3">
+{% include 'negocio/_tablero.html' with titulo_tablero="El mes en gráficos" %}
+</div>
 {% endblock %}
+
+{% block scripts %}<script src="{% static 'cafeto/js/tablero.js' %}"></script>{% endblock %}

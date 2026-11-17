@@ -305,9 +305,19 @@ class RecorridoEnNavegadorTest(StaticLiveServerTestCase):
             pagina.locator('.producto-boton', has_text='Gaseosa').click()
             pagina.locator('.js-medio[data-efectivo="1"]').click()
             pagina.wait_for_selector('#cobrar:not([disabled])', timeout=5000)
+            errores = []
+            pagina.on('pageerror', lambda e: errores.append(str(e)))
             pagina.click('#cobrar')
+            # Antes de cobrar, el resumen para confirmar (DD-101).
+            confirmar = pagina.wait_for_selector('.modal.show .js-aceptar', timeout=5000)
+            self.assertIn('Total a cobrar', pagina.locator('.modal.show').inner_text())
+            confirmar.click()
             pagina.wait_for_selector('#modalCobrado.show', timeout=5000)
+            self.assertFalse(pagina.is_visible('#autoTicket'))
+            anchos = [pagina.locator(b).bounding_box()['width'] for b in ('#cobradoTicket', '#nuevaVenta')]
+            self.assertAlmostEqual(anchos[0], anchos[1], delta=1)
             pagina.click('#nuevaVenta')
+            self.assertEqual(errores, [])
             pagina.wait_for_timeout(1200)
             self.assertEqual(stock(pagina), antes - 1)
         self.con_pagina(hacer)

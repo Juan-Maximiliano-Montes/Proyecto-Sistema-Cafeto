@@ -12,6 +12,7 @@ urlpatterns = (rutas_crud('categorias') + rutas_crud('beneficios')
                         name='tarjeta'),
                    path('cuentas-corrientes/', vistas_credito.cuentas, name='cuentas'),
                    path('cuentas-corrientes/<int:pk>/', vistas_credito.cuenta, name='cuenta'),
+                   path('cuentas-corrientes/recibos/<int:pk>/', vistas_credito.recibo, name='recibo'),
                    path('cuentas-corrientes/morosos/', vistas_credito.morosos, name='morosos'),
                    path('cuentas-corrientes/parecidos/', vistas_credito.parecidos, name='parecidos'),
                ])

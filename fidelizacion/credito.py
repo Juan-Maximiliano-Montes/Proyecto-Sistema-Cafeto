@@ -39,6 +39,80 @@ def saldo(cliente):
     return _fiados(cliente).aggregate(t=Sum('saldo_pendiente'))['t'] or CERO
 
 
+def saldo_antes_de(id_cliente, id_movimiento):
+    """Lo que debía el cliente justo antes de ese movimiento de su cuenta.
+
+    El libro es de sólo agregado y cada movimiento del mismo cliente se
+    escribe con el cliente bloqueado: lo que había antes es lo fiado menos
+    lo que se achicó (cobros, cancelaciones, incobrables) en los movimientos
+    anteriores. Sirve para reimprimir un ticket o un recibo y que diga lo
+    mismo que el día que salió."""
+    previos = MovimientoCuenta.objects.filter(id_cliente_id=id_cliente, pk__lt=id_movimiento)
+    totales = previos.aggregate(
+        fiado=Sum('monto', filter=Q(tipo_movimiento=FIADO)),
+        bajo=Sum('monto', filter=Q(tipo_movimiento__in=(COBRO, CANCELACION, INCOBRABLE))))
+    return (totales['fiado'] or CERO) - (totales['bajo'] or CERO)
+
+
+# Lo que se cobró en una misma operación sale junto en el recibo. El libro no
+# tiene N° de recibo: el recibo es el primer COBRO y los que lo siguen en la
+# cuenta de ese cliente, de la misma persona y medio, en el mismo instante.
+SEGUNDOS_DE_UN_COBRO = 5
+
+
+def mismo_cobro(anterior, siguiente):
+    """¿Estos dos movimientos (en orden) salieron de la misma operación de cobro?"""
+    from datetime import timedelta
+    return (anterior is not None and anterior.tipo_movimiento == COBRO
+            and siguiente.tipo_movimiento in (COBRO, INTERES)
+            and anterior.id_usuario_id == siguiente.id_usuario_id
+            and anterior.id_medio_pago_id == siguiente.id_medio_pago_id
+            and abs(siguiente.fecha_movimiento - anterior.fecha_movimiento)
+            <= timedelta(seconds=SEGUNDOS_DE_UN_COBRO))
+
+
+def ancla(cobro):
+    """El primer COBRO de la operación a la que pertenece ``cobro``."""
+    while True:
+        previo = (MovimientoCuenta.objects.filter(id_cliente_id=cobro.id_cliente_id, pk__lt=cobro.pk)
+                  .order_by('-pk').first())
+        if not mismo_cobro(previo, cobro):
+            return cobro
+        cobro = previo
+
+
+def recibo(cobro):
+    """Los renglones de un cobro (``cobro`` es su primer COBRO) y sus totales."""
+    siguientes = (MovimientoCuenta.objects
+                  .filter(id_cliente_id=cobro.id_cliente_id, pk__gte=cobro.pk)
+                  .select_related('id_fiado__id_venta').order_by('pk')[:200])
+    renglones, interes = [], []
+    limite = cobro.fecha_movimiento + timedelta(seconds=SEGUNDOS_DE_UN_COBRO)
+    for m in siguientes:
+        if (m.tipo_movimiento not in (COBRO, INTERES) or m.id_usuario_id != cobro.id_usuario_id
+                or m.id_medio_pago_id != cobro.id_medio_pago_id or m.fecha_movimiento > limite):
+            break
+        if m.tipo_movimiento == COBRO:
+            if interes:
+                break       # un COBRO después del interés ya es otro cobro
+            renglones.append(m)
+        else:
+            interes.append(m)
+            break           # el interés es lo último que escribe un cobro
+    pagado = sum((r.monto for r in renglones), CERO)
+    recargo = sum((i.monto for i in interes), CERO)
+    anterior = saldo_antes_de(cobro.id_cliente_id, cobro.pk)
+    ventas = [r.id_fiado.id_venta_id for r in renglones if r.id_fiado_id]
+    puntos = (MovimientoPuntos.objects
+              .filter(id_cliente_id=cobro.id_cliente_id, id_venta_id__in=ventas,
+                      fecha_movimiento__gte=cobro.fecha_movimiento - timedelta(seconds=1),
+                      fecha_movimiento__lte=limite)
+              .aggregate(t=Sum('puntos'))['t'] or 0) if ventas else 0
+    return {'renglones': renglones, 'interes': interes[0] if interes else None,
+            'pagado': pagado, 'recargo': recargo, 'total': pagado + recargo,
+            'anterior': anterior, 'nuevo': anterior - pagado, 'puntos': puntos}
+
+
 def situacion(cliente, hoy=None):
     """Lo que hace falta saber de un cliente para decidir, en una consulta."""
     hoy = hoy or timezone.localdate()
@@ -262,6 +336,7 @@ def cobrar(cliente, monto, medio, usuario, turno=None, interes_porcentaje=CERO, 
     hoy = timezone.localdate()
     interes = (monto * interes_porcentaje / 100).quantize(CENTAVO)
     resto, saldados, puntos = monto, [], 0
+    ultimo = MovimientoCuenta.objects.order_by('-pk').values_list('pk', flat=True).first() or 0
     for fiado in pendientes(cliente):
         if resto <= 0:
             break
@@ -292,8 +367,10 @@ def cobrar(cliente, monto, medio, usuario, turno=None, interes_porcentaje=CERO, 
         caja.registrar_movimiento(
             turno, usuario, TipoMovimientoCaja.COBRO_CUENTA, monto + interes,
             f'Cobro de cuenta corriente a {cliente}'[:120])
+    recibo_n = (MovimientoCuenta.objects.filter(id_cliente=cliente, tipo_movimiento=COBRO, pk__gt=ultimo)
+                .order_by('pk').values_list('pk', flat=True).first())
     return {'cobrado': monto, 'interes': interes, 'total': monto + interes, 'queda': debe - monto,
-            'puntos': puntos, 'compras_saldadas': len(saldados)}
+            'puntos': puntos, 'compras_saldadas': len(saldados), 'recibo': recibo_n}
 
 
 @transaction.atomic

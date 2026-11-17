@@ -11,6 +11,7 @@
     </div>
 </div>
 
+{% if recibo_nuevo %}<div class="aviso aviso-exito"><i class="bi bi-receipt" aria-hidden="true"></i><span>Pago registrado. <a href="{% url 'fidelizacion:recibo' recibo_nuevo.pk %}" target="_blank" rel="noopener" class="fw-semibold">Imprimir el recibo N° {{ recibo_nuevo.pk }}</a></span></div>{% endif %}
 {% if aviso %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ aviso }}</span></div>{% endif %}
 
 <div class="grilla grilla-compacta mb-3">
@@ -132,7 +133,7 @@
                 <tbody>
                 {% for m in movimientos %}
                 <tr><td class="text-nowrap">{{ m.fecha_movimiento|date:"d/m/Y H:i" }}</td>
-                    <td>{{ m.get_tipo_movimiento_display }}{% if m.id_venta_id %} · venta N° {{ m.id_venta_id }}{% endif %}{% if m.id_medio_pago %} · {{ m.id_medio_pago }}{% endif %}<span class="d-block small text-secondary">{% if m.motivo %}{{ m.motivo }} · {% endif %}{{ m.id_usuario }}</span></td>
+                    <td>{{ m.get_tipo_movimiento_display }}{% if m.id_venta_id %} · venta N° {{ m.id_venta_id }}{% endif %}{% if m.id_medio_pago %} · {{ m.id_medio_pago }}{% endif %}<span class="d-block small text-secondary">{% if m.motivo %}{{ m.motivo }} · {% endif %}{{ m.id_usuario }}</span>{% if m.es_recibo %}<a href="{% url 'fidelizacion:recibo' m.pk %}" target="_blank" rel="noopener" class="small"><i class="bi bi-printer me-1" aria-hidden="true"></i>Recibo N° {{ m.pk }}</a>{% endif %}</td>
                     <td class="table-numero">{% if m.tipo_movimiento == 'FIADO' or m.tipo_movimiento == 'INTERES' %}{{ m.monto|pesos }}{% else %}−{{ m.monto|pesos }}{% endif %}</td></tr>
                 {% empty %}<tr><td colspan="3" class="text-center text-secondary py-4">Todavía no llevó nada fiado.</td></tr>{% endfor %}
                 </tbody>

@@ -20,14 +20,31 @@ externa: el proyecto sigue siendo autocontenido, que era el objetivo.
 
 Las cuatro reglas del proceso
 -----------------------------
-1. **Nada se archiva sin estar cerrado.** El corte es siempre antigüedad Y
-   estado: un turno CERRADO, una compra PAGADA, una orden RECEPCIONADA.
+1. **Nada se archiva sin estar cerrado** (estado terminal, DD-99). El corte
+   es siempre antigüedad Y estado:
+
+   * turnos de caja: CERRADOS y sin una diferencia pendiente de revisión;
+     sus ventas, con la cuenta corriente saldada (el fiado de esas ventas
+     en $ 0,00: cobrado, cancelado o incobrable) — 24 meses;
+   * compras: PAGADAS y con todos sus pagos ACREDITADOS o RECHAZADOS; sus
+     lotes, sólo sin stock — 24 meses;
+   * egresos sueltos: ACREDITADOS o RECHAZADOS — 24 meses;
+   * pedidos de autorización a distancia: USADOS, VENCIDOS (anulados) o
+     RECHAZADOS — 12 meses;
+   * facturas recibidas descartadas — 12 meses (las confirmadas se van
+     con su compra);
+   * auditoría, sesiones e intentos de acceso — 12 meses.
+
    Archivar algo abierto lo sacaría de la vista justo cuando hace falta.
+   Las maestras (productos, clientes, proveedores, usuarios) no se archivan
+   nunca: se dan de baja lógica (RN-8.1.1).
 2. **Se archiva por familia**, respetando las claves foráneas: los hijos
    primero, y un padre sólo se mueve si ningún hijo vivo lo referencia.
 3. **Copiar, verificar y recién entonces borrar**, todo en UNA
    transacción. Si la verificación no cuadra, no se borra nada.
-4. **El histórico es de sólo lectura**: una fotografía sin claves foráneas.
+4. **El histórico es de sólo lectura**: una fotografía sin claves foráneas,
+   que un trigger de la base protege de UPDATE, DELETE y TRUNCATE y que se
+   conserva diez años (art. 328 del Código Civil y Comercial; DD-99).
 
 Uso::
 
@@ -35,15 +52,20 @@ Uso::
     manage.py pasar_a_historico --ejecutar
     manage.py pasar_a_historico --ejecutar --meses-operativo 36
 """
+import re
+
 from django.core.management.base import BaseCommand
 from django.db import DatabaseError, connection, transaction
 
 from nucleo import contexto
 
-# Cortes por defecto, en meses hacia atrás.
-CORTE_OPERATIVO = 24      # turnos de caja, ventas, ajustes y producciones
-CORTE_COMPRAS = 36        # compras, órdenes y egresos
-CORTE_LOG = 12            # auditoría, sesiones e intentos de acceso
+# Cortes por defecto, en meses hacia atrás (RPH, DD-99).
+CORTE_OPERATIVO = 24      # turnos de caja, ventas, cuenta corriente, ajustes y producciones
+CORTE_COMPRAS = 24        # compras, lotes, órdenes y egresos
+CORTE_LOG = 12            # auditoría, sesiones, intentos de acceso, facturas descartadas
+CORTE_SOLICITUDES = 12    # pedidos de autorización a distancia
+# Lo que se archiva se conserva, como mínimo, este tiempo (art. 328 CCyC).
+ANIOS_DE_CONSERVACION = 10
 
 COLUMNAS_VENTAS = (
     'id_venta, token_operacion, fecha_venta, hora_venta, subtotal, '
@@ -51,6 +73,21 @@ COLUMNAS_VENTAS = (
     'comprobante_fiscal_ref, id_beneficio, id_cliente, id_turno_caja, '
     'id_usuario, estado_venta, fecha_anulacion, id_usuario_anulacion, '
     'motivo_anulacion, detalle_anulacion, id_usuario_solicitante')
+
+# Y con los turnos: el relevo y la revisión de diferencias (DD-97) se
+# agregaron después de ``fecha_archivo``.
+COLUMNAS_TURNOS = (
+    'id_turno_caja, id_caja_registradora, id_usuario_apertura, id_usuario_cierre, '
+    'id_usuario_supervisor, monto_inicial, monto_esperado, monto_final, '
+    'diferencia_caja, observacion_diferencia, tipo_cierre, fecha_apertura, '
+    'fecha_cierre, estado_turno, id_turno_anterior, relevo_en_ausencia, '
+    'requiere_revision, id_usuario_revision, fecha_revision')
+
+# Y con las compras: la marca de compra ocasional (DD-98).
+COLUMNAS_COMPRAS = (
+    'id_compra, id_proveedor, id_orden_compra, id_usuario, fecha_compra, '
+    'tipo_comprobante, punto_venta, numero_comprobante, importe_otros_conceptos, '
+    'total_compra, fecha_vencimiento_pago, estado_compra, compra_ocasional')
 
 # Lo mismo con el log: ``resultado_operacion`` (DD-62) se agregó a las dos
 # tablas después de ``fecha_archivo``, así que ``l.*`` no coincide.
@@ -79,21 +116,65 @@ FAMILIA_CAJA = {
     'seleccion': [
         # Un turno se archiva si está cerrado, es viejo y ninguna venta
         # suya tiene un cambio registrado en un turno que se queda.
+        # Tampoco si quedó una diferencia sin revisar (DD-97) o un pedido de
+        # autorización que todavía no se archivó.
         """CREATE TEMP TABLE tmp_turnos ON COMMIT DROP AS
              SELECT t.id_turno_caja FROM turnos_caja t
-              WHERE t.estado_turno = 'CERRADA' AND t.fecha_cierre < %(operativo)s""",
+              WHERE t.estado_turno = 'CERRADA' AND t.fecha_cierre < %(operativo)s
+                AND NOT (t.requiere_revision AND t.id_usuario_revision IS NULL)
+                AND NOT EXISTS (SELECT 1 FROM solicitudes_autorizacion s
+                                 WHERE s.id_turno_caja = t.id_turno_caja)""",
+    ],
+    # Se repiten hasta que ya no saquen ningún turno: sacar uno puede dejar
+    # colgando a otro (un cambio, un cobro o un fiado que cruza turnos).
+    'iterar': [
         """DELETE FROM tmp_turnos tt
             WHERE EXISTS (SELECT 1 FROM ventas v JOIN cambios c USING (id_venta)
                            WHERE v.id_turno_caja = tt.id_turno_caja
                              AND c.id_turno_caja NOT IN (SELECT id_turno_caja FROM tmp_turnos))""",
+        # La cuenta corriente: el fiado de las ventas del turno tiene que
+        # estar en $ 0,00 y todo lo que lo achicó, en turnos que también se
+        # van (o sin turno).
+        """DELETE FROM tmp_turnos tt
+            WHERE EXISTS (SELECT 1 FROM ventas v
+                            JOIN movimientos_cuenta f ON f.id_venta = v.id_venta AND f.tipo_movimiento = 'FIADO'
+                           WHERE v.id_turno_caja = tt.id_turno_caja
+                             AND (f.saldo_pendiente > 0
+                                  OR EXISTS (SELECT 1 FROM movimientos_cuenta c
+                                              WHERE c.id_fiado = f.id_movimiento_cuenta
+                                                AND c.id_turno_caja IS NOT NULL
+                                                AND c.id_turno_caja NOT IN (SELECT id_turno_caja FROM tmp_turnos))))""",
+        # Un cobro hecho en este turno de un fiado de un turno que se queda.
+        """DELETE FROM tmp_turnos tt
+            WHERE EXISTS (SELECT 1 FROM movimientos_cuenta c
+                            JOIN movimientos_cuenta f ON f.id_movimiento_cuenta = c.id_fiado
+                            JOIN ventas v ON v.id_venta = f.id_venta
+                           WHERE c.id_turno_caja = tt.id_turno_caja
+                             AND v.id_turno_caja NOT IN (SELECT id_turno_caja FROM tmp_turnos))""",
+    ],
+    'despues': [
         """CREATE TEMP TABLE tmp_ventas ON COMMIT DROP AS
              SELECT id_venta FROM ventas
               WHERE id_turno_caja IN (SELECT id_turno_caja FROM tmp_turnos)""",
         """CREATE TEMP TABLE tmp_cambios ON COMMIT DROP AS
              SELECT id_cambio FROM cambios
               WHERE id_turno_caja IN (SELECT id_turno_caja FROM tmp_turnos)""",
+        """CREATE TEMP TABLE tmp_movcuenta ON COMMIT DROP AS
+             SELECT f.id_movimiento_cuenta FROM movimientos_cuenta f
+              WHERE f.id_venta IN (SELECT id_venta FROM tmp_ventas)
+             UNION
+             SELECT c.id_movimiento_cuenta FROM movimientos_cuenta c
+               JOIN movimientos_cuenta f ON f.id_movimiento_cuenta = c.id_fiado
+              WHERE f.id_venta IN (SELECT id_venta FROM tmp_ventas)
+             UNION
+             SELECT m.id_movimiento_cuenta FROM movimientos_cuenta m
+              WHERE m.id_turno_caja IN (SELECT id_turno_caja FROM tmp_turnos)""",
     ],
     'copias': [
+        ('movimientos_cuenta',
+         """INSERT INTO hist_movimientos_cuenta
+            SELECT m.*, CURRENT_TIMESTAMP FROM movimientos_cuenta m
+             WHERE id_movimiento_cuenta IN (SELECT id_movimiento_cuenta FROM tmp_movcuenta)"""),
         ('movimientos_puntos',
          """INSERT INTO hist_movimientos_puntos
             SELECT m.*, CURRENT_TIMESTAMP FROM movimientos_puntos m
@@ -131,13 +212,17 @@ FAMILIA_CAJA = {
             SELECT """ + COLUMNAS_VENTAS + """, CURRENT_TIMESTAMP FROM ventas v
              WHERE id_venta IN (SELECT id_venta FROM tmp_ventas)"""),
         ('turnos_caja',
-         """INSERT INTO hist_turnos_caja
-            SELECT c.*, CURRENT_TIMESTAMP FROM turnos_caja c
+         """INSERT INTO hist_turnos_caja (""" + COLUMNAS_TURNOS + """, fecha_archivo)
+            SELECT """ + COLUMNAS_TURNOS + """, CURRENT_TIMESTAMP FROM turnos_caja c
              WHERE id_turno_caja IN (SELECT id_turno_caja FROM tmp_turnos)"""),
     ],
     # Regla 3: lo copiado tiene que coincidir con lo seleccionado.
     'verificacion': ('ventas', 'SELECT COUNT(*) FROM tmp_ventas'),
     'borrados': [
+        """DELETE FROM movimientos_cuenta
+            WHERE id_movimiento_cuenta IN (SELECT id_movimiento_cuenta FROM tmp_movcuenta)
+              AND id_fiado IS NOT NULL""",
+        "DELETE FROM movimientos_cuenta WHERE id_movimiento_cuenta IN (SELECT id_movimiento_cuenta FROM tmp_movcuenta)",
         "DELETE FROM movimientos_puntos WHERE id_venta IN (SELECT id_venta FROM tmp_ventas)",
         """DELETE FROM movimientos_stock
             WHERE id_venta IN (SELECT id_venta FROM tmp_ventas)
@@ -172,6 +257,9 @@ FAMILIA_COMPRA = {
         """CREATE TEMP TABLE tmp_compras ON COMMIT DROP AS
              SELECT c.id_compra FROM compras c
               WHERE c.estado_compra = 'PAGADA' AND c.fecha_compra < %(compras)s
+                AND NOT EXISTS (SELECT 1 FROM egresos e
+                                 WHERE e.id_compra = c.id_compra
+                                   AND e.estado_pago NOT IN ('ACREDITADO','RECHAZADO'))
                 AND NOT EXISTS (SELECT 1 FROM lotes l
                                   JOIN detalles_compra d USING (id_detalle_compra)
                                  WHERE d.id_compra = c.id_compra AND NOT ("""
@@ -185,6 +273,10 @@ FAMILIA_COMPRA = {
               WHERE d.id_compra IN (SELECT id_compra FROM tmp_compras)""",
     ],
     'copias': [
+        ('facturas_recibidas (confirmadas)',
+         """INSERT INTO hist_facturas_recibidas
+            SELECT f.*, CURRENT_TIMESTAMP FROM facturas_recibidas f
+             WHERE id_compra IN (SELECT id_compra FROM tmp_compras)"""),
         ('movimientos_stock (compras)',
          """INSERT INTO hist_movimientos_stock
             SELECT m.*, CURRENT_TIMESTAMP FROM movimientos_stock m
@@ -203,12 +295,13 @@ FAMILIA_COMPRA = {
             SELECT d.*, CURRENT_TIMESTAMP FROM detalles_compra d
              WHERE id_compra IN (SELECT id_compra FROM tmp_compras)"""),
         ('compras',
-         """INSERT INTO hist_compras
-            SELECT c.*, CURRENT_TIMESTAMP FROM compras c
+         """INSERT INTO hist_compras (""" + COLUMNAS_COMPRAS + """, fecha_archivo)
+            SELECT """ + COLUMNAS_COMPRAS + """, CURRENT_TIMESTAMP FROM compras c
              WHERE id_compra IN (SELECT id_compra FROM tmp_compras)"""),
     ],
     'verificacion': ('compras', 'SELECT COUNT(*) FROM tmp_compras'),
     'borrados': [
+        "DELETE FROM facturas_recibidas WHERE id_compra IN (SELECT id_compra FROM tmp_compras)",
         """DELETE FROM movimientos_stock
             WHERE id_compra IN (SELECT id_compra FROM tmp_compras)
                OR id_lote IN (SELECT id_lote FROM tmp_lotes)""",
@@ -339,6 +432,47 @@ FAMILIA_EGRESO = {
     ],
 }
 
+FAMILIA_SOLICITUDES = {
+    'nombre': 'Pedidos de autorización a distancia resueltos',
+    'seleccion': [
+        """CREATE TEMP TABLE tmp_solicitudes ON COMMIT DROP AS
+             SELECT s.id_solicitud FROM solicitudes_autorizacion s
+              WHERE s.fecha_solicitud < %(solicitudes)s
+                AND (s.estado_solicitud IN ('USADA','ANULADA','RECHAZADA')
+                     -- vencida: nadie la contestó y ya no sirve (vale minutos)
+                     OR s.fecha_vencimiento < CURRENT_TIMESTAMP)""",
+    ],
+    'copias': [
+        ('solicitudes_autorizacion',
+         """INSERT INTO hist_solicitudes_autorizacion
+            SELECT s.*, CURRENT_TIMESTAMP FROM solicitudes_autorizacion s
+             WHERE id_solicitud IN (SELECT id_solicitud FROM tmp_solicitudes)"""),
+    ],
+    'verificacion': ('solicitudes_autorizacion', 'SELECT COUNT(*) FROM tmp_solicitudes'),
+    'borrados': [
+        "DELETE FROM solicitudes_autorizacion WHERE id_solicitud IN (SELECT id_solicitud FROM tmp_solicitudes)",
+    ],
+}
+
+FAMILIA_FACTURAS_DESCARTADAS = {
+    'nombre': 'Facturas recibidas descartadas',
+    'seleccion': [
+        """CREATE TEMP TABLE tmp_facturas ON COMMIT DROP AS
+             SELECT f.id_factura_recibida FROM facturas_recibidas f
+              WHERE f.estado_factura = 'DESCARTADA' AND f.fecha_resolucion < %(log)s""",
+    ],
+    'copias': [
+        ('facturas_recibidas (descartadas)',
+         """INSERT INTO hist_facturas_recibidas
+            SELECT f.*, CURRENT_TIMESTAMP FROM facturas_recibidas f
+             WHERE id_factura_recibida IN (SELECT id_factura_recibida FROM tmp_facturas)"""),
+    ],
+    'verificacion': ('facturas_recibidas (descartadas)', 'SELECT COUNT(*) FROM tmp_facturas'),
+    'borrados': [
+        "DELETE FROM facturas_recibidas WHERE id_factura_recibida IN (SELECT id_factura_recibida FROM tmp_facturas)",
+    ],
+}
+
 FAMILIA_AUDITORIA = {
     'nombre': 'Auditoría, sesiones e intentos de acceso',
     'seleccion': [
@@ -374,8 +508,13 @@ FAMILIA_AUDITORIA = {
 
 # El orden importa: las ventas se van antes que las compras cuyos lotes
 # vendieron, y los ajustes antes que las compras cuyos lotes contaron.
-FAMILIAS = [FAMILIA_CAJA, FAMILIA_AJUSTE, FAMILIA_PRODUCCION, FAMILIA_COMPRA,
-            FAMILIA_ORDEN, FAMILIA_EGRESO, FAMILIA_AUDITORIA]
+# Los pedidos de autorización primero: apuntan a turnos y ventas.
+COPIA_POR_POSICION = re.compile(
+    r'INSERT INTO (hist_\w+)\s+SELECT (\w+)\.\*, CURRENT_TIMESTAMP FROM (\w+) \2\b')
+
+FAMILIAS = [FAMILIA_SOLICITUDES, FAMILIA_CAJA, FAMILIA_AJUSTE, FAMILIA_PRODUCCION,
+            FAMILIA_COMPRA, FAMILIA_ORDEN, FAMILIA_EGRESO, FAMILIA_FACTURAS_DESCARTADAS,
+            FAMILIA_AUDITORIA]
 
 
 class Command(BaseCommand):
@@ -390,6 +529,7 @@ class Command(BaseCommand):
                             default=CORTE_OPERATIVO)
         parser.add_argument('--meses-compras', type=int, default=CORTE_COMPRAS)
         parser.add_argument('--meses-log', type=int, default=CORTE_LOG)
+        parser.add_argument('--meses-solicitudes', type=int, default=CORTE_SOLICITUDES)
 
     def handle(self, *args, **opciones):
         cortes = {
@@ -399,6 +539,8 @@ class Command(BaseCommand):
                        % opciones['meses_compras'],
             'log': "CURRENT_DATE - INTERVAL '%d months'"
                    % opciones['meses_log'],
+            'solicitudes': "CURRENT_DATE - INTERVAL '%d months'"
+                           % opciones['meses_solicitudes'],
         }
 
         if not opciones['ejecutar']:
@@ -440,11 +582,20 @@ class Command(BaseCommand):
 
         for sentencia in familia['seleccion']:
             cursor.execute(self._con_cortes(sentencia, cortes))
+        for _vuelta in range(100):
+            sacadas = 0
+            for sentencia in familia.get('iterar', []):
+                cursor.execute(self._con_cortes(sentencia, cortes))
+                sacadas += cursor.rowcount
+            if not sacadas:
+                break
+        for sentencia in familia.get('despues', []):
+            cursor.execute(self._con_cortes(sentencia, cortes))
 
         total = 0
         copiadas = {}
         for etiqueta, sentencia in familia['copias']:
-            cursor.execute(self._con_cortes(sentencia, cortes))
+            cursor.execute(self._por_nombre(cursor, self._con_cortes(sentencia, cortes)))
             copiadas[etiqueta] = cursor.rowcount
             total += cursor.rowcount
             if cursor.rowcount:
@@ -470,6 +621,28 @@ class Command(BaseCommand):
         if not total:
             self.stdout.write('    (nada para archivar)')
         return total
+
+    @staticmethod
+    def _por_nombre(cursor, sentencia):
+        """``INSERT INTO hist_x SELECT a.*, ...`` copia por POSICIÓN: si a
+        la tabla viva se le agregó una columna después de crear su histórico,
+        la del histórico quedó detrás de ``fecha_archivo`` y los valores se
+        correrían de lugar (o, peor, entrarían en la columna equivocada sin
+        error si los tipos coinciden). Se reescribe con las columnas por
+        nombre, leídas del catálogo."""
+        encontrado = COPIA_POR_POSICION.search(sentencia)
+        if not encontrado:
+            return sentencia
+        historico, alias, viva = encontrado.groups()
+        cursor.execute(
+            'SELECT column_name FROM information_schema.columns '
+            'WHERE table_schema = current_schema() AND table_name = %s ORDER BY ordinal_position', [viva])
+        columnas = [fila[0] for fila in cursor.fetchall()]
+        destino = ', '.join(columnas)
+        origen = ', '.join(f'{alias}.{c}' for c in columnas)
+        return COPIA_POR_POSICION.sub(
+            f'INSERT INTO {historico} ({destino}, fecha_archivo) '
+            f'SELECT {origen}, CURRENT_TIMESTAMP FROM {viva} {alias}', sentencia, count=1)
 
     @staticmethod
     def _con_cortes(sentencia, cortes):

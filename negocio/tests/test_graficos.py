@@ -164,7 +164,8 @@ class MenuTest(Base):
         f.entrar(self.client, self.admin)
         html = self.client.get(reverse('negocio:reportes')).content.decode()
         self.assertIn('<details class="lateral-grupo lateral-desplegable" data-grupo="mostrador">', html)
-        # Reportes tiene una sola pantalla: va como enlace directo, sin desplegable.
-        self.assertNotIn('data-grupo="reportes"', html)
+        # Reportes tiene dos pantallas (Reportes y Archivo histórico, DD-99):
+        # es un desplegable, abierto porque es el área actual.
+        self.assertIn('data-grupo="reportes" open data-actual', html)
         html = self.client.get(reverse('ventas:ventas')).content.decode()
         self.assertIn('data-grupo="mostrador" open data-actual', html)

@@ -115,6 +115,51 @@ def vincular_sesion(sesion_django, usuario, sesion):
     sesion_django['token_sesion'] = sesion.token
 
 
+def traspasar_sesion(request, entrante, detalle_salida, detalle_entrada):
+    """Pasa el navegador de quien opera a otra persona, sin pasar por el login.
+
+    Es para el relevo de caja (DD-97): quien entra ya puso su usuario y su
+    clave en la tablet (``autorizar_con_clave``, con el bloqueo por
+    reintentos del login). Se hace lo mismo que al salir y al entrar, en ese
+    orden y con su rastro:
+
+    1. La salida de quien se va queda en el Registro de Actividad, firmada
+       con SU sesión, y esa sesión se cierra.
+    2. La sesión de Django se tira entera (``flush``: llave nueva y nada de
+       lo de la otra persona, OWASP) y se rota el token CSRF.
+    3. Se abre la sesión de negocio de quien entra (DD-01: revoca la que
+       tuviera en otro equipo), en el mismo puesto, y su entrada queda
+       firmada con su sesión nueva.
+    """
+    from django.middleware.csrf import rotate_token
+
+    from seguridad.models import Sesion
+
+    saliente = request.usuario_actual
+    anterior = sesion_del_request(request)
+    caja = getattr(anterior, 'id_caja_registradora', None)
+    if anterior is not None:
+        antes = instantanea(anterior)
+        cerrar_sesion(anterior.pk)
+        registrar_auditoria(
+            request, 'CIERRE', 'SESION', instancia=anterior, anterior=antes,
+            nuevo=instantanea(Sesion.objects.get(pk=anterior.pk)),
+            modulo='SEGURIDAD', detalle=detalle_salida)
+    request.session.flush()
+    rotate_token(request)
+    sesion = abrir_sesion(entrante, request)
+    if caja is not None:
+        sesion.id_caja_registradora = caja
+        sesion.save(update_fields=['id_caja_registradora'])
+    vincular_sesion(request.session, entrante, sesion)
+    request.usuario_actual = entrante
+    request.sesion_negocio = sesion
+    registrar_auditoria(
+        request, 'INICIO', 'SESION', instancia=sesion, nuevo=instantanea(sesion),
+        modulo='SEGURIDAD', detalle=detalle_entrada)
+    return saliente, sesion
+
+
 def cerrar_sesion(id_sesion, motivo='CIERRE_MANUAL'):
     """Cierra la sesión de negocio al salir del sistema."""
     from seguridad.models import Sesion

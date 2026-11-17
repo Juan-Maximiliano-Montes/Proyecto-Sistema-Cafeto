@@ -11,6 +11,9 @@
     </div>
 </div>
 
+{% if comprobante %}
+<div class="aviso aviso-exito"><i class="bi bi-receipt" aria-hidden="true"></i><span><a href="{% url 'ventas:comprobante_cambio' comprobante.pk %}" target="_blank" rel="noopener" class="fw-semibold">Imprimir el comprobante del cambio N° {{ comprobante.pk }}</a> para el cliente y, si salió plata, para el cajón.</span></div>
+{% endif %}
 {% if not turno %}
 <div class="aviso aviso-aviso"><i class="bi bi-cash-stack"></i><span>La caja de este dispositivo no tiene un turno abierto: podés consultar, pero para registrar el cambio hay que <a href="{% url 'ventas:caja' %}">abrir la caja</a>.</span></div>
 {% endif %}

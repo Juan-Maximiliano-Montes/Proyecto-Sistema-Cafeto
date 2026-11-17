@@ -371,6 +371,25 @@ class TurnoCaja(SinBajaFisica, models.Model):
     fecha_cierre = models.DateTimeField('Cierre', null=True, blank=True)
     estado_turno = models.CharField(
         'Estado', max_length=10, choices=ESTADOS, default='ABIERTA')
+    # Relevo (DD-97): el turno nuevo sabe de cuál vino. Así el comprobante
+    # del que cierra dice quién recibió el cajón y con qué turno siguió.
+    id_turno_anterior = models.ForeignKey(
+        'self', on_delete=models.RESTRICT, db_column='id_turno_anterior',
+        null=True, blank=True, related_name='turnos_siguientes',
+        verbose_name='Relevó al turno')
+    # Quien llegó y el que abrió ya no estaba: lo cerró el que entra.
+    relevo_en_ausencia = models.BooleanField(
+        'Cerrado en relevo en ausencia de quien abrió', default=False)
+    # Cerró con una diferencia que nadie con permiso aprobó (no había nadie y
+    # la fila no podía esperar): queda a revisar por la titular o la
+    # encargada, que lo marca revisado con su nombre.
+    requiere_revision = models.BooleanField(
+        'Diferencia pendiente de revisión', default=False)
+    id_usuario_revision = models.ForeignKey(
+        'seguridad.Usuario', on_delete=models.RESTRICT,
+        db_column='id_usuario_revision', null=True, blank=True,
+        related_name='turnos_revisados', verbose_name='Revisó la diferencia')
+    fecha_revision = models.DateTimeField('Revisión', null=True, blank=True)
 
     objects = ManagerSinBajaFisica()
 
@@ -425,6 +444,30 @@ class TurnoCaja(SinBajaFisica, models.Model):
                 fields=['id_caja_registradora'],
                 condition=models.Q(estado_turno='ABIERTA'),
                 name='uq_turno_abierto_por_caja'),
+            # Un turno se releva una sola vez: lo sigue un único turno.
+            models.UniqueConstraint(
+                fields=['id_turno_anterior'], name='uq_turnos_caja_anterior'),
+            # Relevo en ausencia: lo cierra otra persona que la que abrió.
+            CheckEnBase(
+                check=CheckSQL(
+                    'NOT relevo_en_ausencia OR (estado_turno = \'CERRADA\' AND '
+                    'id_usuario_cierre <> id_usuario_apertura)'),
+                name='ck_turnos_caja_ausencia'),
+            # Una diferencia a revisar es de un turno cerrado que no cuadró y
+            # que nadie supervisó; la revisa otra persona, con fecha.
+            CheckEnBase(
+                check=CheckSQL(
+                    "(NOT requiere_revision OR (estado_turno = 'CERRADA' AND "
+                    'diferencia_caja <> 0 AND id_usuario_supervisor IS NULL)) AND '
+                    '((id_usuario_revision IS NULL) = (fecha_revision IS NULL)) AND '
+                    '(id_usuario_revision IS NULL OR (requiere_revision AND '
+                    'id_usuario_revision <> id_usuario_cierre AND '
+                    'fecha_revision >= fecha_cierre))'),
+                name='ck_turnos_caja_revision'),
+            CheckEnBase(
+                check=CheckSQL(
+                    'id_turno_anterior IS NULL OR id_turno_anterior <> id_turno_caja'),
+                name='ck_turnos_caja_anterior'),
         ]
 
     def __str__(self):
@@ -434,6 +477,17 @@ class TurnoCaja(SinBajaFisica, models.Model):
     @property
     def abierto(self):
         return self.estado_turno == 'ABIERTA'
+
+    @property
+    def pendiente_de_revision(self):
+        return self.requiere_revision and self.id_usuario_revision_id is None
+
+    @property
+    def siguiente(self):
+        """El turno que siguió por relevo, o None."""
+        if self.pk is None:
+            return None
+        return self.turnos_siguientes.select_related('id_usuario_apertura').first()
 
     @property
     def quedo_de_otro_dia(self):
@@ -1168,7 +1222,11 @@ class SolicitudAutorizacion(models.Model):
                     "OR (estado_solicitud IN ('APROBADA','USADA') AND id_usuario_autorizante IS NOT NULL "
                     "AND via_aprobacion IN ('ENLACE','PIN','BANDEJA') AND fecha_resolucion IS NOT NULL) "
                     "OR (estado_solicitud IN ('RECHAZADA','ANULADA') AND via_aprobacion IS NULL "
-                    'AND fecha_resolucion IS NOT NULL)'),
+                    'AND fecha_resolucion IS NOT NULL) '
+                    # Aprobada y no usada (se cerró de otra forma): se anula
+                    # pero conserva quién y cómo la aprobó (DD-101).
+                    "OR (estado_solicitud = 'ANULADA' AND id_usuario_autorizante IS NOT NULL "
+                    "AND via_aprobacion IN ('ENLACE','PIN','BANDEJA') AND fecha_resolucion IS NOT NULL)"),
                 name='ck_solautoriz_resolucion'),
             # La venta sólo la tiene una aprobación usada. Una usada puede
             # no tener venta: la de un ajuste de stock desde el mostrador.

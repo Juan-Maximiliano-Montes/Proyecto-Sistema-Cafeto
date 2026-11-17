@@ -218,8 +218,15 @@ DIAS_DE_ATRASO_ADMITIDOS = timedelta(days=30)
 def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
                 numero_comprobante, renglones, fecha_compra=None,
                 importe_otros_conceptos=Decimal('0'), orden=None,
-                fecha_vencimiento_pago=None, vincular_sin_proveedor=True):
+                fecha_vencimiento_pago=None, vincular_sin_proveedor=True,
+                ocasional=False):
     """Registra la factura, da de alta los lotes y entra el stock.
+
+    ``ocasional`` (compra de salvataje, DD-98): se compró afuera por una
+    urgencia. Entra el stock con su costo real, pero no cambia el costo de
+    referencia del producto ni su proveedor habitual, y no cuenta para
+    decidirlo después. Única excepción: si el producto estaba sin costo
+    ($ 0, migrado del Excel), toma el de esta compra (DD-101).
 
     ``vincular_sin_proveedor``: los productos que todavía figuran con el
     «Proveedor General (Por asignar)» pasan a ser de este proveedor (DD-86).
@@ -262,7 +269,12 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
             f'{DIAS_DE_ATRASO_ADMITIDOS.days} días. Revisá la fecha; si de '
             'verdad es una factura vieja, cargala con la fecha de hoy y '
             'aclaralo en la orden o con el proveedor.')
-    if fecha_vencimiento_pago is not None and fecha_vencimiento_pago < fecha:
+    if fecha_vencimiento_pago is None:
+        # Toda factura a pagar tiene vencimiento: el de la condición de pago
+        # del proveedor (contado: el mismo día) (DD-101).
+        from compras.models import PLAZO_DE_PAGO
+        fecha_vencimiento_pago = fecha + timedelta(days=PLAZO_DE_PAGO.get(proveedor.condicion_pago, 0))
+    if fecha_vencimiento_pago < fecha:
         raise ValidationError(
             'El pago no puede vencer antes de la fecha de la factura.')
     # Las reglas ck_compras_comprobante de la base, dichas antes de chocar
@@ -302,7 +314,7 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
         tipo_comprobante=tipo_comprobante, punto_venta=int(punto_venta),
         numero_comprobante=int(numero_comprobante),
         importe_otros_conceptos=otros, total_compra=total,
-        fecha_vencimiento_pago=fecha_vencimiento_pago)
+        fecha_vencimiento_pago=fecha_vencimiento_pago, compra_ocasional=bool(ocasional))
     if fecha_compra is not None:
         datos['fecha_compra'] = fecha_compra
     compra = Compra(**datos)
@@ -355,9 +367,15 @@ def recepcionar(proveedor, usuario, tipo_comprobante, punto_venta,
                 id_producto=producto, id_usuario=usuario,
                 tipo_movimiento=TipoMovimientoStock.COMPRA,
                 cantidad=cantidad, costo_unitario=costo, **documento)
-        # RN-4.2.4: el costo queda en el ÚLTIMO precio facturado.
-        Producto.objects.filter(pk=producto.pk).update(precio_costo=costo)
-        compra.por_revisar = getattr(compra, 'por_revisar', []) + [producto]
+        # RN-4.2.4: el costo queda en el ÚLTIMO precio facturado. Una compra
+        # de salvataje no es un precio de referencia (DD-98)... salvo que el
+        # producto no tuviera costo (vino del Excel en $ 0): venderlo con
+        # costo cero inflaría la ganancia del mes, así que toma este (DD-101).
+        if not ocasional:
+            Producto.objects.filter(pk=producto.pk).update(precio_costo=costo)
+            compra.por_revisar = getattr(compra, 'por_revisar', []) + [producto]
+        elif costo > 0:
+            Producto.objects.filter(pk=producto.pk, precio_costo__lte=0).update(precio_costo=costo)
 
     from compras import habitual
     compra.vinculados, compra.rotados = 0, []

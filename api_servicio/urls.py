@@ -13,5 +13,6 @@ urlpatterns = [
     path('productos/sin-marca/', views.productos_sin_marca, name='productos_sin_marca'),
     path('productos/<int:pk>/enriquecer/', views.enriquecer_producto, name='enriquecer_producto'),
     path('compras/pre-cargar/', views.precargar_compra, name='precargar_compra'),
+    path('compras/leer-factura/', views.leer_factura, name='leer_factura'),
     path('mantenimiento/mensual/', views.mantenimiento_mensual, name='mantenimiento_mensual'),
 ]

@@ -20,11 +20,12 @@ def caja_del_puesto(request):
         abiertos = {t.id_caja_registradora_id: t for t in
                     TurnoCaja.objects.filter(estado_turno='ABIERTA')
                     .select_related('id_usuario_apertura')}
-        cajas = [(c, abiertos.get(c.pk)) for c in
+        # (caja, turno abierto o None, ¿es la de este equipo?)
+        cajas = [(c, abiertos.get(c.pk), caja is not None and c.pk == caja.pk) for c in
                  CajaRegistradora.objects.filter(borrado_logico=False)
                  .order_by('nombre_caja_registradora')]
         contexto['cajas_del_local'] = cajas
-        contexto['cajas_abiertas'] = sum(1 for _c, t in cajas if t)
+        contexto['cajas_abiertas'] = sum(1 for _c, t, _p in cajas if t)
     from ventas import a_distancia
     if a_distancia.puede_contestar(usuario):
         # Lo que la caja está esperando que alguien apruebe (DD-94).

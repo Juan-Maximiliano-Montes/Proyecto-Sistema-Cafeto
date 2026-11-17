@@ -23,7 +23,7 @@
             <span class="eyebrow">{{ p.caja }} · pidió {{ p.pidio }} a las {{ p.cuando|date:"H:i" }}</span>
             <p class="fw-semibold mb-2">{{ p.motivo|pesos_juntos }}.</p>
             <dl class="tarjeta-datos mb-2">
-                {% if p.es_ajuste %}<dt>Qué es</dt><dd>Ajuste de stock</dd>{% else %}<dt>Total del ticket</dt><dd class="monto">{{ p.total }}</dd>{% endif %}
+                {% if p.es_ajuste %}<dt>Qué es</dt><dd>Ajuste de stock</dd>{% elif p.es_cierre %}<dt>Diferencia de caja</dt><dd class="monto">{{ p.total }}</dd>{% else %}<dt>Total del ticket</dt><dd class="monto">{{ p.total }}</dd>{% endif %}
                 <dt>Vale hasta las</dt><dd>{{ p.vence|date:"H:i" }}</dd>
             </dl>
             {% if p.renglones %}<ul class="small text-secondary ps-3 mb-3">{% for r in p.renglones %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}

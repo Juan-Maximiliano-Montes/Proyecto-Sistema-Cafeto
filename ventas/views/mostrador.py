@@ -663,7 +663,7 @@ def ticket(request, pk):
     """El comprobante interno para imprimir (no es la factura fiscal)."""
     venta = get_object_or_404(
         Venta.objects.select_related('id_usuario', 'id_usuario_anulacion',
-                                     'id_usuario_solicitante',
+                                     'id_usuario_solicitante', 'id_cliente', 'id_beneficio',
                                      'id_turno_caja__id_caja_registradora'),
         pk=pk)
     usuario = request.usuario_actual
@@ -691,13 +691,24 @@ def ticket(request, pk):
             id_cliente_id=venta.id_cliente_id,
             id_movimiento_punto__lte=ultimo or 0).aggregate(
             t=Sum('puntos'))['t'] or 0) if ultimo else None
+    from fidelizacion import credito
+    from fidelizacion.models import MovimientoCuenta
     from ventas.anulacion import motivo_de
 
+    # Fiado (DD-91): lo que debía antes, el cargo de esta compra, lo que
+    # pasó a deber y cuándo vence, como el día que salió el ticket.
+    cuenta = None
+    fiado = MovimientoCuenta.objects.filter(id_venta=venta, tipo_movimiento=credito.FIADO).first()
+    if fiado is not None:
+        anterior = credito.saldo_antes_de(fiado.id_cliente_id, fiado.pk)
+        cuenta = {'anterior': anterior, 'cargo': fiado.monto, 'nuevo': anterior + fiado.monto,
+                  'vence': fiado.fecha_vencimiento}
     return render(request, 'ventas/ticket.html', {
-        'venta': venta,
+        'venta': venta, 'cuenta': cuenta, 'cliente': venta.id_cliente,
         'motivo_anulacion': motivo_de(venta),
         'puntos': puntos,
         'renglones': venta.detalles.all(),
         'pagos': venta.pagos.select_related('id_medio_pago'),
         'negocio': ParametrosNegocio.vigentes(),
+        'impreso': timezone.now(),
     })

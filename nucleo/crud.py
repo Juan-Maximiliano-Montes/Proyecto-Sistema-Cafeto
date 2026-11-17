@@ -414,6 +414,10 @@ def _mensaje_de_base(error):
     Nunca se muestra el texto del SQL ni el nombre de la restricción: eso
     le dice al usuario cómo se llama una tabla, no qué hizo mal.
     """
+    from nucleo.mensajes_bd import mensaje
+    concreto = mensaje(error)
+    if concreto:
+        return concreto
     texto = str(error)
     if 'uq_' in texto and 'norm' in texto:
         return ('Ya existe un registro con ese nombre (no se distinguen '

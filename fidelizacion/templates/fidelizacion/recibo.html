@@ -1,0 +1,51 @@
+{% extends 'comprobantes/base.html' %}
+{% load cafeto %}
+{% block titulo %}Recibo N° {{ cobro.pk }}{% endblock %}
+{% block tipo %}RECIBO DE PAGO<small>Cuenta corriente · N° {{ cobro.pk }}</small>{% endblock %}
+
+{% block cuerpo %}
+<table>
+    <tr><td>N° de recibo</td><td class="der">{{ cobro.pk }}</td></tr>
+    <tr><td>Fecha y hora</td><td class="der">{{ cobro.fecha_movimiento|date:"d/m/Y H:i:s" }}</td></tr>
+    {% if cobro.id_turno_caja %}<tr><td>Caja</td><td class="der">{{ cobro.id_turno_caja.id_caja_registradora }}</td></tr>{% endif %}
+</table>
+<div>Cobró:</div>
+<div class="sangria fuerte">{{ cobro.id_usuario|persona }}</div>
+<div>Cliente:</div>
+<div class="sangria fuerte">{{ cliente.nombre_cliente }} {{ cliente.apellido_cliente }}</div>
+{% if cliente.dni_cliente %}<div class="sangria">DNI {{ cliente.dni_cliente }}</div>{% endif %}
+
+<div class="linea"></div>
+<table>
+    <tr><td>Saldo anterior</td><td class="der">{{ r.anterior|pesos }}</td></tr>
+    <tr><td>(−) Monto pagado</td><td class="der">{{ r.pagado|pesos }}</td></tr>
+    {% if r.recargo %}<tr><td>(+) Interés por mora</td><td class="der">{{ r.recargo|pesos }}</td></tr>
+    <tr><td class="sangria tenue">{{ r.interes.motivo }}</td><td></td></tr>{% endif %}
+</table>
+<div class="doble"></div>
+<table>
+    <tr class="total"><td>TOTAL ABONADO</td><td class="der">{{ r.total|pesos }}</td></tr>
+    <tr><td>Medio de pago</td><td class="der">{{ cobro.id_medio_pago }}</td></tr>
+    <tr class="fuerte"><td>Nuevo saldo pendiente</td><td class="der">{{ r.nuevo|pesos }}</td></tr>
+</table>
+
+<div class="linea"></div>
+<div class="seccion">Comprobantes imputados</div>
+<table>
+    {% for m in r.renglones %}
+    <tr><td>Venta N° {{ m.id_fiado.id_venta_id }} del {{ m.id_fiado.fecha_movimiento|date:"d/m/Y" }}</td><td class="der">{{ m.monto|pesos }}</td></tr>
+    <tr><td class="sangria tenue">vencía el {{ m.id_fiado.fecha_vencimiento|date:"d/m/Y" }}</td><td></td></tr>
+    {% endfor %}
+</table>
+{% if r.puntos %}
+<div class="linea"></div>
+<table><tr><td>Puntos del Club acreditados</td><td class="der">+{{ r.puntos }}</td></tr></table>
+{% endif %}
+
+<div class="firmas">
+    <div class="firma">Firma de quien cobró<span>{{ cobro.id_usuario.nombre }} {{ cobro.id_usuario.apellido }}</span></div>
+</div>
+{% endblock %}
+
+{% block pie %}Recibo interno de pago de cuenta corriente. No válido como factura.{% endblock %}
+{% block acciones %}<a href="{% url 'fidelizacion:cuenta' cliente.pk %}">Volver a la cuenta</a>{% endblock %}

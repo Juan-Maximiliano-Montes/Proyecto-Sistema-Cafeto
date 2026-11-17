@@ -7,7 +7,7 @@
 #   * Adminer no se levanta (es una puerta de entrada a la base);
 #   * el código NO se monta: corre lo que quedó en la imagen;
 #   * gunicorn en lugar del servidor de desarrollo (DJANGO_DEBUG=False);
-#   * un servicio de respaldo diario de la base, a la carpeta ./respaldos;
+#   * un servicio de respaldo de la base cada hora (RPO < 1 h), a ./respaldos;
 #   * un servicio que pasa a histórico lo viejo el día 1 de cada mes (RPH).
 #
 # El acceso desde afuera del local (la dueña desde su casa) va por el
@@ -47,6 +47,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
       CAFETO_RESPALDOS_DIAS: ${CAFETO_RESPALDOS_DIAS:-14}
+      CAFETO_RESPALDO_CADA_MINUTOS: ${CAFETO_RESPALDO_CADA_MINUTOS:-60}
     volumes:
       - ./respaldos:/respaldos
       - ./docker/respaldar.sh:/respaldar.sh:ro

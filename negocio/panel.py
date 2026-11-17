@@ -98,6 +98,12 @@ def del_dia(usuario, hoy=None):
                            'texto': f'{con_diferencias} orden(es) de compra llegaron '
                                     'con diferencias: revisalas con el proveedor.'})
 
+    if puede('registrar_compra'):
+        from compras import facturas
+        recibidas = facturas.pendientes().count()
+        if recibidas:
+            avisos.append({'clave': 'FACTURAS_RECIBIDAS', 'tipo': 'aviso', 'texto': facturas.aviso(recibidas)})
+
     if puede('ver_egresos'):
         from compras import egresos
         vencidos = egresos.vencidos(hoy)
@@ -143,6 +149,20 @@ def del_dia(usuario, hoy=None):
         if alertas:
             avisos.append({'clave': 'SEGURIDAD', 'tipo': 'error',
                            'texto': f'{alertas} alerta(s) de seguridad: intentos fallidos de ingreso sin revisar.'})
+
+    if puede('supervisar_cierre'):
+        from ventas import caja
+        a_revisar = list(caja.pendientes_de_revision())
+        if a_revisar:
+            # Plata que faltó o sobró y nadie aprobó (DD-97): va primera y en
+            # rojo hasta que la titular o quien supervisa la revise.
+            faltan = -sum((t.diferencia_caja for t in a_revisar if t.diferencia_caja < 0), Decimal('0'))
+            sobran = sum((t.diferencia_caja for t in a_revisar if t.diferencia_caja > 0), Decimal('0'))
+            cuanto = ' y '.join(x for x in (f'faltan {pesos(faltan)}' if faltan else '',
+                                            f'sobran {pesos(sobran)}' if sobran else '') if x)
+            avisos.insert(0, {'clave': 'CAJA_A_REVISAR', 'tipo': 'error',
+                              'texto': f'{len(a_revisar)} cierre(s) de caja con una diferencia que nadie aprobó '
+                                       f'({cuanto}): revisalos.'})
 
     if puede('ver_reportes'):
         indicadores.append({'clave': 'REPORTES', 'titulo': 'Reportes', 'valor': None,

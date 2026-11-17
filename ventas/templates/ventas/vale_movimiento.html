@@ -1,0 +1,41 @@
+{% extends 'comprobantes/base.html' %}
+{% load cafeto %}
+{% block titulo %}Vale N° {{ m.pk }}{% endblock %}
+{% block tipo %}{{ titulo }}<small>Vale N° {{ m.pk }}</small>{% endblock %}
+
+{% block cuerpo %}
+<table>
+    <tr><td>Fecha</td><td class="der">{{ m.fecha_hora|date:"d/m/Y" }}</td></tr>
+    <tr><td>Hora</td><td class="der">{{ m.fecha_hora|date:"H:i:s" }}</td></tr>
+    <tr><td>Caja</td><td class="der">{{ m.id_turno_caja.id_caja_registradora }}</td></tr>
+    <tr><td>N° de turno</td><td class="der">{{ m.id_turno_caja_id }}</td></tr>
+</table>
+<div class="linea"></div>
+<table>
+    <tr class="total"><td>{% if m.tipo_movimiento == 'REFUERZO' %}(+) Entra al cajón{% else %}(−) Sale del cajón{% endif %}</td><td class="der">{{ monto|pesos }}</td></tr>
+</table>
+<div class="linea"></div>
+<div>Motivo:</div>
+<div class="sangria fuerte">{{ m.concepto }}</div>
+{% if egreso %}
+<table class="tenue">
+    <tr><td>Tipo de gasto</td><td class="der">{{ egreso.id_tipo_egreso }}</td></tr>
+    {% if egreso.id_proveedor %}<tr><td>Proveedor</td><td class="der">{{ egreso.id_proveedor }}</td></tr>{% elif egreso.destinatario %}<tr><td>A quién</td><td class="der">{{ egreso.destinatario }}</td></tr>{% endif %}
+    {% if egreso.comprobante %}<tr><td>Comprobante</td><td class="der">{{ egreso.comprobante }}</td></tr>{% endif %}
+    <tr><td>Egreso N°</td><td class="der">{{ egreso.pk }}</td></tr>
+</table>
+{% endif %}
+<div class="linea"></div>
+<div>Responsable:</div>
+<div class="sangria fuerte">{{ m.id_usuario|persona }}</div>
+<div>Autorizó:</div>
+<div class="sangria">{{ m.id_usuario.nombre }} {{ m.id_usuario.apellido }}, con su permiso para mover efectivo{% if m.tipo_movimiento == 'GASTO' %} y pagar gastos{% endif %}</div>
+
+<div class="firmas">
+    <div class="firma">Firma del responsable<span>{{ m.id_usuario.nombre }} {{ m.id_usuario.apellido }}</span></div>
+    <div class="firma">Firma de quien {% if m.tipo_movimiento == 'REFUERZO' %}entrega{% else %}recibe{% endif %} el efectivo<span>Aclaración: ______________________</span></div>
+</div>
+{% endblock %}
+
+{% block pie %}Guardar en el cajón hasta el cierre del turno.{% endblock %}
+{% block acciones %}<a href="{% url 'ventas:caja' %}">Volver a la caja</a>{% endblock %}

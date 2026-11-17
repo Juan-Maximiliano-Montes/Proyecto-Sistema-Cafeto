@@ -46,7 +46,7 @@ GRUPOS = [
         ('ruta:ventas:turnos', ('Turnos de caja', 'bi-clock-history',
                                 'ver_caja')),
         ('ruta:ventas:autorizaciones', ('Autorizaciones a distancia', 'bi-phone',
-                                        ('gestionar_credito', 'autorizar_ajustes'))),
+                                        ('gestionar_credito', 'autorizar_ajustes', 'supervisar_cierre'))),
     ]),
     ('Stock', 'bi-boxes', [
         ('ruta:stock:alertas', ('Alertas y vencimientos', 'bi-bell',
@@ -90,6 +90,7 @@ GRUPOS = [
     ]),
     ('Reportes', 'bi-graph-up', [
         ('ruta:negocio:reportes', ('Reportes', 'bi-graph-up', 'ver_reportes')),
+        ('ruta:negocio:archivo', ('Archivo histórico', 'bi-archive', 'ver_reportes')),
     ]),
     ('Equipo y Permisos', 'bi-shield-lock', [
         ('ruta:seguridad:lista',    ('Usuarios', 'bi-people', 'ver_usuarios')),
