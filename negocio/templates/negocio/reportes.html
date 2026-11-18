@@ -12,13 +12,6 @@
     <div class="acciones">
         {% if 'ver_reportes' in permisos_usuario %}<a href="{% url 'negocio:archivo' %}?libro=ventas#consulta" class="btn btn-secundario"><i class="bi bi-archive me-1" aria-hidden="true"></i>Años anteriores</a>{% endif %}
         <a href="{% url 'negocio:resumen_del_mes' %}" class="btn btn-secundario"><i class="bi bi-calendar3 me-1"></i>Resumen del mes</a>
-        <div class="dropdown">
-            <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
-                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
-            </ul>
-        </div>
     </div>
 </div>
 
@@ -26,10 +19,17 @@
 
 <section id="seccion-reportes" class="seccion-anclada" aria-labelledby="titDetalle">
 <h2 class="h5 mb-2" id="titDetalle"><i class="bi {{ reporte.icono }} me-1" aria-hidden="true"></i>{{ reporte.titulo }}</h2>
-<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Reportes">
+<nav class="d-flex flex-wrap align-items-center gap-2 mb-3" aria-label="Reportes">
     {% for r in reportes %}
     <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}#seccion-reportes" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"{% if r.clave == reporte.clave %} aria-current="page"{% endif %}><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
     {% endfor %}
+    <div class="dropdown ms-auto">
+        <button class="btn btn-sm btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Exportar {{ reporte.titulo }}"><i class="bi bi-download me-1" aria-hidden="true"></i>Exportar</button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2" aria-hidden="true"></i>Excel</a></li>
+            <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2" aria-hidden="true"></i>PDF</a></li>
+        </ul>
+    </div>
 </nav>
 
 {% if not sin_periodo or filtros %}

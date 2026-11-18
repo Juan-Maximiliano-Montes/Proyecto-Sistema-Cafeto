@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
+from django.middleware.csrf import rotate_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -216,6 +217,14 @@ def elegir_clave(request, proposito, token):
     usuario.debe_cambiar_clave = True        # no pide la clave actual
     form = CambioClaveForm(request.POST or None, usuario=usuario)
     if request.method == 'POST' and form.is_valid():
+        # Este navegador puede tener abierta la sesión de otra persona (la
+        # titular en otra pestaña). Se cierra antes de guardar, como en
+        # logout_view: la sesión de negocio y la de Django, con llave y
+        # token CSRF nuevos. Recién acá, con el token válido y por POST:
+        # abrir un enlace (GET) nunca saca a nadie del sistema.
+        cerrar_sesion(request.session.get('id_sesion_negocio'), motivo='REVOCACION')
+        request.session.flush()
+        rotate_token(request)
         anterior = instantanea(usuario)
         usuario.set_clave(form.cleaned_data['clave_nueva'])
         usuario.save()
@@ -224,7 +233,7 @@ def elegir_clave(request, proposito, token):
             cerrar_sesion(sesion.pk, motivo='REVOCACION')
         registrar_auditoria(
             request, 'ACTIVACION' if proposito == 'activar' else 'RECUPERACION',
-            'CLAVE POR CORREO', instancia=usuario, modulo='SEGURIDAD',
+            'CLAVE POR CORREO', instancia=usuario, modulo='SEGURIDAD', usuario=usuario,
             anterior=anterior, nuevo=instantanea(usuario),
             detalle=(f'{usuario.nombre_usuario} eligió su clave con el enlace del '
                      f'correo, desde {ip_del_request(request)}.'))

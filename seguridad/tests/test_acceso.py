@@ -621,6 +621,32 @@ class RecuperacionPorCorreoTest(Base):
         self.elegir(self.enlace())
         self.assertFalse(Sesion.objects.filter(id_usuario=self.beto, activa=True).exists())
 
+    def test_el_enlace_en_un_navegador_con_otra_sesion_abierta(self):
+        """La administradora tiene su sesión abierta y en el mismo navegador
+        Beto abre su enlace: al guardar, la sesión de ella se cierra y el
+        cambio queda firmado por Beto, no por ella."""
+        self.entrar('31000001')
+        admin = Usuario.objects.get(dni_usuario='31000001')
+        abierta = Sesion.objects.get(id_usuario=admin, activa=True)
+        self.pedir('40000002')
+        url = self.enlace()
+
+        # Abrir el enlace (GET) o mandar una clave que no sirve no la cierra.
+        self.assertContains(self.client.get(url), 'Elegí tu clave nueva')
+        self.elegir(url, 'corta')
+        abierta.refresh_from_db()
+        self.assertTrue(abierta.activa)
+
+        self.assertRedirects(self.elegir(url), reverse('seguridad:login'))
+        abierta.refresh_from_db()
+        self.assertFalse(abierta.activa)
+        self.assertEqual(abierta.motivo_cierre, 'REVOCACION')
+        self.assertNotIn('usuario_id', self.client.session)
+        registro = LogAuditoria.objects.get(operacion_realizada='RECUPERACION DE CLAVE POR CORREO')
+        self.assertEqual(registro.id_usuario, self.beto)
+        # La pantalla de ingreso queda limpia: no entra como la administradora.
+        self.assertNotContains(self.client.get(reverse('home'), follow=True), admin.apellido)
+
     def test_el_restablecimiento_del_admin_manda_el_enlace_y_anula_la_clave_vieja(self):
         self.entrar('31000001')
         respuesta = self.client.post(
