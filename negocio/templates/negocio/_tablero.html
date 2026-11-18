@@ -47,10 +47,10 @@ cifras y se leen sin JavaScript.
             <div class="grafico-lienzo"></div>
             <details class="grafico-datos">
                 <summary>Ver los datos</summary>
-                <table class="table table-sm mb-0"><caption class="visually-hidden">Cobrado por medio de pago</caption>
+                <div class="table-responsive"><table class="table table-sm mb-0"><caption class="visually-hidden">Cobrado por medio de pago</caption>
                     <thead><tr><th scope="col">Medio</th><th scope="col" class="table-numero">%</th><th scope="col" class="table-numero">Cobrado</th></tr></thead>
                     <tbody>{% for p in tablero.medios.partes %}<tr><th scope="row">{{ p.nombre }}</th><td class="table-numero">{{ p.porcentaje|cantidad }} %</td><td class="table-numero">{{ p.monto|pesos }}</td></tr>{% empty %}<tr><td colspan="3">Sin cobros.</td></tr>{% endfor %}</tbody>
-                </table>
+                </table></div>
             </details>
         </figure>
 
@@ -66,10 +66,10 @@ cifras y se leen sin JavaScript.
             <p class="small text-secondary mb-1 js-pico" aria-live="polite"></p>
             <details class="grafico-datos">
                 <summary>Ver los datos</summary>
-                <table class="table table-sm mb-0"><caption class="visually-hidden">Ventas por hora</caption>
+                <div class="table-responsive"><table class="table table-sm mb-0"><caption class="visually-hidden">Ventas por hora</caption>
                     <thead><tr><th scope="col">Hora</th><th scope="col" class="table-numero">Tickets</th><th scope="col" class="table-numero">Vendido</th></tr></thead>
                     <tbody>{% for h in tablero.franjas.horas %}<tr><th scope="row">{{ h.etiqueta }}</th><td class="table-numero">{{ h.tickets }}</td><td class="table-numero">{{ h.monto|pesos }}</td></tr>{% empty %}<tr><td colspan="3">Sin ventas.</td></tr>{% endfor %}</tbody>
-                </table>
+                </table></div>
             </details>
         </figure>
 
@@ -92,10 +92,10 @@ cifras y se leen sin JavaScript.
             <p class="small text-tenue mb-1">«Por margen» ordena por la ganancia en pesos y muestra el % sobre la venta: así un producto vendido una sola vez no tapa a los que de verdad dejan plata.</p>
             <details class="grafico-datos">
                 <summary>Ver los datos</summary>
-                <table class="table table-sm mb-0"><caption class="visually-hidden">Productos que más vendieron</caption>
+                <div class="table-responsive"><table class="table table-sm mb-0"><caption class="visually-hidden">Productos que más vendieron</caption>
                     <thead><tr><th scope="col">Producto</th><th scope="col" class="table-numero">Vendido</th><th scope="col" class="table-numero">Unidades</th><th scope="col" class="table-numero">Ganancia</th><th scope="col" class="table-numero">Margen</th></tr></thead>
                     <tbody>{% for f in tablero.top.productos.monto %}<tr><th scope="row">{{ f.nombre }}</th><td class="table-numero">{{ f.monto|pesos }}</td><td class="table-numero">{{ f.unidades|cantidad }}</td><td class="table-numero">{{ f.ganancia|pesos }}</td><td class="table-numero">{% if f.margen %}{{ f.margen|cantidad }} %{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Sin ventas.</td></tr>{% endfor %}</tbody>
-                </table>
+                </table></div>
             </details>
         </figure>
     </div>

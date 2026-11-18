@@ -15,7 +15,7 @@ import uuid
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, InterfaceError, OperationalError
+from django.db import DataError, IntegrityError, InterfaceError, OperationalError
 from django.db.models import ProtectedError, RestrictedError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
@@ -47,6 +47,37 @@ def referencia():
     return uuid.uuid4().hex[:8].upper()
 
 
+# Lo que lee una automatización o el JavaScript de una pantalla: siempre
+# JSON, nunca la página HTML (y en DEBUG, nunca la página amarilla de
+# Django con la lista de rutas).
+TEXTOS_JSON = {
+    400: 'El pedido llegó incompleto o con datos que no se pueden leer.',
+    401: 'Tenés que iniciar sesión.',
+    403: 'Tu perfil no tiene permiso para hacer esto.',
+    404: 'Esa dirección no existe.',
+    405: 'Esa acción no se pide de esta forma.',
+    429: 'Demasiados intentos seguidos: esperá un momento y probá de nuevo.',
+    500: 'Algo falló de nuestro lado. No se guardó nada de lo último que se pidió.',
+}
+
+
+def quiere_json(request):
+    """El pedido es de la API o de un ``fetch`` de una pantalla."""
+    return (request.path.startswith('/api/')
+            or request.headers.get('x-requested-with') == 'XMLHttpRequest'
+            or 'application/json' in request.headers.get('accept', '')
+            or (request.content_type or '').startswith('application/json'))
+
+
+_quiere_json = quiere_json
+
+
+def error_json(texto, estado, **extra):
+    """El error en JSON con las dos claves que leen los clientes: ``detail``
+    (la app y n8n) y ``error`` (las pantallas)."""
+    return JsonResponse({'ok': False, 'detail': texto, 'error': texto, **extra}, status=estado)
+
+
 def _pagina(request, codigo, ref=None, mensaje=None, titulo=None, estado=None):
     titulo_base, texto = TEXTOS[codigo]
     titulo, texto = titulo or titulo_base, mensaje or texto
@@ -62,14 +93,20 @@ def _pagina(request, codigo, ref=None, mensaje=None, titulo=None, estado=None):
 
 
 def pagina_400(request, exception=None):
+    if quiere_json(request):
+        return error_json(TEXTOS_JSON[400], 400)
     return _pagina(request, 400)
 
 
 def pagina_403(request, exception=None):
+    if quiere_json(request):
+        return error_json(TEXTOS_JSON[403], 403)
     return _pagina(request, 403)
 
 
 def pagina_404(request, exception=None):
+    if quiere_json(request):
+        return error_json(TEXTOS_JSON[404], 404)
     return _pagina(request, 404)
 
 
@@ -81,6 +118,8 @@ def pagina_500(request):
         return pagina_503(request)
     ref = referencia()
     logger.error('Error 500 [ref %s] en %s %s', ref, request.method, request.path)
+    if quiere_json(request):
+        return error_json(f'{TEXTOS_JSON[500]} Referencia {ref}.', 500, referencia=ref)
     return _pagina(request, 500, ref)
 
 
@@ -98,6 +137,8 @@ def pagina_503(request):
 
 def csrf_fallo(request, reason=''):
     """El formulario se venció (la pestaña quedó abierta de ayer)."""
+    if quiere_json(request):
+        return error_json('La pantalla quedó abierta mucho tiempo y se venció: recargala y probá de nuevo.', 403)
     return _pagina(request, 403, mensaje='La pantalla quedó abierta mucho tiempo y el formulario se venció. '
                                          'Recargala y volvé a cargar los datos.')
 
@@ -123,14 +164,10 @@ def mensaje_de(excepcion):
     if isinstance(excepcion, decimal.DecimalException):
         return ('Un importe o una cantidad no es un número válido (o es demasiado grande). '
                 'Revisá lo cargado: usá coma para los decimales.'), 400
+    if isinstance(excepcion, (DataError, OverflowError)):
+        return ('Un número es demasiado grande o un dato no tiene la forma esperada (por ejemplo, un '
+                'código de barras escrito donde va un N° de venta). Revisá lo cargado y probá de nuevo.'), 400
     return None
-
-
-def _quiere_json(request):
-    return (request.path.startswith('/api/')
-            or request.headers.get('x-requested-with') == 'XMLHttpRequest'
-            or 'application/json' in request.headers.get('accept', '')
-            or (request.content_type or '').startswith('application/json'))
 
 
 class ExcepcionesDeNegocioMiddleware:
@@ -151,14 +188,24 @@ class ExcepcionesDeNegocioMiddleware:
     def _con_pagina_propia(self, request, respuesta):
         """Respuestas de error sin cuerpo (405 de require_POST, 429) y el 404
         en modo DEBUG reciben la página de Cafeto. La página amarilla de
-        Django para el 404 se puede volver a ver con CAFETO_404_DE_DJANGO=1."""
+        Django para el 404 se puede volver a ver con CAFETO_404_DE_DJANGO=1.
+        Para la API y el JavaScript, un JSON (si la vista no dio ya uno)."""
         from django.conf import settings
 
         codigo = respuesta.status_code
-        if codigo not in (404, 405, 429) or _quiere_json(request) or getattr(respuesta, 'cafeto', False):
+        if codigo not in (404, 405, 429) or getattr(respuesta, 'cafeto', False):
             return respuesta
         if request.path.startswith((settings.STATIC_URL or '/static/', '/media/')):
             return respuesta
+        if quiere_json(request):
+            if 'json' in respuesta.get('Content-Type', ''):
+                return respuesta
+            propia = error_json(TEXTOS_JSON[codigo], codigo)
+            for cabecera in ('Allow', 'Retry-After'):
+                if respuesta.has_header(cabecera):
+                    propia[cabecera] = respuesta[cabecera]
+            propia.cafeto = True
+            return propia
         if codigo == 404 and not (settings.DEBUG and not getattr(settings, 'CAFETO_404_DE_DJANGO', False)):
             return respuesta
         if codigo in (405, 429) and respuesta.content.strip():
@@ -173,9 +220,8 @@ class ExcepcionesDeNegocioMiddleware:
     def process_exception(self, request, excepcion):
         if isinstance(excepcion, (OperationalError, InterfaceError)):
             logger.error('Sin base de datos en %s %s: %r', request.method, request.path, excepcion)
-            if _quiere_json(request):
-                return JsonResponse({'ok': False, 'error': 'Estamos reconectando con la base de datos: '
-                                                          'probá de nuevo en unos segundos.'}, status=503)
+            if quiere_json(request):
+                return error_json('Estamos reconectando con la base de datos: probá de nuevo en unos segundos.', 503)
             return pagina_503(request)
         traducido = mensaje_de(excepcion)
         if traducido is None:
@@ -184,8 +230,8 @@ class ExcepcionesDeNegocioMiddleware:
         ref = referencia()
         logger.warning('Excepción de negocio [ref %s] %s en %s %s: %r', ref, type(excepcion).__name__,
                        request.method, request.path, excepcion)
-        if _quiere_json(request):
-            return JsonResponse({'ok': False, 'error': texto, 'referencia': ref}, status=estado)
+        if quiere_json(request):
+            return error_json(texto, estado, referencia=ref)
         volver = request.META.get('HTTP_REFERER', '')
         if (request.method == 'POST' and volver
                 and url_has_allowed_host_and_scheme(volver, {request.get_host()}, request.is_secure())):

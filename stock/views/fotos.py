@@ -2,12 +2,27 @@
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import NoReverseMatch
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
 from stock import imagenes
 from stock.models import Producto
+
+
+def _volver(request):
+    """De vuelta a la pantalla de donde vino, sólo si es de este sitio: un
+    ``volver`` armado a mano (otro dominio, «abc») va al listado."""
+    destino = request.POST.get('volver') or ''
+    if destino.startswith('/') and url_has_allowed_host_and_scheme(
+            destino, {request.get_host()}, require_https=request.is_secure()):
+        try:
+            return redirect(destino)
+        except NoReverseMatch:
+            pass
+    return redirect('stock:productos_lista')
 
 
 @require_POST
@@ -34,4 +49,4 @@ def foto_de_producto(request, pk):
             nuevo={'id_producto': producto.pk, 'imagen': producto.imagen},
             detalle=f'{hecho} de {producto}.')
         messages.success(request, f'{hecho} de {producto}.')
-    return redirect(request.POST.get('volver') or 'stock:productos_lista')
+    return _volver(request)

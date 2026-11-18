@@ -22,7 +22,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
      data-morosos="{% url 'fidelizacion:morosos' %}" data-parecidos="{% url 'fidelizacion:parecidos' %}" data-cuentas="{% url 'fidelizacion:cuentas' %}"
      data-cliente="{% url 'ventas:identificar_cliente' %}"
      data-alta-cliente="{% url 'ventas:alta_cliente' %}"
-     data-turno="{{ turno.pk }}"
+     data-turno="{{ turno.pk|stringformat:"d" }}"
      data-token="{{ token }}">
 
     {# ------------------------------ CATÁLOGO ------------------------------ #}
@@ -100,7 +100,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 <span class="eyebrow">¿Cómo paga?</span>
                 <div class="d-flex flex-wrap gap-2 mt-1" id="medios">
                     {% for m in medios %}
-                    <button type="button" class="btn btn-secundario js-medio" data-medio="{{ m.id }}" data-efectivo="{{ m.efectivo|yesno:'1,0' }}" data-fiado="{{ m.fiado|yesno:'1,0' }}">
+                    <button type="button" class="btn btn-secundario js-medio" data-medio="{{ m.id|stringformat:"d" }}" data-efectivo="{{ m.efectivo|yesno:'1,0' }}" data-fiado="{{ m.fiado|yesno:'1,0' }}">
                         {{ m.nombre }}{% if m.recargo != '0' and m.recargo != '0.00' %} <span class="small text-tenue">+{{ m.recargo|cantidad }}%</span>{% endif %}
                     </button>
                     {% endfor %}

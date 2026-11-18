@@ -352,7 +352,12 @@ class CampoNumero(forms.DecimalField):
         return numero
 
     def widget_attrs(self, widget):
-        return {}
+        # Sin min/max/step del navegador (rechazan la coma). El mínimo viaja
+        # como dato para que el resumen de .form-una-vez avise antes de
+        # mostrar «—» o un monto negativo (DD-103).
+        if self.min_value is None:
+            return {}
+        return {'data-minimo': str(self.min_value)}
 
     def prepare_value(self, value):
         """Se muestra como se escribe acá: 10.000 o 1.234,50."""

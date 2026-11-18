@@ -184,6 +184,26 @@ class ExportacionDeFacilVirtualTest(TestCase):
         self.confirmar(solo_validas=False)
         self.assertEqual(Producto.objects.count(), 4)
 
+    def test_la_cuarentena_no_devuelve_formulas(self):
+        """DD-103: lo que vino de la planilla subida vuelve a otra planilla;
+        una celda que empieza con +, - o @ sale como texto (con el apóstrofo
+        de siempre) y, al volver a subirla, el apóstrofo no queda en el dato.
+        (Un «=» ya llega como fórmula, sin valor, y se lee vacío.)"""
+        self.subir([self.fila('1001', '@SUMA(A1:A9)', precio=0),
+                    self.fila('1002', '+CARAMELOS', precio=0)])
+        self.confirmar()
+        excel = self.client.get(reverse('importar_errores', args=['productos']))
+        from openpyxl import load_workbook
+        filas = list(load_workbook(io.BytesIO(excel.content)).active.iter_rows(values_only=True))
+        nombre = filas[0].index('Nombre')
+        self.assertEqual(filas[1][nombre], "'@SUMA(A1:A9)")
+        self.assertEqual(filas[2][nombre], "'+CARAMELOS")
+        self.assertFalse(any(str(c).startswith(('=', '+', '-', '@')) for fila in filas for c in fila if c))
+        from nucleo.importar import _sin_apostrofo
+        self.assertEqual(_sin_apostrofo("'+CARAMELOS"), '+CARAMELOS')
+        self.assertEqual(_sin_apostrofo("'Hola"), "'Hola")
+        self.assertEqual(_sin_apostrofo("'"), "'")
+
     def test_reimportar_actualiza_por_codigo_y_no_duplica(self):
         self.subir([self.fila('1001', 'CARAMELOS SURTIDOS', precio=1000)])
         self.confirmar(solo_validas=False)

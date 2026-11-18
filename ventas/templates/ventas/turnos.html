@@ -25,7 +25,7 @@
     <input type="hidden" name="pagina" value="1">
     <select name="caja" class="form-select" aria-label="Caja" data-auto-enviar>
         <option value="">Caja: todas</option>
-        {% for c in cajas %}<option value="{{ c.pk }}"{% if filtro.caja == c.pk|stringformat:'s' %} selected{% endif %}>{{ c }}</option>{% endfor %}
+        {% for c in cajas %}<option value="{{ c.pk|stringformat:"d" }}"{% if filtro.caja == c.pk|stringformat:'s' %} selected{% endif %}>{{ c }}</option>{% endfor %}
     </select>
     <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
         <option value="">Todos los turnos</option>

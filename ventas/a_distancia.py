@@ -53,6 +53,7 @@ from django.utils.crypto import constant_time_compare, salted_hmac
 
 from nucleo.templatetags.cafeto import pesos
 from ventas.models import EstadoSolicitud, SolicitudAutorizacion, ViaAprobacion
+from nucleo.validaciones import id_valido
 
 log = logging.getLogger(__name__)
 
@@ -460,9 +461,10 @@ def por_token(token):
     if not resto:
         return solicitud, titular()
     numero, _, firma = resto.partition('.')
-    if not numero.isdigit() or not constant_time_compare(firma, _firma(solicitud.token_hash, int(numero))):
+    numero = id_valido(numero)
+    if numero is None or not constant_time_compare(firma, _firma(solicitud.token_hash, numero)):
         return None, None
-    persona = Usuario.objects.filter(pk=int(numero), activo=True).first()
+    persona = Usuario.objects.filter(pk=numero, activo=True).first()
     return (solicitud, persona) if persona is not None else (None, None)
 
 
@@ -578,9 +580,7 @@ def aprobada_para(id_solicitud, operador, huella_del_ticket, bloquear=False, tur
     consulta = SolicitudAutorizacion.objects.select_related('id_usuario_autorizante')
     if bloquear:
         consulta = consulta.select_for_update(of=('self',))
-    if isinstance(id_solicitud, str) and id_solicitud.isdigit():
-        id_solicitud = int(id_solicitud)
-    solicitud = consulta.filter(pk=id_solicitud if isinstance(id_solicitud, int) else 0).first()
+    solicitud = consulta.filter(pk=id_valido(id_solicitud)).first()
     if not es_de(solicitud, operador, turno):
         raise ValidationError('La autorización a distancia no corresponde a esta caja.')
     if solicitud.estado_solicitud != EstadoSolicitud.APROBADA:

@@ -1,6 +1,5 @@
 """Autorización a distancia (DD-94): lo que pide la caja, la bandeja de la
 dueña y la página del enlace que le llega al celular."""
-import json
 
 from django.conf import settings
 from django.contrib import messages
@@ -17,6 +16,8 @@ from ventas import a_distancia, puesto
 from ventas import servicios as ventas
 from ventas.models import EstadoSolicitud, SolicitudAutorizacion, ViaAprobacion
 from ventas.views.mostrador import _fidelizacion, _leer_pedido, _producto_para_ajuste, _vence_fiado, leer_datos
+from nucleo.validaciones import id_valido
+from nucleo import json_seguro
 
 VISTAS_BANDEJA = (('pendientes', 'Esperando respuesta'), ('aprobadas', 'Aprobadas'),
                   ('rechazadas', 'Rechazadas'), ('anuladas', 'Vencidas o anuladas'), ('todas', 'Todas'))
@@ -75,11 +76,8 @@ def pedir(request):
         return JsonResponse({'ok': False, 'error': 'Abrí la caja para pedir una autorización.'})
     base = settings.CAFETO_URL_PUBLICA or request.build_absolute_uri('/')
     try:
-        try:
-            crudo = json.loads(request.body or b'{}')
-        except (ValueError, UnicodeDecodeError):
-            crudo = {}
-        if (crudo or {}).get('tipo') == a_distancia.AJUSTE:
+        crudo = json_seguro.del_pedido(request)
+        if json_seguro.campo(crudo, 'tipo', str, 'El tipo de pedido') == a_distancia.AJUSTE:
             # El ajuste de stock desde el mostrador (DD-90).
             producto, cantidad = _producto_para_ajuste(crudo)
             pedido = {'producto': producto.pk, 'cantidad': format(cantidad.normalize(), 'f'),
@@ -98,7 +96,8 @@ def pedir(request):
                 turno, request.usuario_actual, items, pagos, cliente, beneficios, _vence_fiado(datos),
                 pedido, base)
     except ValidationError as error:
-        return JsonResponse({'ok': False, 'error': _texto(error)})
+        return JsonResponse({'ok': False, 'error': _texto(error)},
+                            status=400 if isinstance(error, json_seguro.PedidoMalArmado) else 200)
     if pin is not None:      # None: ya estaba aprobado y se reutiliza (DD-101)
         registrar_auditoria(
             request, 'SOLICITUD', 'AUTORIZACION A DISTANCIA', instancia=solicitud, modulo='VENTAS',
@@ -136,13 +135,15 @@ def pin(request, pk):
     solicitud = _propia(request, pk)
     antes = instantanea(solicitud)
     try:
-        datos = json.loads(request.body or b'{}')
-    except (ValueError, UnicodeDecodeError):
-        datos = {}
+        datos = json_seguro.del_pedido(request)
+        pin_escrito = json_seguro.campo(datos, 'pin', (str, int), 'El PIN')
+    except json_seguro.PedidoMalArmado as e:
+        return JsonResponse({'ok': False, 'error': _texto(e), **a_distancia.estado(solicitud)}, status=400)
     try:
         ya_estaba = solicitud.estado_solicitud == EstadoSolicitud.APROBADA
         aprobada, error = a_distancia.verificar_pin(
-            solicitud, request.usuario_actual, (datos or {}).get('pin'), a_distancia.control_de(solicitud),
+            solicitud, request.usuario_actual, None if pin_escrito is None else str(pin_escrito),
+            a_distancia.control_de(solicitud),
             turno=puesto.turno_de(request))
     except ValidationError as e:
         return JsonResponse({'ok': False, 'error': _texto(e), **a_distancia.estado(solicitud)})
@@ -194,7 +195,7 @@ def _contestar(request, solicitud, usuario, aprobar, via):
 @requiere_alguno(*a_distancia.PERMISOS_PARA_AUTORIZAR, redirigir_a='home')
 def bandeja(request):
     if request.method == 'POST':
-        solicitud = get_object_or_404(SolicitudAutorizacion, pk=request.POST.get('solicitud') or 0)
+        solicitud = get_object_or_404(SolicitudAutorizacion, pk=id_valido(request.POST.get('solicitud')))
         aprobar = request.POST.get('accion') == 'aprobar'
         try:
             _contestar(request, solicitud, request.usuario_actual, aprobar, ViaAprobacion.BANDEJA)

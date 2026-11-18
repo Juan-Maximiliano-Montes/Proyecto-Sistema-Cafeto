@@ -6,15 +6,15 @@
     <input type="hidden" name="desde" value="{{ desde }}">
     <div class="row g-2 align-items-end">
         <div class="col-md-6">
-            <label class="form-label small" for="motivo-anulacion-{{ venta.pk }}">Motivo <span class="text-peligro" aria-hidden="true">*</span></label>
-            <select name="motivo" id="motivo-anulacion-{{ venta.pk }}" class="form-select" required>
+            <label class="form-label small" for="motivo-anulacion-{{ venta.pk|stringformat:"d" }}">Motivo <span class="text-peligro" aria-hidden="true">*</span></label>
+            <select name="motivo" id="motivo-anulacion-{{ venta.pk|stringformat:"d" }}" class="form-select" required>
                 <option value="">Elegí…</option>
                 {% for valor, etiqueta in motivos_anulacion %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
             </select>
         </div>
         <div class="col-md-6">
-            <label class="form-label small" for="detalle-anulacion-{{ venta.pk }}">Detalle <span class="text-secondary">(obligatorio si es «Otro»)</span></label>
-            <input type="text" name="detalle" id="detalle-anulacion-{{ venta.pk }}" class="form-control" maxlength="120">
+            <label class="form-label small" for="detalle-anulacion-{{ venta.pk|stringformat:"d" }}">Detalle <span class="text-secondary">(obligatorio si es «Otro»)</span></label>
+            <input type="text" name="detalle" id="detalle-anulacion-{{ venta.pk|stringformat:"d" }}" class="form-control" maxlength="120">
         </div>
         {% if pide_clave %}
         <div class="col-12"><p class="small mb-0"><i class="bi bi-person-lock me-1"></i>{% if titular_propia %}Es una venta tuya y sos el titular: confirmala con tu usuario y tu clave.{% elif venta_propia %}Es una venta tuya: la autoriza otra persona.{% else %}La autoriza el Encargado o la Administración, ahí mismo.{% endif %}</p></div>

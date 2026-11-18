@@ -32,15 +32,15 @@
     <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta }}" class="form-control"></label>
     <select name="caja" class="form-select" aria-label="Caja" data-auto-enviar>
         <option value="">Caja: todas</option>
-        {% for c in cajas %}<option value="{{ c.pk }}"{% if filtro.caja == c.pk|stringformat:'s' %} selected{% endif %}>{{ c }}</option>{% endfor %}
+        {% for c in cajas %}<option value="{{ c.pk|stringformat:"d" }}"{% if filtro.caja == c.pk|stringformat:'s' %} selected{% endif %}>{{ c }}</option>{% endfor %}
     </select>
     <select name="vendedor" class="form-select" aria-label="Vendió" data-auto-enviar>
         <option value="">Vendió: todos</option>
-        {% for u in vendedores %}<option value="{{ u.pk }}"{% if filtro.vendedor == u.pk|stringformat:'s' %} selected{% endif %}>{{ u.apellido }}, {{ u.nombre }}</option>{% endfor %}
+        {% for u in vendedores %}<option value="{{ u.pk|stringformat:"d" }}"{% if filtro.vendedor == u.pk|stringformat:'s' %} selected{% endif %}>{{ u.apellido }}, {{ u.nombre }}</option>{% endfor %}
     </select>
     <select name="medio" class="form-select" aria-label="Medio de pago" data-auto-enviar>
         <option value="">Medio: todos</option>
-        {% for m in medios %}<option value="{{ m.pk }}"{% if filtro.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
+        {% for m in medios %}<option value="{{ m.pk|stringformat:"d" }}"{% if filtro.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
     </select>
     <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
         <option value="">Estado: todos</option>

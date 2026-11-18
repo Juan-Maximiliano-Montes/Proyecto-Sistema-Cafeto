@@ -271,6 +271,36 @@ class AuditarConsistenciaTest(BaseMaestros):
         sucio.refresh_from_db()
         self.assertFalse(sucio.borrado_logico)
 
+    def test_las_marcas_que_no_son_marca_y_la_marca_de_la_casa(self):
+        """DD-103: «Genérica» y «Sin marca» no son la marca de nadie, y un
+        combo que se llama como el local («Desayuno Cafeto», marca Cafeto)
+        no está sucio. Un producto comprado con la marca adentro, sí."""
+        from nucleo.management.commands.auditar_consistencia import productos_con_el_nombre_sucio
+        from stock.models import MARCA_GENERICA, Marca
+        from stock.reservados import marca_generica
+
+        generica = marca_generica()
+        Marca.objects.get_or_create(nombre_marca='Sin marca')
+        casa = Marca.objects.create(nombre_marca='Cafeto')
+        yerba = self._producto('Yerba genérica', Decimal('1'), 'UNIDAD')
+        yerba.id_marca = generica
+        yerba.save()
+        combo = Producto.objects.create(
+            nombre_producto='Desayuno Cafeto', id_marca=casa, id_rubro=self.rubro,
+            tipo_producto='COMBO', precio_venta=Decimal('4000'), contenido=Decimal('1'),
+            unidad_medida='UNIDAD')
+        comprado = self._producto('Galletitas Cafeto', Decimal('1'), 'UNIDAD')
+        acentos = self._producto('Alfajor CÁFETO', Decimal('2'), 'UNIDAD')
+        palabra = self._producto('Cafetorta', Decimal('3'), 'UNIDAD')
+
+        sucios = {h.fila.pk: h.motivo for h in productos_con_el_nombre_sucio()}
+        self.assertNotIn(yerba.pk, sucios, MARCA_GENERICA)
+        self.assertNotIn(combo.pk, sucios)
+        self.assertIn(comprado.pk, sucios)
+        self.assertIn('"cafeto"', sucios[comprado.pk])
+        self.assertIn(acentos.pk, sucios)
+        self.assertNotIn(palabra.pk, sucios)
+
 
 # ===========================================================================
 #  LA COLUMNA QUE CUENTA RELACIONADOS

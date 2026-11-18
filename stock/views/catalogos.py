@@ -16,6 +16,7 @@ from seguridad.servicios import registrar_acceso_denegado
 from stock.models import Marca, Producto, Rubro, TipoProducto
 
 from stock import forms
+from nucleo.validaciones import id_valido
 
 # ---------------------------------------------------------------------------
 #  BÚSQUEDA DE PRODUCTOS (para la receta de los beneficios)
@@ -62,10 +63,7 @@ def buscar_productos(request):
         registrar_acceso_denegado(request, 'ver_productos')
         return JsonResponse({'detail': 'Sin permiso.'}, status=403)
 
-    try:
-        pagina = max(1, int(request.GET.get('page', 1)))
-    except (TypeError, ValueError):
-        pagina = 1
+    pagina = id_valido(request.GET.get('page')) or 1
 
     busqueda = request.GET.get('q', '').strip()
     productos = Producto.objects.filter(
@@ -218,13 +216,14 @@ PRODUCTOS = registrar(ConfiguracionCRUD(
     columnas=(
         Columna('Producto', 'nombre_producto'),
         Columna('Precio de venta', 'precio_para_mostrar', 'dinero'),
-        Columna('Stock apto', 'stock_para_mostrar', 'numero', aclaracion='aclaracion_de_stock'),
+        Columna('Stock apto', 'stock_para_mostrar', 'numero', aclaracion='aclaracion_de_stock',
+                de_producto=True),
         Columna('Marca', 'id_marca'),
         Columna('Presentación', 'presentacion'),
         Columna('Rubro', 'id_rubro'),
         Columna('Tipo', 'tipo_corto'),
         Columna('Proveedor', 'id_proveedor', en_tarjeta=False),
-        Columna('Stock mínimo', 'stock_minimo', 'numero', en_tarjeta=False),
+        Columna('Stock mínimo', 'stock_minimo', 'numero', en_tarjeta=False, de_producto=True),
         Columna('Vencimiento', 'controla_vencimiento', 'si_no', en_tarjeta=False),
     ),
     campos_busqueda=('nombre_producto', 'codigo_barras',

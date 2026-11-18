@@ -31,6 +31,7 @@ from seguridad.servicios import instantanea, registrar_acceso_denegado, registra
 from ventas import puesto
 from ventas.models import MedioPago, MovimientoCaja
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
 
 PERMISOS = ('ver_egresos', 'registrar_egreso', 'registrar_gasto_caja',
             'conciliar_egresos')
@@ -96,20 +97,20 @@ def egresos(request):
                         base.filter(estado_pago='PENDIENTE_ACREDITACION').count(),
                         base.filter(estado_pago__in=RESUELTOS).count()))],
         'vence_pronto': hoy + timedelta(days=7),
-        'compra_elegida': servicio.compras_por_pagar().filter(pk=request.GET.get('compra') or 0).first(),
+        'compra_elegida': servicio.compras_por_pagar().filter(pk=id_valido(request.GET.get('compra'))).first(),
         'dias_sin_confirmar': servicio.DIAS_SIN_CONFIRMAR,
-        'vale': (MovimientoCaja.objects.filter(pk=request.GET['vale'], id_usuario=request.usuario_actual,
+        'vale': (MovimientoCaja.objects.filter(pk=id_valido(request.GET['vale']), id_usuario=request.usuario_actual,
                                                tipo_movimiento='GASTO').first()
-                 if request.GET.get('vale', '').isdigit() else None),
+                 if id_valido(request.GET.get('vale')) else None),
     })
     return render(request, 'compras/egresos.html', contexto)
 
 
 def _proveedor_y_compra(request):
     compra = None
-    if request.POST.get('compra', '').isdigit():
-        compra = Compra.objects.filter(pk=request.POST['compra']).first()
-    proveedor = Proveedor.objects.filter(pk=request.POST.get('proveedor') or 0).first()
+    if id_valido(request.POST.get('compra')):
+        compra = Compra.objects.filter(pk=id_valido(request.POST['compra'])).first()
+    proveedor = Proveedor.objects.filter(pk=id_valido(request.POST.get('proveedor'))).first()
     if compra is not None:
         proveedor = compra.id_proveedor
     return proveedor, compra
@@ -128,7 +129,7 @@ def registrar(request):
         messages.error(request, 'Tu perfil no puede registrar este tipo de egreso.')
         return redirect('compras:egresos')
     try:
-        tipo = TipoEgreso.objects.filter(pk=request.POST.get('tipo') or 0, borrado_logico=False).first()
+        tipo = TipoEgreso.objects.filter(pk=id_valido(request.POST.get('tipo')), borrado_logico=False).first()
         if tipo is None:
             raise ValidationError('Elegí el tipo de egreso.')
         monto = leer_numero(request.POST.get('monto'), 2)
@@ -147,7 +148,7 @@ def registrar(request):
                 destinatario=destinatario, proveedor=proveedor, compra=compra,
                 comprobante=comprobante)
         else:
-            medio = MedioPago.objects.filter(pk=request.POST.get('medio') or 0, borrado_logico=False).first()
+            medio = MedioPago.objects.filter(pk=id_valido(request.POST.get('medio')), borrado_logico=False).first()
             if modo == 'caja':
                 medio = MedioPago.objects.filter(afecta_caja=True, borrado_logico=False).first()
                 egreso = servicio.gasto_de_caja(
@@ -186,7 +187,7 @@ def pagar(request, pk):
     antes = instantanea(egreso)
     token = request.POST.get('token_operacion')
     try:
-        medio = MedioPago.objects.filter(pk=request.POST.get('medio') or 0, borrado_logico=False).first()
+        medio = MedioPago.objects.filter(pk=id_valido(request.POST.get('medio')), borrado_logico=False).first()
         if not idempotencia.consumir(request, token):
             return redirect('compras:egresos')
         egreso = servicio.pagar_obligacion(

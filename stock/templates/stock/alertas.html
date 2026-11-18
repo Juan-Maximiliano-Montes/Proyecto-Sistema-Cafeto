@@ -36,8 +36,8 @@
             <span class="insignia {% if p.stock_apto <= 0 %}insignia-peligro{% else %}insignia-aviso{% endif %}">{% if p.stock_apto <= 0 %}Agotado{% else %}Bajo{% endif %}</span>
         </div>
         <dl class="tarjeta-datos">
-            <dt>Hay apto</dt><dd>{{ p.stock_apto|cantidad }}{% if p.vencido_en_lotes %}<span class="d-block small text-peligro">y {{ p.vencido_en_lotes|cantidad }} vencida{{ p.vencido_en_lotes|pluralize }} para sacar</span>{% endif %}</dd>
-            <dt>Mínimo</dt><dd>{{ p.stock_minimo|cantidad }}</dd>
+            <dt>Hay apto</dt><dd>{{ p.stock_apto|cantidad_de:p }}{% if p.vencido_en_lotes %}<span class="d-block small text-peligro">y {{ p.vencido_en_lotes|cantidad_de:p }} vencida{{ p.vencido_en_lotes|pluralize }} para sacar</span>{% endif %}</dd>
+            <dt>Mínimo</dt><dd>{{ p.stock_minimo|cantidad_de:p }}</dd>
             <dt>Proveedor</dt><dd>{{ p.id_proveedor|default:"—" }}</dd>
         </dl>
     </article>
@@ -54,7 +54,7 @@
         </div>
         <dl class="tarjeta-datos">
             <dt>{% if dias_restantes < 0 %}Venció{% else %}Vence{% endif %}</dt><dd>{{ l.fecha_vencimiento|date:"d/m/Y" }}</dd>
-            <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad }}</dd>
+            <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad_de:l.id_producto }}</dd>
         </dl>
         {% if dias_restantes < 0 %}<p class="small text-peligro mb-0"><i class="bi bi-exclamation-triangle me-1"></i>No se vende: cargalo como merma.</p>{% endif %}
     </article>
@@ -70,7 +70,7 @@
         <dl class="tarjeta-datos">
             <dt>Precio</dt><dd><s class="text-tenue">{{ l.id_producto.precio_venta|pesos }}</s></dd>
             <dt>Con rebaja</dt><dd class="monto text-marca fs-5">{{ precio|pesos }}</dd>
-            <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad }}</dd>
+            <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad_de:l.id_producto }}</dd>
         </dl>
     </article>
     {% endfor %}

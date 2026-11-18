@@ -9,6 +9,12 @@ cambiar hoy un precio no reescribe los márgenes de ayer.
 Cada reporte se muestra también como gráfico (``negocio.graficos``, Hito 5:
 pandas y matplotlib), armado con estas mismas filas. Los tres reportes del
 club (DFD 9 bloque E) también están acá.
+
+Filtros de dominio (DD-103): además del período, un reporte puede
+acotarse a un rubro o a una caja, cuando el dato lo permite. Cada
+``Reporte`` dice cuáles admite (``filtros``) y su consulta los recibe como
+argumentos con nombre: ``rubro`` y ``caja`` son claves primarias ya
+validadas por la vista.
 """
 from dataclasses import dataclass
 from decimal import Decimal
@@ -23,7 +29,7 @@ from django.db.models import (
     Q,
     Sum,
 )
-from django.db.models.functions import Coalesce, TruncDate
+from django.db.models.functions import Coalesce
 
 from nucleo.exportar import ColumnaExportable as C
 
@@ -37,21 +43,42 @@ class Reporte:
     titulo: str
     icono: str
     permiso: str = 'ver_reportes'
+    filtros: tuple = ()
 
 
 REPORTES = (
-    Reporte('ventas_dia', 'Ventas por día', 'bi-calendar3'),
-    Reporte('productos', 'Productos y márgenes', 'bi-box-seam'),
-    Reporte('medios', 'Medios de pago', 'bi-credit-card'),
-    Reporte('vendedores', 'Por vendedor', 'bi-person-badge'),
-    Reporte('descuentos', 'Descuentos', 'bi-percent'),
-    Reporte('caja', 'Diferencias de caja', 'bi-cash-stack'),
-    Reporte('mermas', 'Mermas', 'bi-trash3'),
-    Reporte('stock', 'Stock valorizado', 'bi-boxes'),
+    Reporte('ventas_dia', 'Ventas por día', 'bi-calendar3', filtros=('caja',)),
+    Reporte('productos', 'Productos y márgenes', 'bi-box-seam', filtros=('rubro', 'caja')),
+    Reporte('medios', 'Medios de pago', 'bi-credit-card', filtros=('caja',)),
+    Reporte('vendedores', 'Por vendedor', 'bi-person-badge', filtros=('caja',)),
+    Reporte('descuentos', 'Descuentos', 'bi-percent', filtros=('caja',)),
+    Reporte('caja', 'Diferencias de caja', 'bi-cash-stack', filtros=('caja',)),
+    Reporte('mermas', 'Mermas', 'bi-trash3', filtros=('rubro',)),
+    Reporte('stock', 'Stock valorizado', 'bi-boxes', filtros=('rubro',)),
     Reporte('ranking', 'Ranking de clientes', 'bi-trophy'),
     Reporte('consumo', 'Consumo por cliente', 'bi-bag-heart'),
     Reporte('segmentos', 'Segmentación del club', 'bi-diagram-3'),
 )
+
+ETIQUETAS_DE_FILTRO = {'rubro': 'Rubro', 'caja': 'Caja'}
+
+
+def opciones_de_filtro():
+    """Los valores que ofrece cada filtro: ``{clave: [(pk, nombre)]}``.
+    Un rubro inactivo sigue: tiene historia que mirar."""
+    from stock.models import Rubro
+    from ventas.models import CajaRegistradora
+    return {
+        'rubro': list(Rubro.objects.filter(borrado_logico=False).order_by('nombre_rubro')
+                      .values_list('pk', 'nombre_rubro')),
+        'caja': list(CajaRegistradora.objects.filter(borrado_logico=False)
+                     .order_by('nombre_caja_registradora')
+                     .values_list('pk', 'nombre_caja_registradora')),
+    }
+
+
+def _filtrar(consulta, valor, ruta):
+    return consulta.filter(**{ruta: valor}) if valor else consulta
 
 
 def _margen(venta, costo):
@@ -60,9 +87,11 @@ def _margen(venta, costo):
     return ((venta - costo) / venta * 100).quantize(Decimal('0.1'))
 
 
-def ventas_por_dia(desde, hasta):
+def ventas_por_dia(desde, hasta, caja=None):
     from ventas.models import Venta
-    filas = (Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA')
+    ventas = _filtrar(Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA'),
+                      caja, 'id_turno_caja__id_caja_registradora')
+    filas = (ventas
              .values('fecha_venta').order_by('fecha_venta')
              .annotate(tickets=Count('pk'), total=Sum('total_venta'),
                        recargos=Sum('monto_recargo')))
@@ -78,10 +107,14 @@ def ventas_por_dia(desde, hasta):
                              sum((f[4] for f in datos), CERO)]
 
 
-def productos(desde, hasta):
+def productos(desde, hasta, rubro=None, caja=None):
     from ventas.models import DetalleVenta
     costo = ExpressionWrapper(F('cantidad') * F('costo_unitario'), output_field=DINERO)
-    filas = (DetalleVenta.objects.filter(id_venta__fecha_venta__range=(desde, hasta), id_venta__estado_venta='COMPLETADA')
+    renglones = DetalleVenta.objects.filter(id_venta__fecha_venta__range=(desde, hasta),
+                                            id_venta__estado_venta='COMPLETADA')
+    renglones = _filtrar(renglones, rubro, 'id_producto__id_rubro')
+    renglones = _filtrar(renglones, caja, 'id_venta__id_turno_caja__id_caja_registradora')
+    filas = (renglones
              .values('id_producto', 'descripcion_item')
              .annotate(cantidad_total=Sum('cantidad'), vendido=Sum('subtotal'),
                        costo_total=Sum(costo), descuentos=Sum('monto_descuento_linea'))
@@ -98,9 +131,12 @@ def productos(desde, hasta):
                              _margen(vendido, costo_total), sum((f[6] for f in datos), CERO)]
 
 
-def medios(desde, hasta):
+def medios(desde, hasta, caja=None):
     from ventas.models import PagoVenta
-    filas = (PagoVenta.objects.filter(id_venta__fecha_venta__range=(desde, hasta), id_venta__estado_venta='COMPLETADA')
+    pagos = _filtrar(PagoVenta.objects.filter(id_venta__fecha_venta__range=(desde, hasta),
+                                              id_venta__estado_venta='COMPLETADA'),
+                     caja, 'id_venta__id_turno_caja__id_caja_registradora')
+    filas = (pagos
              .values('id_medio_pago__nombre_medio_pago')
              .annotate(pagos=Count('pk'), cobrado=Sum('monto'), recargos=Sum('monto_recargo'))
              .order_by('-cobrado'))
@@ -113,9 +149,11 @@ def medios(desde, hasta):
                              sum((f[4] for f in datos), CERO)]
 
 
-def vendedores(desde, hasta):
+def vendedores(desde, hasta, caja=None):
     from ventas.models import Venta
-    filas = (Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA')
+    ventas = _filtrar(Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA'),
+                      caja, 'id_turno_caja__id_caja_registradora')
+    filas = (ventas
              .values('id_usuario__apellido', 'id_usuario__nombre')
              .annotate(tickets=Count('pk'), total=Sum('total_venta'))
              .order_by('-total'))
@@ -125,10 +163,12 @@ def vendedores(desde, hasta):
     return columnas, datos, None
 
 
-def descuentos(desde, hasta):
+def descuentos(desde, hasta, caja=None):
     from ventas.models import DetalleVenta, MotivoDescuento
-    filas = (DetalleVenta.objects
-             .filter(id_venta__fecha_venta__range=(desde, hasta), id_venta__estado_venta='COMPLETADA', monto_descuento_linea__gt=0)
+    renglones = _filtrar(DetalleVenta.objects.filter(
+        id_venta__fecha_venta__range=(desde, hasta), id_venta__estado_venta='COMPLETADA',
+        monto_descuento_linea__gt=0), caja, 'id_venta__id_turno_caja__id_caja_registradora')
+    filas = (renglones
              .values('motivo_descuento', 'id_usuario_autorizante__apellido',
                      'id_usuario_autorizante__nombre')
              .annotate(renglones=Count('pk'), monto=Sum('monto_descuento_linea'))
@@ -141,8 +181,9 @@ def descuentos(desde, hasta):
               f['renglones'], f['monto']] for f in filas]
     # El beneficio de descuento del club va en la cabecera (DD-18).
     from ventas.models import Venta
-    cabecera = (Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA',
-                                     monto_descuento__gt=0)
+    cabecera = (_filtrar(Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA',
+                                              monto_descuento__gt=0),
+                         caja, 'id_turno_caja__id_caja_registradora')
                 .values('id_beneficio__descripcion_beneficio')
                 .annotate(ventas=Count('pk'), monto=Sum('monto_descuento'))
                 .order_by('-monto'))
@@ -153,9 +194,10 @@ def descuentos(desde, hasta):
                              sum((f[3] for f in datos), CERO)]
 
 
-def caja(desde, hasta):
+def caja(desde, hasta, caja=None):
     from ventas.models import TurnoCaja
-    filas = (TurnoCaja.objects.filter(fecha_cierre__date__range=(desde, hasta))
+    filas = (_filtrar(TurnoCaja.objects.filter(fecha_cierre__date__range=(desde, hasta)),
+                      caja, 'id_caja_registradora')
              .values('id_usuario_cierre__apellido', 'id_usuario_cierre__nombre')
              .annotate(turnos=Count('pk'),
                        con_diferencia=Count('pk', filter=~Q(diferencia_caja=0)),
@@ -172,12 +214,13 @@ def caja(desde, hasta):
                              sum((f[5] for f in datos), CERO)]
 
 
-def mermas(desde, hasta):
+def mermas(desde, hasta, rubro=None):
     from stock.models import DetalleAjuste, MotivoAjuste
     valor = ExpressionWrapper(F('cantidad') * F('costo_unitario'), output_field=DINERO)
-    filas = (DetalleAjuste.objects
-             .filter(id_ajuste__tipo_ajuste='MERMA', id_ajuste__estado_ajuste='APROBADO',
-                     id_ajuste__fecha_resolucion__date__range=(desde, hasta))
+    filas = (_filtrar(DetalleAjuste.objects
+                      .filter(id_ajuste__tipo_ajuste='MERMA', id_ajuste__estado_ajuste='APROBADO',
+                              id_ajuste__fecha_resolucion__date__range=(desde, hasta)),
+                      rubro, 'id_producto__id_rubro')
              .values('id_ajuste__motivo', 'id_producto__nombre_producto')
              .annotate(cantidad_total=Sum('cantidad'), valor=Sum(valor))
              .order_by('-valor'))
@@ -188,12 +231,12 @@ def mermas(desde, hasta):
     return columnas, datos, ['Total', None, None, sum((f[3] for f in datos), CERO)]
 
 
-def stock_valorizado(desde=None, hasta=None):
+def stock_valorizado(desde=None, hasta=None, rubro=None):
     from stock.models import TIPOS_CON_STOCK, Producto
     valor = ExpressionWrapper(F('stock_actual') * F('precio_costo'), output_field=DINERO)
     venta = ExpressionWrapper(F('stock_actual') * F('precio_venta'), output_field=DINERO)
-    filas = (Producto.objects.filter(borrado_logico=False, tipo_producto__in=TIPOS_CON_STOCK,
-                                     stock_actual__gt=0)
+    filas = (_filtrar(Producto.objects.filter(borrado_logico=False, tipo_producto__in=TIPOS_CON_STOCK,
+                                              stock_actual__gt=0), rubro, 'id_rubro')
              .values('id_rubro__nombre_rubro')
              .annotate(productos=Count('pk'), al_costo=Sum(valor), a_la_venta=Sum(venta))
              .order_by('-al_costo'))

@@ -66,7 +66,7 @@
             </div>
             <div data-forma="DISTANCIA" class="d-none mb-3">
                 {{ form.remota }}
-                {% if aprobada %}<div class="aviso aviso-exito mb-2" id="remotaYaAprobada" data-id="{{ aprobada.pk }}"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>{{ aprobada.id_usuario_autorizante.nombre }} {{ aprobada.id_usuario_autorizante.apellido }} ya aprobó esta diferencia a distancia (pedido N° {{ aprobada.pk }}). Ya podés cerrar: no hace falta pedirla de nuevo.</span></div>{% endif %}
+                {% if aprobada %}<div class="aviso aviso-exito mb-2" id="remotaYaAprobada" data-id="{{ aprobada.pk|stringformat:"d" }}"><i class="bi bi-check-circle-fill" aria-hidden="true"></i><span>{{ aprobada.id_usuario_autorizante.nombre }} {{ aprobada.id_usuario_autorizante.apellido }} ya aprobó esta diferencia a distancia (pedido N° {{ aprobada.pk }}). Ya podés cerrar: no hace falta pedirla de nuevo.</span></div>{% endif %}
                 <button type="button" class="btn btn-secundario w-100" id="remotaPedir" data-url="{% url 'ventas:pedir_autorizacion_cierre' %}" data-estado="{% url 'ventas:estado_autorizacion' 0 %}"><i class="bi bi-phone me-1" aria-hidden="true"></i>Pedir autorización a distancia</button>
                 <div id="remota" class="d-none mt-2 aviso aviso-info" role="status" aria-live="polite">
                     <i class="bi bi-hourglass-split" id="remotaIcono" aria-hidden="true"></i>

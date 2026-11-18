@@ -1,5 +1,4 @@
 """Lo que una automatización puede pedirle al sistema (DD-84)."""
-import json
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
@@ -9,9 +8,16 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from api_servicio.autenticacion import de_servicio
+from nucleo import json_seguro
 
 TOPE = 200
 
+
+
+def _error(mensaje, estado):
+    """El error de la API de servicio: ``detail`` (lo que lee n8n) y ``error``
+    (lo que lee la web), con el mismo texto."""
+    return JsonResponse({'ok': False, 'detail': mensaje, 'error': mensaje}, status=estado)
 
 @de_servicio
 @require_GET
@@ -164,11 +170,11 @@ def foto_de_producto(request, pk):
 
     producto = get_object_or_404(Producto, pk=pk, borrado_logico=False)
     try:
-        datos = json.loads(request.body or b'{}')
-        url = datos.get('url') if isinstance(datos, dict) else None
+        datos = json_seguro.del_pedido(request)
+        url = json_seguro.campo(datos, 'url', str, 'La dirección de la foto ("url")')
         antes = producto.imagen
         imagenes.poner_url(producto, url)
-    except (ValueError, ValidationError) as error:
+    except (ValueError, TypeError, ValidationError) as error:
         mensaje = ' '.join(getattr(error, 'messages', ['El cuerpo tiene que ser {"url": "https://…"}.']))
         return JsonResponse({'detail': mensaje}, status=400)
     registrar_auditoria(
@@ -209,21 +215,25 @@ def enriquecer_producto(request, pk):
 
     producto = get_object_or_404(Producto.objects.select_related('id_marca'), pk=pk, borrado_logico=False)
     try:
-        datos = json.loads(request.body or b'{}')
-        if not isinstance(datos, dict) or not (datos.get('url') or datos.get('marca')):
+        datos = json_seguro.del_pedido(request)
+        url = json_seguro.campo(datos, 'url', str, 'La dirección de la foto ("url")')
+        marca = json_seguro.campo(datos, 'marca', str, 'La marca ("marca")')
+        if not (url or (marca or '').strip()):
             raise ValueError
+    except json_seguro.PedidoMalArmado as error:
+        return _error(' '.join(error.messages), 400)
     except ValueError:
-        return JsonResponse({'detail': 'El cuerpo lleva "url", "marca" o las dos.'}, status=400)
+        return _error('El cuerpo lleva "url", "marca" o las dos.', 400)
     antes = {'id_producto': producto.pk, 'imagen': producto.imagen, 'marca': producto.id_marca.nombre_marca}
     hecho, omitido = [], {}
     try:
         with transaction.atomic():
-            if datos.get('url'):
-                imagenes.poner_url(producto, datos['url'])
+            if url:
+                imagenes.poner_url(producto, url)
                 hecho.append('foto')
-            if str(datos.get('marca') or '').strip():
+            if (marca or '').strip():
                 from stock.reservados import asignar_marca
-                puesta, motivo = asignar_marca(producto, datos['marca'])
+                puesta, motivo = asignar_marca(producto, marca)
                 if puesta:
                     hecho.append('marca')
                 else:
@@ -256,14 +266,14 @@ def precargar_compra(request):
     from compras import facturas
 
     try:
-        datos = json.loads(request.body or b'{}')
-    except ValueError:
-        return JsonResponse({'detail': 'El cuerpo no es JSON.'}, status=400)
-    try:
+        datos = json_seguro.del_pedido(request)
         factura, resumen, nueva = facturas.recibir(
-            datos, origen=(datos or {}).get('origen'), remitente=(datos or {}).get('remitente'))
+            datos, origen=json_seguro.campo(datos, 'origen', str, 'El origen'),
+            remitente=json_seguro.campo(datos, 'remitente', str, 'El remitente'))
+    except (ValueError, TypeError, AttributeError):
+        return _error('La factura no tiene la forma esperada: revisá encabezado y renglones.', 400)
     except ValidationError as error:
-        return JsonResponse({'detail': ' '.join(error.messages)}, status=400)
+        return _error(' '.join(error.messages), 400)
     if nueva:
         from seguridad.servicios import instantanea, registrar_auditoria
         registrar_auditoria(request, 'ALTA', 'FACTURA RECIBIDA', instancia=factura,
@@ -271,7 +281,8 @@ def precargar_compra(request):
                             detalle=f'Llegó por {factura.get_origen_factura_display()} la factura '
                                     f'«{factura.resumen_factura}»: queda para revisar y confirmar.')
     ruta = reverse('compras:recepcion') + f'?factura={factura.pk}'
-    base = (getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').rstrip('/')
+    base = ((getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').strip()
+            or request.build_absolute_uri('/')).rstrip('/')
     return JsonResponse({**resumen, 'id': factura.pk, 'url': base + ruta, 'registrada': False,
                          'en_bandeja': True, 'ya_estaba': not nueva,
                          'pendientes': facturas.pendientes().count()},
@@ -292,14 +303,19 @@ def leer_factura(request):
     from compras import lector_facturas
 
     try:
-        datos = json.loads(request.body or b'{}')
-        contenido = base64.b64decode(str((datos or {}).get('archivo') or ''), validate=False)
+        datos = json_seguro.del_pedido(request)
+        archivo = json_seguro.campo(datos, 'archivo', str, 'El archivo ("archivo", en base64)', '')
+        tipo = json_seguro.campo(datos, 'tipo', str, 'El tipo del archivo ("tipo")')
+        nombre = json_seguro.campo(datos, 'nombre', str, 'El nombre del archivo ("nombre")')
+        contenido = base64.b64decode(archivo, validate=False)
+    except json_seguro.PedidoMalArmado as error:
+        return _error(' '.join(error.messages), 400)
     except (ValueError, binascii.Error):
-        return JsonResponse({'detail': 'El cuerpo no es JSON o el archivo no está en base64.'}, status=400)
+        return _error('El archivo no está en base64.', 400)
     try:
-        texto, qr = lector_facturas.texto_de(contenido, datos.get('tipo'), datos.get('nombre'))
+        texto, qr = lector_facturas.texto_de(contenido, tipo, nombre)
     except ValidationError as error:
-        return JsonResponse({'detail': ' '.join(error.messages)}, status=422)
+        return _error(' '.join(error.messages), 422)
     lectura = lector_facturas.interpretar(texto, qr)
     # Lo que la automatización necesita para el paso siguiente (pre-cargar).
     for clave in ('origen', 'remitente'):

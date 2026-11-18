@@ -505,6 +505,17 @@ class Producto(ConSaldosDerivados, Maestra):
             return 'No se vende'
         return self.precio_venta
 
+    CANTIDADES_DEL_PRODUCTO = ('stock_actual', 'stock_minimo')
+
+    def valor_legible(self, campo, valor):
+        """Para la ficha: el stock entero si va por unidad (6, no 6,000) y
+        con sus tres decimales si va por peso o es un insumo (0,350). El
+        contenido de la presentación queda como está."""
+        if campo in self.CANTIDADES_DEL_PRODUCTO and valor is not None:
+            from nucleo.templatetags.cafeto import cantidad_de
+            return cantidad_de(valor, self)
+        return valor
+
     @property
     def stock_para_mostrar(self):
         """El stock, salvo en lo que no lo tiene propio (elaborado, combo):
@@ -530,8 +541,8 @@ class Producto(ConSaldosDerivados, Maestra):
         vencido = self.stock_vencido
         if not vencido:
             return ''
-        from nucleo.templatetags.cafeto import cantidad
-        return f'Además, {cantidad(vencido)} vencida{"s" if vencido != 1 else ""} (no se venden: hay que sacarlas)'
+        from nucleo.templatetags.cafeto import cantidad_de
+        return f'Además, {cantidad_de(vencido, self)} vencida{"s" if vencido != 1 else ""} (no se venden: hay que sacarlas)'
 
     @property
     def tiene_stock_propio(self):

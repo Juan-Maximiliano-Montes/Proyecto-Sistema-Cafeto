@@ -438,7 +438,7 @@
         "parameters": {
           "httpMethod": "POST",
           "path": "cafeto-factura",
-          "responseMode": "lastNode",
+          "responseMode": "responseNode",
           "options": {}
         },
         "name": "Llega la factura ya leída",
@@ -446,6 +446,43 @@
         "typeVersion": 2,
         "position": [
           0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ String($env.CAFETO_N8N_TOKEN || '').length >= 32 }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              },
+              {
+                "leftValue": "={{ $json.headers.authorization || '' }}",
+                "rightValue": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "¿Trae el token de Cafeto?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          220,
           0
         ]
       },
@@ -462,7 +499,13 @@
               }
             ]
           },
-          "options": {},
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          },
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify($json.body) }}"
@@ -471,19 +514,19 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          220,
+          440,
           0
         ]
       },
       {
         "parameters": {
-          "jsCode": "const r = $input.first().json;\nreturn [{ json: { texto: 'Hay una compra pre-cargada para revisar (' + r.renglones_reconocidos + ' renglones reconocidos, ' + r.renglones_sin_reconocer.length + ' sin reconocer). Abrila, controlala contra la factura y confirmá: ' + r.url } }];"
+          "jsCode": "const r = $input.first().json;\nif (!r.en_bandeja) {\n  return [{ json: { ok: false, detail: r.detail || 'Cafeto no pudo pre-cargar la compra.', texto: 'Llegó una factura pero no se pudo pre-cargar la compra (' + (r.detail || 'sin detalle') + '). Cargala a mano en Compras.' } }];\n}\nreturn [{ json: { ok: true, url: r.url, texto: 'Hay una compra pre-cargada para revisar (' + r.renglones_reconocidos + ' renglones reconocidos, ' + (r.renglones_sin_reconocer || []).length + ' sin reconocer). Abrila, controlala contra la factura y confirmá: ' + r.url } }];"
         },
         "name": "Armar el aviso",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          440,
+          660,
           0
         ]
       },
@@ -509,7 +552,37 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          660,
+          880,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ ok: false, detail: 'Falta el token de Cafeto o no coincide.' }) }}",
+          "options": {
+            "responseCode": 401
+          }
+        },
+        "name": "Rechazar sin token",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          440,
+          220
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ ok: $('Armar el aviso').first().json.ok, detail: $('Armar el aviso').first().json.detail || '', url: $('Armar el aviso').first().json.url || '' }) }}",
+          "options": {}
+        },
+        "name": "Responder",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          1100,
           0
         ]
       }
@@ -519,7 +592,25 @@
         "main": [
           [
             {
+              "node": "¿Trae el token de Cafeto?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Trae el token de Cafeto?": {
+        "main": [
+          [
+            {
               "node": "Pre-cargar la compra",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Rechazar sin token",
               "type": "main",
               "index": 0
             }
@@ -542,6 +633,17 @@
           [
             {
               "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mandar por WhatsApp": {
+        "main": [
+          [
+            {
+              "node": "Responder",
               "type": "main",
               "index": 0
             }
@@ -808,12 +910,29 @@
                   "type": "string",
                   "operation": "equals"
                 }
+              },
+              {
+                "leftValue": "={{ String($env.WAHA_URL || '').startsWith('http') }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              },
+              {
+                "leftValue": "={{ String($json.body.payload.media && $json.body.payload.media.url || '') }}",
+                "rightValue": "={{ String($env.WAHA_URL || '').replace(/\\/+$/, '') + '/' }}",
+                "operator": {
+                  "type": "string",
+                  "operation": "startsWith"
+                }
               }
             ]
           },
           "options": {}
         },
-        "name": "¿Trae un adjunto y viene del número de compras?",
+        "name": "¿Trae un adjunto del WAHA propio y del número de compras?",
         "type": "n8n-nodes-base.if",
         "typeVersion": 2,
         "position": [
@@ -956,7 +1075,7 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          1100,
+          1320,
           120
         ]
       },
@@ -968,7 +1087,7 @@
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          1320,
+          1540,
           120
         ]
       },
@@ -994,7 +1113,36 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
-          1540,
+          1760,
+          120
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ Array.isArray($json.renglones) && $json.renglones.length > 0 && !$json.detail }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "¿Se pudo leer?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1100,
           120
         ]
       }
@@ -1004,23 +1152,11 @@
         "main": [
           [
             {
-              "node": "¿Trae un adjunto y viene del número de compras?",
+              "node": "¿Trae un adjunto del WAHA propio y del número de compras?",
               "type": "main",
               "index": 0
             }
           ]
-        ]
-      },
-      "¿Trae un adjunto y viene del número de compras?": {
-        "main": [
-          [
-            {
-              "node": "Bajar la foto o el PDF",
-              "type": "main",
-              "index": 0
-            }
-          ],
-          []
         ]
       },
       "Bajar la foto o el PDF": {
@@ -1071,7 +1207,7 @@
         "main": [
           [
             {
-              "node": "Dejarla en la bandeja de Compras",
+              "node": "¿Se pudo leer?",
               "type": "main",
               "index": 0
             }
@@ -1094,6 +1230,36 @@
           [
             {
               "node": "Avisar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Trae un adjunto del WAHA propio y del número de compras?": {
+        "main": [
+          [
+            {
+              "node": "Bajar la foto o el PDF",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          []
+        ]
+      },
+      "¿Se pudo leer?": {
+        "main": [
+          [
+            {
+              "node": "Dejarla en la bandeja de Compras",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Armar el aviso",
               "type": "main",
               "index": 0
             }

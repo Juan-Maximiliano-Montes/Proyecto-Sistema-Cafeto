@@ -21,6 +21,7 @@ NO escriben en LOG_AUDITORIA —sellan ``fecha_modificacion`` y
 auditoría la escribe la aplicación, acá, y no se duplica en ningún lado.
 """
 import hashlib
+import ipaddress
 import secrets
 import uuid
 from datetime import timedelta
@@ -52,19 +53,39 @@ RESOLUCION_ULTIMO_ACCESO = timedelta(seconds=60)
 # ---------------------------------------------------------------------------
 #  SESIONES
 # ---------------------------------------------------------------------------
+def _ip_o_nada(texto):
+    try:
+        return str(ipaddress.ip_address((texto or '').strip()))
+    except ValueError:
+        return None
+
+
 def ip_del_request(request):
     """IP del cliente.
 
-    ``X-Forwarded-For`` sólo se lee si el sistema está detrás de un proxy
-    propio (``CONFIAR_EN_PROXY``). Si no, cualquiera podría escribir ese
-    encabezado y elegir la IP con la que queda registrado —y esquivar el
-    bloqueo por IP cambiándola en cada intento—.
+    Los encabezados del proxy sólo se leen si el sistema está detrás de uno
+    propio (``CONFIAR_EN_PROXY``). Si no, cualquiera podría escribirlos y
+    elegir la IP con la que queda registrado —y esquivar el bloqueo por IP
+    cambiándola en cada intento—.
+
+    Con el proxy (DD-103): primero ``CF-Connecting-IP``, que pone
+    Cloudflare; si no viene, ``X-Forwarded-For`` leído desde la DERECHA,
+    saltando ``PROXIES_DE_CONFIANZA`` - 1 proxies propios: cada proxy
+    agrega al final la IP de quien le habló, y lo de la izquierda lo pudo
+    escribir el cliente. Lo que no es una IP no se usa.
     """
     if getattr(settings, 'CONFIAR_EN_PROXY', False):
-        reenviada = request.META.get('HTTP_X_FORWARDED_FOR', '')
-        if reenviada:
-            return reenviada.split(',')[0].strip()[:45]
-    return (request.META.get('REMOTE_ADDR') or '0.0.0.0')[:45]
+        encabezado = getattr(settings, 'ENCABEZADO_IP_CLIENTE', 'HTTP_CF_CONNECTING_IP')
+        ip = _ip_o_nada(request.META.get(encabezado)) if encabezado else None
+        if ip:
+            return ip[:45]
+        saltos = [parte for parte in request.META.get('HTTP_X_FORWARDED_FOR', '').split(',') if parte.strip()]
+        confianza = max(1, int(getattr(settings, 'PROXIES_DE_CONFIANZA', 1)))
+        if len(saltos) >= confianza:
+            ip = _ip_o_nada(saltos[-confianza])
+            if ip:
+                return ip[:45]
+    return (_ip_o_nada(request.META.get('REMOTE_ADDR')) or '0.0.0.0')[:45]
 
 
 def _hash(token):

@@ -18,10 +18,9 @@ unidad, descuento por encima del tope) vuelven con ``ok: false`` y el texto
 para mostrar en rojo. Un error del programa vuelve con 500 y la pantalla
 dice que no se pudo, sin inventar un ticket.
 """
-import json
 import uuid
 from stock.models import MARCA_GENERICA
-from nucleo.validaciones import sanear_codigo
+from nucleo.validaciones import id_valido, sanear_codigo
 from datetime import timedelta
 from decimal import Decimal
 
@@ -50,6 +49,7 @@ from ventas import puesto
 from ventas import servicios as ventas
 from ventas.models import MedioPago, MotivoDescuento, Venta
 from nucleo.templatetags.cafeto import pesos
+from nucleo import json_seguro
 
 POR_PAGINA = 24
 MAXIMO_DE_RENGLONES = 60
@@ -61,6 +61,13 @@ def _error(texto, estado=200):
 
 def _texto(error):
     return ' '.join(getattr(error, 'messages', [str(error)]))
+
+
+def _error_de(error):
+    """Un pedido mal armado (que la pantalla nunca manda) es 400; un aviso de
+    negocio sigue en 200, que es lo que el mostrador muestra al lado del
+    ticket en lugar de «sin conexión»."""
+    return _error(_texto(error), 400 if isinstance(error, json_seguro.PedidoMalArmado) else 200)
 
 
 def _vencidos_de(productos):
@@ -178,10 +185,7 @@ def catalogo(request):
             return JsonResponse({'productos': [_producto_json(p, vencidos) for p in vendidos],
                                  'hay_mas': False, 'pagina': 1})
         # Local recién abierto, sin ventas todavía: se muestra el catálogo.
-    try:
-        pagina = max(1, int(request.GET.get('pagina', 1)))
-    except ValueError:
-        pagina = 1
+    pagina = id_valido(request.GET.get('pagina')) or 1
     desde = (pagina - 1) * POR_PAGINA
     tanda = list(productos[desde:desde + POR_PAGINA + 1])
     vencidos = _vencidos_de(tanda[:POR_PAGINA])
@@ -197,20 +201,14 @@ def catalogo(request):
 # ===========================================================================
 def _leer_pedido(request):
     """El JSON del navegador -> (items, pagos, datos). Valida forma, no reglas."""
-    try:
-        datos = json.loads(request.body or b'{}')
-    except (ValueError, UnicodeDecodeError):
-        raise ValidationError('El pedido llegó mal armado. Recargá la página.')
-    if not isinstance(datos, dict):
-        raise ValidationError('El pedido llegó mal armado. Recargá la página.')
-    return leer_datos(datos)
+    return leer_datos(json_seguro.del_pedido(request))
 
 
 def leer_datos(datos):
     """Un pedido ya decodificado -> (items, pagos, datos). Lo usa también la
     autorización a distancia, que guarda el ticket y lo vuelve a cotizar."""
-    renglones = datos.get('items') or []
-    if not isinstance(renglones, list) or len(renglones) > MAXIMO_DE_RENGLONES:
+    renglones = json_seguro.campo(datos, 'items', list, 'Los renglones del ticket', [])
+    if len(renglones) > MAXIMO_DE_RENGLONES:
         raise ValidationError('El ticket tiene demasiados renglones.')
 
     ids = {r.get('producto') for r in renglones if isinstance(r, dict)}
@@ -232,14 +230,15 @@ def leer_datos(datos):
             raise ValidationError('Uno de los descuentos no es un número (o tiene más de 2 decimales).')
         items.append(ventas.Item(
             productos[renglon['producto']], cantidad, descuento,
-            renglon.get('motivo') or None,
-            (renglon.get('detalle') or '')[:120] or None))
+            json_seguro.campo(renglon, 'motivo', str, 'El motivo del descuento'),
+            (json_seguro.campo(renglon, 'detalle', str, 'El detalle del renglón', ''))[:120] or None))
 
     pagos = []
+    lista_de_pagos = json_seguro.campo(datos, 'pagos', list, 'Los pagos', [])
     medios = MedioPago.objects.in_bulk(
-        [p.get('medio') for p in (datos.get('pagos') or [])
-         if isinstance(p, dict) and isinstance(p.get('medio'), int)])
-    for pago in datos.get('pagos') or []:
+        [id_valido(p.get('medio')) for p in lista_de_pagos
+         if isinstance(p, dict) and isinstance(p.get('medio'), int) and id_valido(p.get('medio'))])
+    for pago in lista_de_pagos:
         if not isinstance(pago, dict) or pago.get('medio') not in medios:
             raise ValidationError('Uno de los medios de pago no existe.')
         monto = pago.get('monto')
@@ -260,7 +259,7 @@ def _vence_fiado(datos):
     """La fecha en que el cliente dijo que paga lo fiado (o None)."""
     from datetime import date
 
-    texto = datos.get('vence_fiado')
+    texto = json_seguro.campo(datos, 'vence_fiado', str, 'La fecha en que va a pagar')
     if not texto:
         return None
     try:
@@ -278,16 +277,16 @@ def _fidelizacion(datos):
     from fidelizacion.models import Cliente
 
     cliente = None
-    id_cliente = datos.get('cliente')
-    if id_cliente not in (None, ''):
-        if not isinstance(id_cliente, int):
+    id_cliente = json_seguro.campo(datos, 'cliente', int, 'El cliente del ticket')
+    if id_cliente is not None:
+        if id_valido(id_cliente) is None:
             raise ValidationError('El cliente del ticket no es válido.')
         cliente = Cliente.objects.filter(pk=id_cliente).first()
         if cliente is None:
             raise ValidationError('El cliente del ticket ya no existe.')
-    beneficios = datos.get('beneficios') or []
-    if (not isinstance(beneficios, list) or len(beneficios) > 10
-            or not all(isinstance(b, int) for b in beneficios)):
+    beneficios = json_seguro.campo(datos, 'beneficios', list, 'Los beneficios del ticket', [])
+    if (len(beneficios) > 10
+            or not all(isinstance(b, int) and not isinstance(b, bool) for b in beneficios)):
         raise ValidationError('Los beneficios del ticket no son válidos.')
     return cliente, beneficios
 
@@ -348,11 +347,12 @@ def _autorizante(request, datos, para, auditar=True, huella=None, bloquear=False
                                               bloquear=bloquear)
         request.solicitud_remota = solicitud
         return solicitud.id_usuario_autorizante
-    autoriza = datos.get('autoriza') or {}
-    if not isinstance(autoriza, dict) or not autoriza.get('usuario'):
+    autoriza = json_seguro.campo(datos, 'autoriza', dict, 'La autorización', {})
+    usuario = json_seguro.campo(autoriza, 'usuario', str, 'El usuario de quien autoriza')
+    if not usuario:
         return None
     return autorizar_con_clave(
-        request, autoriza.get('usuario'), autoriza.get('clave'), 'vender',
+        request, usuario, json_seguro.campo(autoriza, 'clave', str, 'La clave de quien autoriza'), 'vender',
         distinto_de=request.usuario_actual, para=para, auditar=auditar)
 
 
@@ -407,7 +407,7 @@ def _cotizacion_json(cotizacion):
 def _producto_para_ajuste(datos):
     """El producto y la cantidad de un ajuste desde el mostrador, con sus
     controles: lo usan el ajuste y el pedido de autorización a distancia."""
-    producto = Producto.objects.filter(pk=datos.get('producto') or 0, borrado_logico=False).first()
+    producto = Producto.objects.filter(pk=id_valido(datos.get('producto')), borrado_logico=False).first()
     cantidad = leer_numero(str(datos.get('cantidad') or ''), 3)
     if producto is None or not producto.tiene_stock_propio:
         raise ValidationError('Ese producto no lleva stock.')
@@ -437,22 +437,23 @@ def ajuste_express(request):
     from stock.models import MotivoAjuste
 
     try:
-        datos = json.loads(request.body or b'{}')
+        datos = json_seguro.del_pedido(request)
         producto, cantidad = _producto_para_ajuste(datos)
         operador = request.usuario_actual
         solicitud = None
         if stock.puede_aprobar_lo_propio(operador):
             autorizante = operador
-        elif datos.get('remota'):
+        elif json_seguro.campo(datos, 'remota', (int, str), 'La autorización a distancia'):
             # Lo aprobó a distancia quien puede aprobar ajustes (DD-94).
             from ventas import a_distancia
             solicitud = a_distancia.aprobada_para(
                 datos.get('remota'), operador, a_distancia.huella_ajuste(producto, cantidad), bloquear=True)
             autorizante = solicitud.id_usuario_autorizante
         else:
-            autoriza = datos.get('autoriza') or {}
+            autoriza = json_seguro.campo(datos, 'autoriza', dict, 'La autorización', {})
             autorizante = autorizar_con_clave(
-                request, autoriza.get('usuario'), autoriza.get('clave'), 'autorizar_ajustes',
+                request, json_seguro.campo(autoriza, 'usuario', str, 'El usuario de quien autoriza'),
+                json_seguro.campo(autoriza, 'clave', str, 'La clave de quien autoriza'), 'autorizar_ajustes',
                 distinto_de=operador, para=f'ajustar el stock de {producto} desde el mostrador')
         with transaction.atomic():
             conteo = stock.iniciar_conteo(operador, MotivoAjuste.DIFERENCIA_CONTEO)
@@ -471,10 +472,10 @@ def ajuste_express(request):
                     + (f' a distancia ({solicitud.get_via_aprobacion_display().lower()}, pedido N° {solicitud.pk})'
                        if solicitud is not None else '') + '.')
         return JsonResponse({'ok': True, 'stock': str(cantidad)})
-    except (ValueError, TypeError):
-        return JsonResponse({'ok': False, 'error': 'No se entendió el pedido.'})
+    except (ValueError, TypeError, AttributeError):
+        return JsonResponse({'ok': False, 'error': 'No se entendió el pedido.'}, status=400)
     except ValidationError as error:
-        return JsonResponse({'ok': False, 'error': ' '.join(error.messages)})
+        return _error_de(error)
 
 
 @require_POST
@@ -493,7 +494,7 @@ def cotizar(request):
                                     autorizante=autorizante, cliente=cliente,
                                     beneficios=beneficios)
     except ValidationError as error:
-        return _error(_texto(error))
+        return _error_de(error)
     return JsonResponse(_cotizacion_json(cotizacion))
 
 
@@ -523,7 +524,7 @@ def cobrar(request):
             autorizante=autorizante, cliente=cliente, beneficios=beneficios,
             vence_fiado=_vence_fiado(datos))
     except ValidationError as error:
-        return _error(_texto(error))
+        return _error_de(error)
     remota = getattr(request, 'solicitud_remota', None)
     if cotizacion is not None and remota is not None:
         from ventas import a_distancia
@@ -631,11 +632,9 @@ def alta_cliente(request):
     from fidelizacion.forms import ClienteForm
 
     try:
-        datos = json.loads(request.body or b'{}')
-    except (ValueError, UnicodeDecodeError):
-        return _error('El pedido llegó mal armado. Recargá la página.')
-    if not isinstance(datos, dict):
-        return _error('El pedido llegó mal armado. Recargá la página.')
+        datos = json_seguro.del_pedido(request)
+    except json_seguro.PedidoMalArmado as error:
+        return _error_de(error)
     campos = ('apellido_cliente', 'nombre_cliente', 'telefono_cliente',
               'dni_cliente', 'email_cliente', 'fecha_nacimiento')
     formulario = ClienteForm({c: str(datos.get(c) or '')[:120] for c in campos})

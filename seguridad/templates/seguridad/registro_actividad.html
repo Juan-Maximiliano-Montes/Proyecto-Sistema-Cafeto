@@ -122,7 +122,7 @@ editar estaría prometiendo algo imposible.
                 <td><span class="insignia insignia-neutra">{{ registro.modulo_afectado }}</span></td>
                 <td class="text-center">
                     <button type="button" class="btn btn-sm btn-secundario boton-ver-actividad"
-                            data-remoto="{% url 'seguridad:actividad' %}{{ registro.pk }}/"
+                            data-remoto="{% url 'seguridad:actividad' %}{{ registro.pk|stringformat:"d" }}/"
                             data-modal="#modalActividad" data-titulo="{{ registro.operacion_realizada }}"
                             title="Ver detalle">
                         <i class="bi bi-eye"></i>

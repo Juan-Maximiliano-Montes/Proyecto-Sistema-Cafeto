@@ -87,9 +87,8 @@ class SeguridadMiddleware:
         if usuario is None:
             request.session.flush()
             if _espera_json(request):
-                return JsonResponse(
-                    {'error': aviso or 'Tenés que iniciar sesión.'},
-                    status=401)
+                texto = aviso or 'Tenés que iniciar sesión.'
+                return JsonResponse({'ok': False, 'detail': texto, 'error': texto}, status=401)
             if aviso:
                 messages.warning(request, aviso)
             return redirect('seguridad:login')

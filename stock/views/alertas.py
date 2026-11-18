@@ -20,6 +20,7 @@ from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import registrar_auditoria
 from stock import servicios
 from stock.models import Lote, Producto
+from nucleo.validaciones import id_valido
 
 PESTANIAS = (
     ('faltantes', 'Bajo el mínimo', 'bi-graph-down-arrow'),
@@ -129,9 +130,14 @@ def etiquetas_de_oferta(request):
                  'registrar_compra', 'gestionar_ordenes')
 def lotes_de_producto(request):
     """Los lotes con stock de un producto, para elegir en un renglón."""
-    producto = Producto.objects.filter(pk=request.GET.get('producto') or 0).first()
+    pk = id_valido(request.GET.get('producto'))
+    if pk is None:
+        return JsonResponse({'ok': False, 'error': 'El producto pedido no es un número de producto válido.',
+                             'lotes': [], 'controla': False}, status=400)
+    producto = Producto.objects.filter(pk=pk).first()
     if producto is None:
-        return JsonResponse({'lotes': [], 'controla': False})
+        return JsonResponse({'ok': False, 'error': 'Ese producto no existe.', 'lotes': [], 'controla': False},
+                            status=404)
     # Lo que necesita un renglón de compra o de ajuste para dibujarse.
     hoy = timezone.localdate()
     lotes = Lote.objects.filter(id_producto=producto, stock_lote__gt=0).order_by(
@@ -171,8 +177,8 @@ def etiquetas_de_gondola(request):
     productos = (Producto.objects.filter(borrado_logico=False, tipo_producto__in=TIPOS_VENDIBLES)
                  .select_related('id_marca', 'id_rubro').order_by('id_rubro__nombre_rubro', 'nombre_producto'))
     elegido = any(filtro.get(clave) for clave in ('rubro', 'cambios', 'q'))
-    if filtro.get('rubro', '').isdigit():
-        productos = productos.filter(id_rubro_id=filtro['rubro'])
+    if id_valido(filtro.get('rubro')):
+        productos = productos.filter(id_rubro_id=id_valido(filtro['rubro']))
     if filtro.get('cambios') in ('1', '7'):
         desde = timezone.localdate() - timedelta(days=int(filtro['cambios']) - 1)
         productos = productos.filter(fecha_modificacion__date__gte=desde)

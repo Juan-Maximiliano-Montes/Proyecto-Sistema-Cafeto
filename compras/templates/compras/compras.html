@@ -29,7 +29,7 @@
         <li class="d-flex flex-wrap align-items-center gap-2 py-2{% if not forloop.first %} border-top{% endif %}">
             <span class="insignia insignia-neutra">{{ f.get_origen_factura_display }}</span>
             <span class="me-auto"><strong>{{ f.resumen_factura }}</strong><span class="d-block small text-secondary">Llegó el {{ f.fecha_recepcion|date:"d/m/Y H:i" }}{% if f.remitente %} · de {{ f.remitente }}{% endif %}</span></span>
-            <a href="{% url 'compras:recepcion' %}?factura={{ f.pk }}" class="btn btn-sm btn-primary">Revisar y confirmar</a>
+            <a href="{% url 'compras:recepcion' %}?factura={{ f.pk|stringformat:"d" }}" class="btn btn-sm btn-primary">Revisar y confirmar</a>
             <form method="post" action="{% url 'compras:descartar_factura' f.pk %}" data-titulo="¿Descartamos esta factura?" data-aceptar="Sí, descartar" data-confirmar="No se carga como compra y deja de aparecer acá. Queda registrado quién la descartó.">{% csrf_token %}<button type="submit" class="btn btn-sm btn-secundario">Descartar</button></form>
         </li>
     {% endfor %}
@@ -41,7 +41,7 @@
     <input type="hidden" name="pagina" value="1">
     <select name="proveedor" class="form-select" aria-label="Proveedor" data-auto-enviar>
         <option value="">Proveedor: todos</option>
-        {% for p in proveedores %}<option value="{{ p.pk }}"{% if filtro.proveedor == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+        {% for p in proveedores %}<option value="{{ p.pk|stringformat:"d" }}"{% if filtro.proveedor == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
     </select>
     <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
         <option value="">Estado: todos</option>

@@ -6,7 +6,6 @@ lo controle contra el papel y lo guarde. Las altas en un clic (proveedor y
 producto) pasan por las mismas validaciones que el alta común y quedan en el
 Registro de Actividad.
 """
-import json
 from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib import messages
@@ -21,6 +20,8 @@ from nucleo.formularios import leer_numero
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock.models import Producto, Rubro
+from nucleo.validaciones import id_valido
+from nucleo import json_seguro
 
 UTILIDAD_SUGERIDA = Decimal('0.40')
 
@@ -29,12 +30,8 @@ def _texto(error):
     return ' '.join(getattr(error, 'messages', [str(error)]))
 
 
-def _cuerpo(request):
-    try:
-        datos = json.loads(request.body or b'{}')
-    except (ValueError, UnicodeDecodeError):
-        return {}
-    return datos if isinstance(datos, dict) else {}
+def _mal_armado(error):
+    return JsonResponse({'ok': False, 'error': _texto(error)}, status=400)
 
 
 def para_escanear(borrador):
@@ -88,7 +85,10 @@ def escanear(request):
 @requiere_permiso('crear_proveedor', redirigir_a='compras:recepcion')
 def alta_proveedor(request):
     """El proveedor leído de la factura, dado de alta en un clic."""
-    datos = _cuerpo(request)
+    try:
+        datos = json_seguro.del_pedido(request)
+    except json_seguro.PedidoMalArmado as error:
+        return _mal_armado(error)
     proveedor = Proveedor(nombre_proveedor=str(datos.get('nombre') or '').strip()[:50],
                           cuit_proveedor=str(datos.get('cuit') or '').strip() or None,
                           tipo_proveedor=TipoProveedor.MERCADERIA)
@@ -124,22 +124,25 @@ def alta_producto(request):
     factura. Pasa por el mismo formulario que el alta de productos."""
     from stock.forms import ProductoForm
 
-    datos = _cuerpo(request)
+    try:
+        datos = json_seguro.del_pedido(request)
+    except json_seguro.PedidoMalArmado as error:
+        return _mal_armado(error)
     costo = leer_numero(str(datos.get('costo') or ''), 2)
     precio = leer_numero(str(datos.get('precio_venta') or ''), 2)
     if costo is None or costo < 0:
         return JsonResponse({'ok': False, 'error': 'El costo leído no es un número.'})
     if precio is None or precio <= 0:
         precio = (costo * (1 + UTILIDAD_SUGERIDA)).quantize(Decimal('0.01'), ROUND_HALF_UP)
-    proveedor = str(datos.get('proveedor') or '')
+    proveedor = id_valido(datos.get('proveedor'))
     formulario = ProductoForm({
         'codigo_barras': str(datos.get('codigo') or ''), 'nombre_producto': str(datos.get('nombre') or '')[:100],
-        'id_rubro': str(datos.get('rubro') or rubro_sugerido(proveedor if proveedor.isdigit() else None) or ''),
+        'id_rubro': str(datos.get('rubro') or rubro_sugerido(proveedor) or ''),
         'precio_costo': str(costo), 'precio_venta': str(precio),
         # IVA general en Argentina; se corrige en la ficha si es 10,5 o exento.
         'alicuota_iva': '21.0',
         'tipo_producto': 'REVENTA', 'contenido': '1', 'unidad_medida': 'UNIDAD', 'stock_minimo': '0',
-        'id_proveedor': proveedor if proveedor.isdigit() else '',
+        'id_proveedor': str(proveedor or ''),
         'controla_vencimiento': 'on' if datos.get('controla') else '',
     })
     if not formulario.is_valid():

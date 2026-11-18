@@ -241,10 +241,14 @@ class ProveedorHabitualTest(Base):
         from compras import habitual
         from compras.models import Compra, Egreso
         from django.utils import timezone
+        import warnings
         viejo = timezone.localdate() - timedelta(days=200)
-        self.assertNotIn(self.prov, habitual.inactivos())
+        with warnings.catch_warnings():
+            # DD-103: la fecha de alta se compara con fecha y hora con zona.
+            warnings.simplefilter('error', RuntimeWarning)
+            self.assertNotIn(self.prov, list(habitual.inactivos()))
         Compra.objects.update(fecha_compra=viejo, estado_compra='PAGADA')
-        Proveedor.objects.update(fecha_alta=viejo)
+        Proveedor.objects.update(fecha_alta=timezone.now() - timedelta(days=200))
         self.assertIn(self.prov, habitual.inactivos())
         self.assertEqual(habitual.reasignar_los_de_inactivos(), [])       # tiene stock y nadie más se lo vendió
         self.alfajor.__class__.objects.filter(pk=self.alfajor.pk).update(stock_actual=0)

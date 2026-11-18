@@ -34,7 +34,7 @@
     <div class="buscador"><i class="bi bi-search"></i><input type="search" name="q" value="{{ filtro.q }}" class="form-control" placeholder="Nombre, marca o código" aria-label="Buscar productos"></div>
     <select name="rubro" class="form-select" aria-label="Rubro" data-auto-enviar>
         <option value="">Rubro: elegí</option>
-        {% for r in rubros %}<option value="{{ r.pk }}"{% if filtro.rubro == r.pk|stringformat:'s' %} selected{% endif %}>{{ r }}</option>{% endfor %}
+        {% for r in rubros %}<option value="{{ r.pk|stringformat:"d" }}"{% if filtro.rubro == r.pk|stringformat:'s' %} selected{% endif %}>{{ r }}</option>{% endfor %}
     </select>
     <select name="cambios" class="form-select" aria-label="Modificados" data-auto-enviar>
         <option value="">Modificados: cualquier fecha</option>

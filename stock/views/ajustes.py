@@ -33,6 +33,7 @@ from stock.models import (
     Producto,
     TipoAjuste,
 )
+from nucleo.validaciones import id_valido
 
 PERMISOS_DE_AJUSTES = ('contar_stock', 'registrar_merma', 'registrar_traspaso',
                        'autorizar_ajustes')
@@ -56,18 +57,17 @@ def _conteo_abierto():
 
 
 def _producto(texto):
-    return Producto.objects.filter(pk=texto if str(texto).isdigit() else 0,
-                                   borrado_logico=False).first()
+    return Producto.objects.filter(pk=id_valido(texto), borrado_logico=False).first()
 
 
 def _lote(producto, texto):
     """El lote elegido; si no se eligió y el producto va por lote, el que
     vence primero (FEFO), que es el que se está usando en la góndola."""
-    if not texto or not str(texto).isdigit():
+    if not id_valido(texto):
         if producto.controla_vencimiento:
             return servicios.lotes_fefo(producto).first()
         return None
-    lote = Lote.objects.filter(pk=texto, id_producto=producto).first()
+    lote = Lote.objects.filter(pk=id_valido(texto), id_producto=producto).first()
     if lote is None:
         raise ValidationError(f'Ese lote no es de "{producto}".')
     return lote
@@ -261,7 +261,7 @@ def _alta_rapida(request):
         raise ValidationError('Escribí cuánto contaste.')
     producto = Producto(
         codigo_barras=datos.get('codigo'), nombre_producto=datos.get('nombre', ''),
-        id_rubro=Rubro.objects.filter(pk=datos.get('rubro') or 0, borrado_logico=False).first(),
+        id_rubro=Rubro.objects.filter(pk=id_valido(datos.get('rubro')), borrado_logico=False).first(),
         id_marca=marca_generica(), id_proveedor=proveedor_general(),
         precio_venta=leer_numero(datos.get('precio'), 2) or 0,
         precio_costo=leer_numero(datos.get('costo'), 2) or 0)

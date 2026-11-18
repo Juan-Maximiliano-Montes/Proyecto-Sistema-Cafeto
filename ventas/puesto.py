@@ -14,6 +14,7 @@ tenga.
 from seguridad.servicios import sesion_del_request
 from ventas import caja as servicio_caja
 from ventas.models import CajaRegistradora
+from nucleo.validaciones import id_valido
 
 COOKIE = 'cafeto_puesto'
 SAL = 'ventas.puesto'
@@ -33,9 +34,9 @@ def caja_de(request):
     elif sesion is not None:
         recordada = request.get_signed_cookie(COOKIE, default=None, salt=SAL,
                                               max_age=DURACION_COOKIE)
-        if recordada and str(recordada).isdigit():
+        if id_valido(recordada):
             caja = (CajaRegistradora.objects
-                    .filter(pk=int(recordada), borrado_logico=False).first())
+                    .filter(pk=id_valido(recordada), borrado_logico=False).first())
             if caja is not None:
                 sesion.id_caja_registradora = caja
                 sesion.save(update_fields=['id_caja_registradora'])

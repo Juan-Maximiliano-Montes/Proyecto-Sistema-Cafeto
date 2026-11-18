@@ -13,6 +13,7 @@ from seguridad.servicios import fotos, registrar_auditoria
 from stock import precios
 from stock.models import Marca, Producto, Rubro
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
 
 VISTA_PREVIA = 300
 
@@ -20,7 +21,7 @@ VISTA_PREVIA = 300
 def _filtros(datos):
     def buscar(modelo, clave):
         valor = datos.get(clave, '')
-        return modelo.objects.filter(pk=valor).first() if valor.isdigit() else None
+        return modelo.objects.filter(pk=id_valido(valor)).first() if id_valido(valor) else None
     return {'rubro': buscar(Rubro, 'rubro'), 'marca': buscar(Marca, 'marca'),
             'proveedor': buscar(Proveedor, 'proveedor')}
 

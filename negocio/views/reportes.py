@@ -1,6 +1,7 @@
 """Reportes: elegir el período y mirar, o bajarlo a Excel/PDF."""
 import logging
 from datetime import date, timedelta
+from urllib.parse import urlencode
 
 from django.shortcuts import render
 from django.utils import timezone
@@ -8,8 +9,10 @@ from django.utils import timezone
 from negocio.graficos import estilo_pedido, estilos_de, opciones_de_estilo
 from negocio.graficos import grafico as armar_grafico
 from negocio import tablero as tablero_
-from negocio.reportes import CONSULTAS, REPORTES
+from negocio.reportes import CONSULTAS, ETIQUETAS_DE_FILTRO, REPORTES, opciones_de_filtro
+from nucleo import contexto
 from nucleo.exportar import exportar
+from nucleo.validaciones import id_valido
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
 
@@ -45,6 +48,48 @@ def _reporte(request):
     return next((r for r in REPORTES if r.clave == clave), REPORTES[0])
 
 
+class Filtros:
+    """Rubro y caja elegidos (DD-103). Sólo vale un valor que el filtro
+    ofrece; los que no aplican al reporte se conservan en los enlaces (al
+    volver a un reporte que los usa, siguen puestos) pero no filtran."""
+
+    def __init__(self, request, reporte):
+        self.opciones = opciones_de_filtro()
+        self.elegidos = {}
+        for clave, opciones in self.opciones.items():
+            pk = id_valido(request.GET.get(clave))
+            nombre = dict(opciones).get(pk)
+            if nombre is not None:
+                self.elegidos[clave] = (pk, nombre)
+        self.reporte = reporte
+
+    @property
+    def aplicados(self):
+        return {clave: self.elegidos[clave][0] for clave in self.reporte.filtros if clave in self.elegidos}
+
+    @property
+    def consulta(self):
+        """Para sumar a un enlace: ``&rubro=3&caja=1`` (o vacío)."""
+        pares = {clave: pk for clave, (pk, _nombre) in self.elegidos.items()}
+        return f'&{urlencode(pares)}' if pares else ''
+
+    @property
+    def disponibles(self):
+        return [{'clave': clave, 'etiqueta': ETIQUETAS_DE_FILTRO[clave], 'opciones': self.opciones[clave],
+                 'elegido': self.elegidos.get(clave, (None, ''))[0]}
+                for clave in self.reporte.filtros]
+
+    @property
+    def descripcion(self):
+        partes = [f'{ETIQUETAS_DE_FILTRO[clave]}: {self.elegidos[clave][1]}'
+                  for clave in self.reporte.filtros if clave in self.elegidos]
+        return ' · '.join(partes) if partes else 'Sin filtros'
+
+
+def _consultar(reporte, desde, hasta, filtros):
+    return CONSULTAS[reporte.clave](desde, hasta, **filtros.aplicados)
+
+
 def _grafico(reporte, columnas, filas, desde, hasta, estilo):
     """El SVG, o None. Un gráfico que no se puede dibujar no tumba el
     reporte: la tabla se sigue viendo y el error queda en el log."""
@@ -59,15 +104,16 @@ def _grafico(reporte, columnas, filas, desde, hasta, estilo):
 def reportes(request):
     reporte = _reporte(request)
     desde, hasta = _periodo(request)
-    columnas, filas, totales = CONSULTAS[reporte.clave](desde, hasta)
+    filtros = Filtros(request, reporte)
+    columnas, filas, totales = _consultar(reporte, desde, hasta, filtros)
     filas = list(filas)
     permitidos = estilos_de(reporte.clave)
     estilo = estilo_pedido(request, permitidos)
     # El gráfico es otra vista de las MISMAS filas (pandas + matplotlib).
     grafico = _grafico(reporte, columnas, filas, desde, hasta, estilo)
     hoy = timezone.localdate()
-    periodos = [(etiqueta, f'?ver={reporte.clave}&desde={d:%Y-%m-%d}&hasta={h:%Y-%m-%d}&grafico={estilo}',
-                 (d, h) == (desde, hasta))
+    periodos = [(etiqueta, f'?ver={reporte.clave}&desde={d:%Y-%m-%d}&hasta={h:%Y-%m-%d}&grafico={estilo}'
+                 f'{filtros.consulta}', (d, h) == (desde, hasta))
                 for etiqueta, d, h in tablero_.periodos_rapidos(hoy)]
     return render(request, 'negocio/reportes.html', {
         'tablero': tablero_.del_periodo(desde, hasta), 'periodos': periodos,
@@ -81,6 +127,8 @@ def reportes(request):
         'torta_no_aplica': bool(grafico) and estilo == 'torta'
                            and 'data-estilo="torta"' not in grafico,
         'ultimos_30': (hoy - timedelta(days=29), hoy),
+        'filtros': filtros.disponibles, 'con_filtros': filtros.consulta,
+        'filtros_aplicados': filtros.descripcion if filtros.aplicados else '',
     })
 
 
@@ -88,7 +136,8 @@ def reportes(request):
 def exportar_reporte(request):
     reporte = _reporte(request)
     desde, hasta = _periodo(request)
-    columnas, filas, totales = CONSULTAS[reporte.clave](desde, hasta)
+    filtros = Filtros(request, reporte)
+    columnas, filas, totales = _consultar(reporte, desde, hasta, filtros)
     filas = list(filas)
     formato = request.GET.get('formato')
     estilo = estilo_pedido(request, estilos_de(reporte.clave))
@@ -96,10 +145,21 @@ def exportar_reporte(request):
                if formato == 'pdf' else None)
     if totales:
         filas = filas + [totales]
-    periodo = '' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
+    periodo = 'Al día de hoy' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
     registrar_auditoria(request, 'EXPORTACION', 'REPORTE', modulo='NEGOCIO',
-                        detalle=f'Exportó «{reporte.titulo}» {periodo}.'.strip())
-    return exportar(formato, reporte.titulo, columnas, filas, periodo, grafico=grafico)
+                        detalle=f'Exportó «{reporte.titulo}» {periodo} ({filtros.descripcion}).')
+    return exportar(formato, reporte.titulo, columnas, filas,
+                    _descripcion(periodo, filtros), grafico=grafico)
+
+
+def _descripcion(periodo, filtros):
+    """Lo que dice el PDF (y el Excel) debajo del título: el período, los
+    filtros, quién lo exportó y cuándo."""
+    usuario = contexto.usuario_actual()
+    quien = (f'{usuario.apellido}, {usuario.nombre} ({usuario.nombre_usuario})'
+             if usuario is not None else 'sin usuario')
+    return (f'{periodo} · Filtros: {filtros.descripcion} · '
+            f'Exportó {quien} el {timezone.localtime():%d/%m/%Y a las %H:%M}')
 
 
 @requiere_permiso('ver_reportes', redirigir_a='home')

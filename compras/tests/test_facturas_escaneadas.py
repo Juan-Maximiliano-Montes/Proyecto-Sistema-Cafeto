@@ -4,6 +4,7 @@ import json
 import zlib
 from decimal import Decimal as D
 
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -148,6 +149,39 @@ class EscanearTest(Base):
         f.entrar(self.client, cajera)
         respuesta = self.client.post(reverse('compras:escanear_factura'), {'muestra': '1'})
         self.assertEqual(respuesta.status_code, 302)
+
+
+class BombaDeDescompresionTest(TestCase):
+    """DD-103: un PDF de pocos KB puede llevar un flujo que, descomprimido,
+    ocupa gigas. Se corta a los 16 MB con un aviso, no con la memoria del
+    servidor."""
+
+    @staticmethod
+    def pdf_con_flujos(*tamanios):
+        cuerpo = b'%PDF-1.4\n'
+        for tamanio in tamanios:
+            flujo = zlib.compress(b'0' * tamanio, 9)
+            cuerpo += (b'1 0 obj << /Filter /FlateDecode >>\nstream\n' + flujo
+                       + b'\nendstream\nendobj\n')
+        return cuerpo + b'%%EOF'
+
+    def test_un_flujo_que_se_infla_de_mas_se_rechaza(self):
+        pdf = self.pdf_con_flujos(64 * 1024 * 1024)
+        self.assertLess(len(pdf), lector_facturas.MAXIMO_BYTES)
+        with self.assertRaisesMessage(ValidationError, 'demasiado grande'):
+            lector_facturas.texto_de(pdf, 'application/pdf')
+
+    def test_muchos_flujos_que_juntos_pasan_el_tope_tambien(self):
+        mega = 1024 * 1024
+        with self.assertRaisesMessage(ValidationError, 'demasiado grande'):
+            lector_facturas.texto_de(self.pdf_con_flujos(6 * mega, 6 * mega, 6 * mega), 'application/pdf')
+        # Bajo el tope se lee normal (este no trae texto: es como un escaneo).
+        with self.assertRaisesMessage(ValidationError, 'no trae texto'):
+            lector_facturas.texto_de(self.pdf_con_flujos(mega, mega), 'application/pdf')
+
+    def test_un_pdf_comun_se_sigue_leyendo(self):
+        texto, _qr = lector_facturas.texto_de(pdf_con_texto('FACTURA B', 'Total 1.000,00'), 'application/pdf')
+        self.assertIn('FACTURA B', texto)
 
 
 # ===========================================================================

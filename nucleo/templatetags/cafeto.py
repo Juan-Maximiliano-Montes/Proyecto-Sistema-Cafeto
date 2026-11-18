@@ -61,6 +61,22 @@ def pesos(valor):
 
 
 @register.filter
+def cantidad_de(valor, producto):
+    """La cantidad como se cuenta ese producto: 6 si va por unidad, 0,350
+    si va por peso o volumen o es un insumo (la misma regla que el libro de
+    stock: ``exige_cantidad_entera``)."""
+    if valor is None or valor == '':
+        return '—'
+    try:
+        numero = Decimal(str(valor))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor
+    if getattr(producto, 'exige_cantidad_entera', True):
+        return cantidad(numero)
+    return _numero(numero, 3)
+
+
+@register.filter
 def cantidad(valor):
     """12.000 -> '12'; 1.250 -> '1,25'. Hasta tres decimales, sin ceros de más."""
     if valor is None or valor == '':

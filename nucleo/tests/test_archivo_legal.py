@@ -144,9 +144,10 @@ class PanelArchivoTest(Base):
         self.assertContains(respuesta, '10 años')
         fila = next(a for a in respuesta.context['anios'] if a['anio'] == hace.year)
         self.assertEqual(fila['ventas']['archivadas'], 1)
+        dia = timezone.localtime(hace).date()
         csv = self.client.get(reverse('negocio:archivo_exportar'),
-                              {'libro': 'ventas', 'desde': hace.date().isoformat(),
-                               'hasta': hace.date().isoformat(), 'formato': 'csv'})
+                              {'libro': 'ventas', 'desde': dia.isoformat(),
+                               'hasta': dia.isoformat(), 'formato': 'csv'})
         self.assertEqual(csv.status_code, 200)
         contenido = b''.join(csv.streaming_content if csv.streaming else [csv.content]).decode('utf-8-sig')
         self.assertIn(str(venta.pk), contenido)

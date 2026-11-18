@@ -206,6 +206,10 @@ class ProductoForm(FormularioMaestro):
         self.fields['codigo_barras'].complemento = 'stock/_generar_codigo.html'
         if self.instance and self.instance.pk:
             self.fields['utilidad'].initial = self.instance.utilidad_porcentaje
+            minimo = self.instance.stock_minimo
+            if (self.instance.exige_cantidad_entera and minimo is not None
+                    and minimo == minimo.to_integral_value()):
+                self.initial['stock_minimo'] = int(minimo)
         if self.instance and self.instance.pk:
             # RN-4.2.4: en la edición el costo es de sólo lectura.
             self.fields['precio_costo'].disabled = True
@@ -240,6 +244,18 @@ class ProductoForm(FormularioMaestro):
                 'Este nombre ya se encuentra registrado '
                 '(ignorando mayúsculas/minúsculas) para esa marca y '
                 'presentación.'))
+
+    def _exigir_minimo_entero(self, datos):
+        """Lo que se cuenta por unidad no tiene un mínimo de 2,5 unidades:
+        misma regla que el libro de stock (``exige_cantidad_entera``)."""
+        minimo = datos.get('stock_minimo')
+        tipo = datos.get('tipo_producto') or self.instance.tipo_producto
+        por_unidad = not datos.get('fraccionable') and tipo != TipoProducto.INSUMO
+        if por_unidad and minimo is not None and minimo != minimo.to_integral_value():
+            self.add_error('stock_minimo', forms.ValidationError(
+                'Este producto se vende por unidad: el stock mínimo va sin '
+                'decimales (por ejemplo, 6). Si se vende por kilo o por litro, '
+                'marcá «Se vende por peso o volumen».', code='minimo_entero'))
 
     @property
     def abrir_mas_opciones(self):
@@ -283,6 +299,7 @@ class ProductoForm(FormularioMaestro):
 
     def clean(self):
         datos = super().clean()
+        self._exigir_minimo_entero(datos)
         if (datos.get('tipo_producto') in TIPOS_CON_PROVEEDOR
                 and not datos.get('id_proveedor')):
             from stock.reservados import proveedor_general

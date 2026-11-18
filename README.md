@@ -271,7 +271,20 @@ docker compose exec web python manage.py pasar_a_historico --ejecutar
 
 # Si el titular perdió su clave (sólo desde el servidor)
 docker compose exec web python manage.py recuperar_titular --dni 30000000
+
+# Los 4 gráficos del Parcial N° 2 en PNG (quedan en reportes_png/ del proyecto)
+docker compose exec web python manage.py generar_graficos_parcial              # últimos 90 días
+docker compose exec web python manage.py generar_graficos_parcial --desde 2026-08-01 --hasta 2026-10-31
+docker compose exec web python manage.py generar_graficos_parcial --dias 30 --horas 8-22
 ```
+
+`generar_graficos_parcial` arma, con los datos de la base, barras comparativas
+(vendido por rubro contra el período anterior del mismo largo), una dona con la
+participación de cada medio de pago, las líneas de lo vendido por día con su
+promedio de 7 días y un mapa de calor de tickets por día de la semana y hora.
+Usa las mismas consultas que la pantalla de Reportes (`negocio/reportes.py`),
+pandas para armar los datos y `negocio/graficos.py` (matplotlib) para dibujar,
+con una paleta pensada para fondo blanco. Imprime la ruta de cada PNG.
 
 ---
 

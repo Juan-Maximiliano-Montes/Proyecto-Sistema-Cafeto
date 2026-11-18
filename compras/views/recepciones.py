@@ -31,6 +31,8 @@ from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import foto, registrar_auditoria
 from stock.models import Producto, Rubro
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
+from nucleo import json_seguro
 
 MAXIMO_DE_RENGLONES = 120
 
@@ -52,11 +54,8 @@ def _fecha(texto, etiqueta, obligatoria=False):
 
 def _leer_renglones(texto):
     """El JSON del formulario -> [RenglonRecibido]. Valida la forma."""
-    try:
-        crudos = json.loads(texto or '[]')
-    except ValueError:
-        raise ValidationError('Los renglones llegaron mal armados. Recargá la página.')
-    if not isinstance(crudos, list) or len(crudos) > MAXIMO_DE_RENGLONES:
+    crudos = json_seguro.lista(texto, 'La lista de renglones')
+    if len(crudos) > MAXIMO_DE_RENGLONES:
         raise ValidationError('La compra tiene demasiados renglones.')
     productos = Producto.objects.in_bulk(
         [r.get('producto') for r in crudos if isinstance(r, dict)
@@ -73,9 +72,11 @@ def _leer_renglones(texto):
         if costo is None:
             raise ValidationError(f'El costo de "{producto}" no es válido.')
         lotes = []
-        crudos_lote = [l for l in (crudo.get('lotes') or []) if isinstance(l, dict)]
+        crudos_lote = [l for l in json_seguro.campo(crudo, 'lotes', list, f'Los lotes de "{producto}"', [])
+                       if isinstance(l, dict)]
         for lote in crudos_lote:
-            vence = _fecha(lote.get('vence'), f'el vencimiento de un lote de "{producto}"', True)
+            vence = _fecha(json_seguro.campo(lote, 'vence', str, f'El vencimiento de un lote de "{producto}"'),
+                           f'el vencimiento de un lote de "{producto}"', True)
             # Un solo lote sin cantidad: es todo lo recibido (se tipea la
             # fecha y nada más, que es el caso de todos los días).
             texto = lote.get('cantidad') or (crudo.get('cantidad') if len(crudos_lote) == 1 else '')
@@ -83,7 +84,8 @@ def _leer_renglones(texto):
             if cantidad_lote is None or cantidad_lote <= 0:
                 raise ValidationError(f'La cantidad de un lote de "{producto}" no es válida.')
             lotes.append(servicios.LoteRecibido(vence, cantidad_lote,
-                                                (lote.get('numero') or '').strip()[:30] or None))
+                                                str(json_seguro.campo(lote, 'numero', (str, int), 'El N° de lote')
+                                                    or '').strip()[:30] or None))
         renglones.append(servicios.RenglonRecibido(producto, cantidad, costo, lotes))
     return renglones
 
@@ -128,9 +130,9 @@ def recepcion(request):
     proveedores = Proveedor.objects.filter(borrado_logico=False).exclude(
         tipo_proveedor='SERVICIOS').order_by('nombre_proveedor')
     orden = None
-    if request.GET.get('orden', '').isdigit():
+    if id_valido(request.GET.get('orden')):
         orden = OrdenCompra.objects.filter(
-            pk=request.GET['orden'],
+            pk=id_valido(request.GET['orden']),
             estado_orden__in=('EMITIDA', 'CON_DIFERENCIAS')).first()
     datos = request.POST if request.method == 'POST' else {}
     from compras import facturas, precarga
@@ -139,7 +141,7 @@ def recepcion(request):
     testigo = request.GET.get('precarga') or request.POST.get('precarga') or ''
     numero_recibida = request.GET.get('factura') or request.POST.get('factura') or ''
     if numero_recibida.isdigit():
-        recibida = FacturaRecibida.objects.filter(pk=numero_recibida).first()
+        recibida = FacturaRecibida.objects.filter(pk=id_valido(numero_recibida)).first()
         if recibida is None or not recibida.pendiente:
             if request.method == 'GET':
                 messages.warning(request, 'Esa factura recibida ya se confirmó o se descartó.' if recibida
@@ -176,7 +178,7 @@ def recepcion(request):
     if request.method == 'POST':
         token = request.POST.get('token_operacion')
         try:
-            proveedor = proveedores.filter(pk=request.POST.get('proveedor') or 0).first()
+            proveedor = proveedores.filter(pk=id_valido(request.POST.get('proveedor'))).first()
             alta = proveedor is None and detectado is not None and request.POST.get('alta_proveedor') == '1'
             if alta:
                 if not request.usuario_actual.tiene_permiso('crear_proveedor'):
@@ -185,11 +187,11 @@ def recepcion(request):
                 proveedor = detectado
             if proveedor is None:
                 raise ValidationError('Elegí el proveedor.')
-            if request.POST.get('orden', '').isdigit():
-                orden = OrdenCompra.objects.filter(pk=request.POST['orden']).first()
+            if id_valido(request.POST.get('orden')):
+                orden = OrdenCompra.objects.filter(pk=id_valido(request.POST['orden'])).first()
             punto = request.POST.get('punto_venta', '').strip()
             numero = request.POST.get('numero', '').strip()
-            if not punto.isdigit() or not numero.isdigit():
+            if not (punto.isascii() and punto.isdigit() and numero.isascii() and numero.isdigit()):
                 raise ValidationError('El punto de venta y el número del comprobante van en números.')
             renglones = _leer_renglones(request.POST.get('renglones'))
             otros = leer_numero(request.POST.get('otros') or '0', 2)
@@ -283,8 +285,8 @@ def _compras_filtradas(request):
     compras = (Compra.objects.select_related('id_proveedor', 'id_usuario')
                .order_by('-fecha_compra', '-pk'))
     filtro = request.GET
-    if filtro.get('proveedor', '').isdigit():
-        compras = compras.filter(id_proveedor_id=filtro['proveedor'])
+    if id_valido(filtro.get('proveedor')):
+        compras = compras.filter(id_proveedor_id=id_valido(filtro['proveedor']))
     if filtro.get('estado') in dict(Compra.ESTADOS):
         compras = compras.filter(estado_compra=filtro['estado'])
     for clave, campo in (('desde', 'fecha_compra__gte'), ('hasta', 'fecha_compra__lte')):

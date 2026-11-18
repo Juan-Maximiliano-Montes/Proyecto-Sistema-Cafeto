@@ -40,7 +40,7 @@
             <div>
                 <label class="form-label" for="medio">¿Con qué paga?</label>
                 <select name="medio" id="medio" class="form-select" required>
-                    {% for m in medios %}<option value="{{ m.pk }}"{% if m.afecta_caja and not turno %} disabled{% endif %}>{{ m }}{% if m.afecta_caja and not turno %} (abrí la caja para cobrar en efectivo){% endif %}</option>{% endfor %}
+                    {% for m in medios %}<option value="{{ m.pk|stringformat:"d" }}"{% if m.afecta_caja and not turno %} disabled{% endif %}>{{ m }}{% if m.afecta_caja and not turno %} (abrí la caja para cobrar en efectivo){% endif %}</option>{% endfor %}
                 </select>
             </div>
             <div>

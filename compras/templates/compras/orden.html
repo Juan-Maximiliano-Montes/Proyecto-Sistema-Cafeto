@@ -16,9 +16,9 @@
             <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>Marcar como enviada</button>
         </form>
         {% elif orden.estado_orden == 'EMITIDA' and 'registrar_compra' in permisos_usuario %}
-        <a href="{% url 'compras:recepcion' %}?orden={{ orden.pk }}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Llegó: recibir</a>
+        <a href="{% url 'compras:recepcion' %}?orden={{ orden.pk|stringformat:"d" }}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Llegó: recibir</a>
         {% elif orden.estado_orden == 'CON_DIFERENCIAS' and 'registrar_compra' in permisos_usuario %}
-        <a href="{% url 'compras:recepcion' %}?orden={{ orden.pk }}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Llegó el resto: recibir</a>
+        <a href="{% url 'compras:recepcion' %}?orden={{ orden.pk|stringformat:"d" }}" class="btn btn-primary"><i class="bi bi-box-arrow-in-down me-1"></i>Llegó el resto: recibir</a>
         {% endif %}
         {% if orden.estado_orden == 'PENDIENTE' or orden.estado_orden == 'EMITIDA' %}
         <form method="post" action="{% url 'compras:estado_orden' orden.pk %}" data-titulo="¿Cancelar la orden?" data-aceptar="Sí, cancelar" data-peligro="1" data-confirmar="La orden queda cancelada y ya no se puede recibir.">

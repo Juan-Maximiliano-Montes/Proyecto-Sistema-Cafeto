@@ -14,7 +14,6 @@ formulario y se muestra el resultado. Tres cuidados propios de la pantalla:
 * **El saldo del cajón** lo ve sólo quien tiene ``ver_caja``. La cajera ve
   sus movimientos, no cuánto "debería" haber.
 """
-import json
 from datetime import date
 from decimal import Decimal
 
@@ -52,6 +51,8 @@ from ventas.forms import (
 )
 from ventas.models import CajaRegistradora, MovimientoCaja, TipoMovimientoCaja, TurnoCaja
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
+from nucleo import json_seguro
 
 PERMISOS_DEL_PUESTO = ('vender', 'abrir_caja', 'cerrar_caja',
                        'mover_efectivo', 'ver_caja')
@@ -147,8 +148,9 @@ def puesto_de_caja(request):
         'de_otro': de_otro,
         'puede_ausencia': ausencia,
         'cortes': servicio_caja.cortes_x(turno),
-        'vale': (MovimientoCaja.objects.filter(pk=vale, id_turno_caja=turno, id_usuario=usuario).first()
-                 if vale.isdigit() else None),
+        'vale': (MovimientoCaja.objects.filter(pk=id_valido(vale), id_turno_caja=turno,
+                                               id_usuario=usuario).first()
+                 if id_valido(vale) else None),
     })
     return render(request, 'ventas/caja.html', contexto)
 
@@ -160,7 +162,7 @@ def elegir_caja(request):
     caja = None
     if request.POST.get('caja'):
         caja = CajaRegistradora.objects.filter(
-            pk=request.POST.get('caja'), borrado_logico=False).first()
+            pk=id_valido(request.POST.get('caja')), borrado_logico=False).first()
         if caja is None:
             messages.error(request, 'Esa caja no existe o está dada de baja.')
             return redirect('ventas:caja')
@@ -531,14 +533,12 @@ def pedir_autorizacion_cierre(request):
         return JsonResponse({'ok': False, 'error': 'Esta diferencia está dentro de lo tolerado: no hace falta pedir nada.'})
     base = settings.CAFETO_URL_PUBLICA or request.build_absolute_uri('/')
     try:
-        try:
-            pedido_modo = (json.loads(request.body or b'{}') or {}).get('modo')
-        except (ValueError, UnicodeDecodeError, AttributeError):
-            pedido_modo = None
+        pedido_modo = json_seguro.campo(json_seguro.del_pedido(request), 'modo', str, 'La forma de cerrar')
         modo = pedido_modo if pedido_modo in _modos_posibles(turno, usuario) else _modo(arqueo)
         solicitud, pin = a_distancia.pedir_cierre(turno, usuario, contado, esperado, modo, base)
     except ValidationError as error:
-        return JsonResponse({'ok': False, 'error': _texto(error)})
+        return JsonResponse({'ok': False, 'error': _texto(error)},
+                            status=400 if isinstance(error, json_seguro.PedidoMalArmado) else 200)
     if pin is None:
         # Ya estaba aprobado: no se pide de nuevo.
         return JsonResponse({'ok': True, 'id': solicitud.pk, **a_distancia.estado(solicitud),
@@ -607,8 +607,8 @@ def _turnos_filtrados(request):
               .select_related('id_caja_registradora', 'id_usuario_apertura',
                               'id_usuario_cierre', 'id_usuario_supervisor')
               .order_by('-fecha_apertura'))
-    caja = request.GET.get('caja', '')
-    if caja.isdigit():
+    caja = id_valido(request.GET.get('caja'))
+    if caja:
         turnos = turnos.filter(id_caja_registradora_id=caja)
     estado = request.GET.get('estado', '')
     if estado == 'con_diferencia':

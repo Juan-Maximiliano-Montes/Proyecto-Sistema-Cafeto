@@ -36,10 +36,14 @@ from compras.models import Proveedor
 from fidelizacion.models import Cliente
 from nucleo.crud import REGISTRO
 from nucleo.validaciones import clave_normalizada
-from stock.models import Marca, Producto
+from stock.models import MARCA_GENERICA, TIPOS_CON_PROVEEDOR, Marca, Producto
 
 # Sufijos que delatan una presentación metida adentro del nombre.
 UNIDADES = (' g', ' gr', ' kg', ' ml', ' cc', ' l', ' lt', ' un', ' u')
+
+# Las marcas que no son de nadie: «Sin marca» y la reservada del alta simple
+# (DD-86). Que el nombre diga «genérica» no repite ninguna marca.
+MARCAS_QUE_NO_SON_MARCA = frozenset({clave_normalizada('Sin marca'), clave_normalizada(MARCA_GENERICA)})
 
 
 class Hallazgo:
@@ -56,16 +60,26 @@ class Hallazgo:
 
 
 def productos_con_el_nombre_sucio():
-    """DD-55: el nombre tiene que ser SÓLO la denominación."""
-    marcas = [m.nombre_marca.lower()
-              for m in Marca.objects.all()
-              if m.nombre_marca.lower() != 'sin marca']
+    """DD-55: el nombre tiene que ser SÓLO la denominación.
+
+    Con el mismo criterio que ``Producto.clean``: la marca de un producto
+    comprado (reventa, insumo) es la del fabricante y no va en el nombre;
+    lo que hace el local (elaborado, producido, combo) lleva la marca de la
+    casa, y un combo que se llama como el local («Desayuno Cafeto») no
+    repite nada. Las marcas comparan por palabra entera y normalizadas
+    (sin acentos ni mayúsculas)."""
+    marcas = {m.pk: clave_normalizada(m.nombre_marca) for m in Marca.objects.all()}
+    marcas = {pk: clave for pk, clave in marcas.items()
+              if clave and clave not in MARCAS_QUE_NO_SON_MARCA}
 
     for producto in Producto.objects.filter(borrado_logico=False):
         nombre = (producto.nombre_producto or '').lower().rstrip()
+        palabras = f' {clave_normalizada(nombre)} '
         motivos = []
-        for marca in marcas:
-            if marca in nombre:
+        for pk, marca in marcas.items():
+            if producto.tipo_producto not in TIPOS_CON_PROVEEDOR and pk == producto.id_marca_id:
+                continue
+            if f' {marca} ' in palabras:
                 motivos.append('el nombre repite la marca "%s"' % marca)
                 break
         if any(c.isdigit() for c in nombre) and nombre.endswith(UNIDADES):

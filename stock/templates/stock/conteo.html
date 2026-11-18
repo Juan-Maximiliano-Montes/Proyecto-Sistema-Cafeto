@@ -130,7 +130,7 @@
                 <p class="small text-secondary d-none" id="altaSugerido"></p>
                 <div class="mb-2"><label class="form-label" for="altaNombre">Nombre</label><input type="text" name="nombre" id="altaNombre" class="form-control" maxlength="100"></div>
                 <div class="mb-2"><label class="form-label" for="altaRubro">Rubro</label>
-                    <select name="rubro" id="altaRubro" class="form-select"><option value="">— Elegí —</option>{% for r in rubros %}<option value="{{ r.pk }}">{{ r }}</option>{% endfor %}</select></div>
+                    <select name="rubro" id="altaRubro" class="form-select"><option value="">— Elegí —</option>{% for r in rubros %}<option value="{{ r.pk|stringformat:"d" }}">{{ r }}</option>{% endfor %}</select></div>
                 <div class="row g-2 mb-2">
                     <div class="col-6"><label class="form-label" for="altaPrecio">Precio de venta</label><input type="text" inputmode="decimal" name="precio" id="altaPrecio" class="form-control"></div>
                     <div class="col-6"><label class="form-label" for="altaCosto">Costo (opcional)</label><input type="text" inputmode="decimal" name="costo" id="altaCosto" class="form-control"></div>

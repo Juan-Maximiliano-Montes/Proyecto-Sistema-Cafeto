@@ -9,6 +9,7 @@ from negocio import archivo
 from nucleo.exportar import exportar
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
+from nucleo.validaciones import id_valido
 
 TOPE_EXCEL = 50000
 PRIMER_ANIO = 2000
@@ -38,7 +39,8 @@ def _periodo(request):
 def _anio(request):
     anio = request.GET.get('anio', '')
     hoy = timezone.localdate()
-    return int(anio) if anio.isdigit() and PRIMER_ANIO <= int(anio) <= hoy.year else None
+    numero = id_valido(anio)
+    return numero if numero and PRIMER_ANIO <= numero <= hoy.year else None
 
 
 @requiere_permiso('ver_reportes', redirigir_a='home')

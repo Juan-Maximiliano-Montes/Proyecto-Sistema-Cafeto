@@ -24,7 +24,7 @@
                 <label class="form-label" for="producto">¿Qué se hizo?</label>
                 <select name="producto" id="producto" class="form-select">
                     <option value="">Elegí el producto…</option>
-                    {% for p in productos %}<option value="{{ p.pk }}" data-vence="{{ p.controla_vencimiento|yesno:'si,no' }}"{% if datos.producto == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
+                    {% for p in productos %}<option value="{{ p.pk|stringformat:"d" }}" data-vence="{{ p.controla_vencimiento|yesno:'si,no' }}"{% if datos.producto == p.pk|stringformat:'s' %} selected{% endif %}>{{ p }}</option>{% endfor %}
                 </select>
             </div>
             <div>

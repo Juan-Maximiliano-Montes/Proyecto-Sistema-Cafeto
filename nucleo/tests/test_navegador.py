@@ -287,6 +287,64 @@ class RecorridoEnNavegadorTest(StaticLiveServerTestCase):
             self.assertEqual(modal.locator('.error-campo.js-acreedor').count(), 0)
         self.con_pagina(hacer)
 
+    def test_un_monto_negativo_no_llega_al_resumen(self):
+        """DD-103: «-500» en la caja se marcaba recién en el servidor; el
+        resumen previo lo mostraba como si estuviera bien (o con «—»)."""
+        def hacer(pagina):
+            self.entrar(pagina, self.usuarios['Administrador'])
+            pagina.goto(self.live_server_url + '/ventas/caja/')
+            pagina.locator('form[action$="/caja/elegir/"]', has_text='Minisuper').locator('button[type="submit"]').first.click()
+            pagina.wait_for_load_state('networkidle')
+            pagina.evaluate("() => document.querySelectorAll('details').forEach(d => d.open = true)")
+            form = pagina.locator('form.form-una-vez:has(input[data-minimo])').first
+            campo = form.locator('input[data-minimo]').first
+            envios = []
+            pagina.on('request', lambda r: r.method == 'POST' and envios.append(r.url))
+            for valor, aviso in (('-500', 'No puede ser negativo.'), ('abc', 'Escribí un número')):
+                campo.fill(valor)
+                form.locator('button[type="submit"]').click()
+                error = form.locator('.error-campo.js-numero')
+                error.wait_for(timeout=5000)
+                self.assertIn(aviso, error.inner_text())
+                self.assertEqual(pagina.locator('#modalConfirmar.show').count(), 0)
+            self.assertEqual(envios, [])
+            campo.fill('1.500,50')
+            self.assertEqual(form.locator('.error-campo.js-numero').count(), 0)
+            form.locator('button[type="submit"]').click()
+            pagina.wait_for_selector('#modalConfirmar.show', timeout=5000)
+            self.assertIn('1.500,50', pagina.locator('#modalConfirmar .js-cuerpo').inner_text())
+            # Una sola ventana de confirmación, no dos encimadas.
+            with pagina.expect_request(lambda r: r.method == 'POST', timeout=5000):
+                pagina.click('#modalConfirmar .js-aceptar')
+            pagina.wait_for_load_state('networkidle')
+            pagina.wait_for_timeout(500)
+            self.assertEqual(len(envios), 1, envios)
+        self.con_pagina(hacer)
+
+    def test_la_confirmacion_queda_arriba_de_la_ventana_del_formulario(self):
+        """DD-103: el resumen se abre encima del alta; al cancelarlo, el
+        alta sigue abierta y la página de atrás no se desplaza."""
+        def hacer(pagina):
+            self.entrar(pagina, self.usuarios['Administrador'])
+            pagina.goto(self.live_server_url + '/stock/marcas/')
+            pagina.click('[data-bs-target="#modalCrear"]')
+            modal = pagina.locator('#modalCrear')
+            modal.locator('[name="nombre_marca"]').fill('Marca de prueba')
+            modal.locator('button[type="submit"]').click()
+            pagina.wait_for_selector('#modalConfirmar.show', timeout=5000)
+            pagina.wait_for_timeout(400)
+            arriba = pagina.evaluate("""() => {
+                const c = document.querySelector('#modalConfirmar .modal-dialog').getBoundingClientRect();
+                const e = document.elementFromPoint(c.x + c.width / 2, c.y + c.height / 2);
+                return !!(e && e.closest('#modalConfirmar'));
+            }""")
+            self.assertTrue(arriba)
+            pagina.click('#modalConfirmar .btn-close')
+            pagina.wait_for_selector('#modalConfirmar', state='hidden', timeout=5000)
+            self.assertTrue(modal.is_visible())
+            self.assertTrue(pagina.evaluate("() => document.body.classList.contains('modal-open')"))
+        self.con_pagina(hacer)
+
     def test_el_mostrador_muestra_el_stock_despues_de_vender(self):
         """Error 6 de la prueba integral: la grilla seguía con el stock viejo."""
         def stock(pagina):

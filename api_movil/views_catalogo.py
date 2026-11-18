@@ -18,6 +18,7 @@ from api_movil import catalogo, respuestas
 from api_movil.autenticacion import para_el_equipo, publica
 from negocio.models import ParametrosNegocio
 from nucleo.busqueda import filtrar_por_texto
+from nucleo.validaciones import id_valido
 
 
 def _seccion(request):
@@ -37,8 +38,8 @@ def productos(request):
         return respuestas.error(catalogo.SECCION_INVALIDA, 400)
     consulta = catalogo.de_la_seccion(seccion)
     rubro = request.GET.get('rubro', '').strip()
-    if rubro.isdigit():
-        consulta = consulta.filter(id_rubro_id=int(rubro))
+    if id_valido(rubro):
+        consulta = consulta.filter(id_rubro_id=id_valido(rubro))
     consulta = filtrar_por_texto(
         consulta, ('nombre_producto', 'id_marca__nombre_marca',
                    'id_rubro__nombre_rubro'),

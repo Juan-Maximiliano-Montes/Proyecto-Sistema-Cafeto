@@ -38,6 +38,7 @@ from ventas.models import (
     MotivoAnulacion,
     Venta,
 )
+from nucleo.validaciones import id_valido
 
 
 def _fecha(texto):
@@ -56,7 +57,7 @@ def ventas_filtradas(request):
               .order_by('-fecha_venta', '-hora_venta', '-pk'))
     numero = filtro.get('numero', '').strip()
     if numero.isdigit():
-        return ventas.filter(pk=int(numero))
+        return ventas.filter(pk=id_valido(numero)) if id_valido(numero) else ventas.none()
     desde, hasta = _fecha(filtro.get('desde')), _fecha(filtro.get('hasta'))
     if desde is None and hasta is None:
         desde = hasta = timezone.localdate()
@@ -64,12 +65,12 @@ def ventas_filtradas(request):
         ventas = ventas.filter(fecha_venta__gte=desde)
     if hasta:
         ventas = ventas.filter(fecha_venta__lte=hasta)
-    if filtro.get('caja', '').isdigit():
-        ventas = ventas.filter(id_turno_caja__id_caja_registradora_id=filtro['caja'])
-    if filtro.get('vendedor', '').isdigit():
-        ventas = ventas.filter(id_usuario_id=filtro['vendedor'])
-    if filtro.get('medio', '').isdigit():
-        ventas = ventas.filter(pagos__id_medio_pago_id=filtro['medio']).distinct()
+    if id_valido(filtro.get('caja')):
+        ventas = ventas.filter(id_turno_caja__id_caja_registradora_id=id_valido(filtro['caja']))
+    if id_valido(filtro.get('vendedor')):
+        ventas = ventas.filter(id_usuario_id=id_valido(filtro['vendedor']))
+    if id_valido(filtro.get('medio')):
+        ventas = ventas.filter(pagos__id_medio_pago_id=id_valido(filtro['medio'])).distinct()
     if filtro.get('con_cambios') == '1':
         ventas = ventas.filter(cambios__isnull=False).distinct()
     if filtro.get('estado') in EstadoVenta.values:

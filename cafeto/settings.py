@@ -54,6 +54,13 @@ if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
 # https://cafeto.midominio.com.ar
 CSRF_TRUSTED_ORIGINS = _lista('DJANGO_CSRF_TRUSTED_ORIGINS') + ['https://*.trycloudflare.com', 'http://localhost:8000', 'http://127.0.0.1:8000']
 CONFIAR_EN_PROXY = True
+# Con el proxy de confianza, la IP del cliente (registro de actividad,
+# bloqueo por intentos) sale primero de CF-Connecting-IP: la pone el
+# túnel de Cloudflare y quien entra no la puede elegir. Si no viene, de
+# X-Forwarded-For contando PROXIES_DE_CONFIANZA saltos desde la derecha
+# (la primera de la izquierda la escribe cualquiera).
+ENCABEZADO_IP_CLIENTE = os.environ.get('CAFETO_ENCABEZADO_IP', 'HTTP_CF_CONNECTING_IP')
+PROXIES_DE_CONFIANZA = max(1, int(os.environ.get('CAFETO_PROXIES_DE_CONFIANZA', '1')))
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # ¿Se entra por HTTPS? En el local puede ser HTTP plano dentro de la LAN;
 # el acceso remoto, siempre HTTPS (o por VPN).

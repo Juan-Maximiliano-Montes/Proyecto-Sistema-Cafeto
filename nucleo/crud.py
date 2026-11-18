@@ -38,6 +38,7 @@ from nucleo.exportar import ColumnaExportable, exportar as armar_exportacion
 from nucleo.motivos import redactar
 from nucleo.paginacion import paginar
 from seguridad.servicios import instantanea, registrar_auditoria
+from nucleo.validaciones import id_valido
 
 
 # ===========================================================================
@@ -56,6 +57,9 @@ class Columna:
     # Atributo con una aclaración que va debajo del valor, en rojo (lo que
     # el número no cuenta: "5 vencidas, no se venden").
     aclaracion: str = ''
+    # La cantidad es de un producto de la fila: entera si se vende por
+    # unidad, con tres decimales si se vende por peso o volumen.
+    de_producto: bool = False
 
 
 @dataclass(frozen=True)
@@ -354,6 +358,8 @@ def filas_filtradas(request, configuracion):
     aplicados = {}
     for filtro in configuracion.filtros:
         valor = request.GET.get(filtro.clave, '')
+        if valor and valor not in {str(clave) for clave, _ in filtro.opciones()}:
+            valor = ''   # ?marca=abc o una marca que no se ofrece: se ignora
         aplicados[filtro.clave] = valor
         if valor:
             filas = filas.filter(**{filtro.campo: valor})
@@ -459,7 +465,7 @@ def parecidos(request, configuracion):
     valor = (request.GET.get('valor') or '').strip()[:200]
     excluir = request.GET.get('excluir', '')
     resultados = buscar(configuracion, configuracion.formulario(), campo, valor,
-                        excluir=int(excluir) if excluir.isdigit() else None)
+                        excluir=id_valido(excluir))
     return JsonResponse({'campo': campo, 'resultados': resultados,
                          'singular': configuracion.singular})
 
@@ -622,6 +628,9 @@ def datos_de_la_ficha(configuracion, instancia):
             valor = mostrar()
         else:
             valor = getattr(instancia, nombre, None)
+        legible = getattr(instancia, 'valor_legible', None)
+        if callable(legible):
+            valor = legible(nombre, valor)
         datos.append((campo.label, valor))
     return datos
 

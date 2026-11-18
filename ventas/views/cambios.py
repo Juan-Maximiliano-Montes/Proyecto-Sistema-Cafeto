@@ -32,6 +32,7 @@ from ventas.anulacion import motivo_de as anulacion_motivo
 from ventas import puesto
 from ventas.models import Cambio, MedioPago, MotivoCambio, Venta
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
 
 MAXIMO_ENTREGADOS = 5
 
@@ -68,7 +69,7 @@ def _leer(request, venta):
         texto = datos.get(f'entrega_cantidad_{i}', '').strip()
         if not id_producto:
             continue
-        producto = Producto.objects.filter(pk=id_producto if id_producto.isdigit() else 0).first()
+        producto = Producto.objects.filter(pk=id_valido(id_producto)).first()
         cantidad = leer_numero(texto or '1', 3)
         if producto is None:
             raise ValidationError('Uno de los productos que se lleva ya no existe.')
@@ -87,8 +88,8 @@ def _filas_entrega(request):
     filas = []
     for i in range(MAXIMO_ENTREGADOS):
         elegido = request.POST.get(f'entrega_producto_{i}', '')
-        producto = (Producto.objects.filter(pk=elegido).first()
-                    if elegido.isdigit() else None)
+        producto = (Producto.objects.filter(pk=id_valido(elegido)).first()
+                    if id_valido(elegido) else None)
         filas.append({'indice': i, 'producto': producto,
                       'cantidad': request.POST.get(f'entrega_cantidad_{i}', '')})
     return filas
@@ -101,7 +102,7 @@ def cambios(request):
     venta = None
     if numero:
         venta = (Venta.objects.select_related('id_usuario')
-                 .filter(pk=int(numero) if numero.isdigit() else 0).first())
+                 .filter(pk=id_valido(numero)).first())
         if venta is None:
             messages.error(request, f'No existe la venta N° {numero}.')
 
@@ -112,8 +113,8 @@ def cambios(request):
         'filas_entrega': _filas_entrega(request),
         'catalogo': reverse('stock:buscar_productos') + '?tipos=REVENTA,ELABORADO,PRODUCIDO,COMBO',
         'datos': request.POST,
-        'comprobante': (Cambio.objects.filter(pk=request.GET['comprobante']).first()
-                        if request.GET.get('comprobante', '').isdigit() else None),
+        'comprobante': (Cambio.objects.filter(pk=id_valido(request.GET['comprobante'])).first()
+                        if id_valido(request.GET.get('comprobante')) else None),
     }
     if venta is not None:
         from ventas.views.consultas import contexto_anulacion
@@ -160,7 +161,7 @@ def cambios(request):
             raise ValidationError('La caja de este dispositivo no tiene un turno abierto.')
         medio = None
         if saldo:
-            medio = contexto['medios'].filter(pk=request.POST.get('medio') or 0).first()
+            medio = contexto['medios'].filter(pk=id_valido(request.POST.get('medio'))).first()
             if medio is None:
                 raise ValidationError(
                     'Elegí con qué medio se ' + ('cobra.' if saldo > 0 else

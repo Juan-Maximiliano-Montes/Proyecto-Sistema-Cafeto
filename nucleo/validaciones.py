@@ -173,6 +173,30 @@ def validar_entero(valor, minimo=None, maximo=None, etiqueta='El valor'):
     return numero
 
 
+MAXIMO_ID = 2_147_483_647  # el integer de PostgreSQL de las claves
+
+
+def id_valido(valor):
+    """El número de registro que trae un pedido (``?caja=``, ``producto`` de
+    un formulario, un campo de un JSON), o None si no puede serlo.
+
+    Sólo dígitos ASCII, entre 1 y el máximo del integer de la base: «abc»,
+    «1.5», «-1», «²» (que ``isdigit`` acepta pero ``int`` no) o un código de
+    barras de 13 dígitos escaneado en el buscador del N° de venta quedan
+    afuera en vez de terminar en un error de la base.
+    """
+    if valor is None or isinstance(valor, bool):
+        return None
+    if isinstance(valor, int):
+        numero = valor
+    else:
+        texto = str(valor).strip()
+        if not texto or len(texto) > 10 or not texto.isascii() or not texto.isdigit():
+            return None
+        numero = int(texto)
+    return numero if 1 <= numero <= MAXIMO_ID else None
+
+
 # ---------------------------------------------------------------------------
 #  V-G5 · FECHAS
 # ---------------------------------------------------------------------------
@@ -449,7 +473,7 @@ def es_gtin(digitos):
     de fábrica (EAN-13) con los propios (balanza, elaborados, promociones),
     que son números cualesquiera (DD-86).
     """
-    if not digitos or not digitos.isdigit() or len(digitos) not in LARGOS_GS1:
+    if not digitos or not digitos.isascii() or not digitos.isdigit() or len(digitos) not in LARGOS_GS1:
         return False
     cuerpo, verificador = digitos[:-1], int(digitos[-1])
     suma = 0
@@ -489,7 +513,7 @@ def validar_codigo_barras(valor):
     digitos = sanear_codigo(valor)
     if digitos is None:
         return None
-    if not digitos.isdigit():
+    if not (digitos.isascii() and digitos.isdigit()):
         raise ValidationError('El código sólo admite dígitos.')
     if not CODIGO_MINIMO <= len(digitos) <= CODIGO_MAXIMO:
         raise ValidationError(

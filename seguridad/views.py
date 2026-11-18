@@ -55,6 +55,7 @@ from seguridad.servicios import (
 )
 
 from .decorators import requiere_permiso
+from nucleo.validaciones import id_valido
 
 
 # ===========================================================================
@@ -287,8 +288,8 @@ def _usuarios_filtrados(request):
         usuarios, ('nombre', 'apellido', 'dni_usuario', 'nombre_usuario'),
         busqueda)
 
-    if perfil.isdigit():
-        usuarios = usuarios.filter(id_perfil_id=perfil)
+    if id_valido(perfil):
+        usuarios = usuarios.filter(id_perfil_id=id_valido(perfil))
     return usuarios, busqueda, perfil, estado
 
 

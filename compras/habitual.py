@@ -20,7 +20,7 @@ Un habitual al que NUNCA se le compró el producto (alguien lo eligió a mano
 ayer) no cuenta como inactivo: lo decidió una persona y sólo lo cambia la
 regla 2.
 """
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.db.models import Exists, Max, OuterRef
 from django.utils import timezone
@@ -72,9 +72,13 @@ def inactivos(hoy=None):
     no cuentan (todavía no tuvieron tiempo de moverse)."""
     hoy = hoy or timezone.localdate()
     limite = hoy - timedelta(days=DIAS_DE_INACTIVIDAD)
+    # fecha_alta es fecha y hora: se compara con el comienzo de ese día en
+    # la zona del local (una fecha sola llegaba como hora «naive» y Django
+    # avisaba con un RuntimeWarning).
+    alta_antes_de = timezone.make_aware(datetime.combine(limite, time.min))
     compras = Compra.objects.filter(id_proveedor=OuterRef('pk')).exclude(estado_compra='ANULADA')
     egresos = Egreso.objects.filter(id_proveedor=OuterRef('pk'))
-    return (Proveedor.objects.filter(borrado_logico=False, fecha_alta__lt=limite)
+    return (Proveedor.objects.filter(borrado_logico=False, fecha_alta__lt=alta_antes_de)
             .annotate(
                 compro=Exists(compras.filter(fecha_compra__gte=limite)),
                 pago=Exists(egresos.filter(fecha_egreso__gte=limite)),

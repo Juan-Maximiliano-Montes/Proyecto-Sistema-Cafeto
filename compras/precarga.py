@@ -79,6 +79,9 @@ def reconocer(datos):
         raise ValidationError('El cuerpo tiene que traer "renglones" (una lista).')
     if not datos['renglones'] or len(datos['renglones']) > MAXIMO_DE_RENGLONES:
         raise ValidationError(f'Van entre 1 y {MAXIMO_DE_RENGLONES} renglones.')
+    if not all(isinstance(renglon, dict) for renglon in datos['renglones']):
+        raise ValidationError('Cada renglón tiene que ser un objeto ({"descripcion", "cantidad", '
+                              '"costo_unitario", …}).')
 
     proveedor = None
     try:

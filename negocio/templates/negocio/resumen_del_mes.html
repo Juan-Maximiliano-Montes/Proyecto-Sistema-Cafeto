@@ -28,10 +28,10 @@
 {% if bruta.sin_costo %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ bruta.sin_costo }} renglón(es) se vendieron con costo $ 0: la ganancia está inflada hasta que les cargues el costo a esos productos.</span></div>{% endif %}
 
 <div class="row g-3">
-    <div class="col-lg-4">
+    <div class="col-md-6 col-xl-4">
         <div class="tarjeta h-100">
             <h2 class="subtitulo h5"><i class="bi bi-box-arrow-in-down me-1" aria-hidden="true"></i>Lo que entró</h2>
-            <table class="table align-middle mb-0">
+            <div class="table-responsive"><table class="table align-middle mb-0">
                 <tbody>
                 {% for medio, monto in entro %}<tr><td>{{ medio }}</td><td class="table-numero">{{ monto|pesos }}</td></tr>
                 {% empty %}<tr><td class="text-secondary" colspan="2">No hubo cobros de ventas en el mes.</td></tr>{% endfor %}
@@ -46,13 +46,13 @@
                     {% if interes %}<tr><td class="small text-secondary">De lo cobrado de cuentas, recargos por atraso</td><td class="table-numero small text-secondary">{{ interes|pesos }}</td></tr>{% endif %}
                     {% if te_deben %}<tr><td class="small">Hoy te deben en cuentas corrientes <a href="{% url 'fidelizacion:cuentas' %}">ver</a></td><td class="table-numero small">{{ te_deben|pesos }}</td></tr>{% endif %}
                 </tfoot>
-            </table>
+            </table></div>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-md-6 col-xl-4">
         <div class="tarjeta h-100">
             <h2 class="subtitulo h5"><i class="bi bi-box-arrow-up me-1"></i>Lo que salió</h2>
-            <table class="table align-middle mb-0">
+            <div class="table-responsive"><table class="table align-middle mb-0">
                 <tbody>
                 <tr><td>Pagos de mercadería<span class="d-block small text-secondary">ya está descontada en la ganancia bruta</span></td><td class="table-numero">{{ mercaderia|pesos }}</td></tr>
                 {% for tipo, monto in gastos %}<tr><td>{{ tipo }}</td><td class="table-numero">{{ monto|pesos }}</td></tr>{% endfor %}
@@ -62,19 +62,19 @@
                     <tr><td>Mermas, al costo<span class="d-block small text-secondary">no es plata que salió: es mercadería que se perdió</span></td><td class="table-numero">{{ mermas|pesos }}</td></tr>
                     {% if incobrable %}<tr><td>Pérdidas por incobrabilidad (quebrantos)<span class="d-block small text-secondary">fiados que se dieron por perdidos este mes</span></td><td class="table-numero">{{ incobrable|pesos }}</td></tr>{% endif %}
                 </tfoot>
-            </table>
+            </table></div>
         </div>
     </div>
-    <div class="col-lg-4">
+    <div class="col-md-6 col-xl-4">
         <div class="tarjeta h-100">
             <h2 class="subtitulo h5"><i class="bi bi-hourglass-split me-1"></i>A pagar</h2>
-            <table class="table align-middle mb-0">
+            <div class="table-responsive"><table class="table align-middle mb-0">
                 <tbody>
                 {% for fila in a_pagar %}<tr><td>{{ fila.quien }}<span class="d-block small text-secondary">{{ fila.que }}{% if fila.facturas %} ({{ fila.facturas }}){% endif %}{% if fila.vence %} · {{ fila.vence|vencimiento }}{% endif %}</span></td><td class="table-numero">{{ fila.monto|pesos }}</td></tr>
                 {% empty %}<tr><td class="text-secondary">No hay nada pendiente de pago.</td><td></td></tr>{% endfor %}
                 </tbody>
                 <tfoot><tr><th>Total a pagar</th><th class="table-numero">{{ total_a_pagar|pesos }}</th></tr></tfoot>
-            </table>
+            </table></div>
         </div>
     </div>
 </div>

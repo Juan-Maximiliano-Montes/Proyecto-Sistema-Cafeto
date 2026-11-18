@@ -20,6 +20,7 @@ from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
 from ventas import puesto
 from ventas.models import MedioPago
+from nucleo.validaciones import id_valido
 
 
 def _numero(texto, etiqueta):
@@ -114,7 +115,7 @@ def cuenta(request, pk):
             if not idempotencia.consumir(request, token):
                 raise ValidationError('Eso ya se había registrado: no se repitió.')
             if accion == 'cobrar':
-                medio = MedioPago.objects.filter(pk=request.POST.get('medio') or 0, borrado_logico=False).first()
+                medio = MedioPago.objects.filter(pk=id_valido(request.POST.get('medio')), borrado_logico=False).first()
                 puntos = request.POST.get('puntos')
                 resultado = credito.cobrar(
                     cliente, _numero(request.POST.get('monto'), 'El importe'), medio, usuario, turno=turno,
@@ -183,9 +184,9 @@ def cuenta(request, pk):
         'cliente': cliente, 's': s, 'pendientes': pendientes, 'gestiona': gestiona, 'turno': turno,
         'aviso': credito.aviso_de_mora(cliente, hoy),
         'movimientos': movimientos,
-        'recibo_nuevo': (MovimientoCuenta.objects.filter(pk=recibo_nuevo, id_cliente=cliente,
+        'recibo_nuevo': (MovimientoCuenta.objects.filter(pk=id_valido(recibo_nuevo), id_cliente=cliente,
                                                           tipo_movimiento=credito.COBRO).first()
-                         if recibo_nuevo.isdigit() else None),
+                         if id_valido(recibo_nuevo) else None),
         'medios': [m for m in MedioPago.objects.filter(borrado_logico=False).order_by('-afecta_caja', 'nombre_medio_pago')
                    if not m.es_cuenta_corriente],
         'puntos_por_defecto': not any(f.atraso for f in pendientes),

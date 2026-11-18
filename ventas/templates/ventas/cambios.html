@@ -31,7 +31,7 @@
 {% elif venta %}
 <form method="post" novalidate>
     {% csrf_token %}
-    <input type="hidden" name="venta" value="{{ venta.pk }}">
+    <input type="hidden" name="venta" value="{{ venta.pk|stringformat:"d" }}">
     <input type="hidden" name="token" value="{{ token }}">
 
     {% if error %}<div class="aviso aviso-error" role="alert"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ error }}</span></div>{% endif %}
@@ -52,9 +52,9 @@
                             <td>{{ r.descripcion_item }}</td>
                             <td class="table-numero">{{ r.precio_reintegrable|pesos }}</td>
                             <td class="table-numero">{{ queda|cantidad }}</td>
-                            <td>{% if queda > 0 %}<input type="text" inputmode="decimal" name="devuelve_{{ r.pk }}" class="form-control form-control-sm" value="{{ pedido }}" aria-label="Cantidad que devuelve">{% else %}<span class="small text-tenue">Ya devuelto</span>{% endif %}</td>
+                            <td>{% if queda > 0 %}<input type="text" inputmode="decimal" name="devuelve_{{ r.pk|stringformat:"d" }}" class="form-control form-control-sm" value="{{ pedido }}" aria-label="Cantidad que devuelve">{% else %}<span class="small text-tenue">Ya devuelto</span>{% endif %}</td>
                             <td>{% if queda > 0 and r.id_producto.tiene_stock_propio %}
-                                <select name="reingresa_{{ r.pk }}" class="form-select form-select-sm" aria-label="¿Vuelve al stock?">
+                                <select name="reingresa_{{ r.pk|stringformat:"d" }}" class="form-select form-select-sm" aria-label="¿Vuelve al stock?">
                                     <option value="1">Sí, está en buen estado</option>
                                     <option value="0"{% if reingresa == '0' %} selected{% endif %}>No (dañado o vencido)</option>
                                 </select>
@@ -73,7 +73,7 @@
                     <div class="col-8">
                         <select name="entrega_producto_{{ fila.indice }}" class="form-select js-catalogo" data-catalogo="{{ catalogo }}" aria-label="Producto que se lleva">
                             <option value="">— Buscá un producto —</option>
-                            {% if fila.producto %}<option value="{{ fila.producto.pk }}" selected>{{ fila.producto }}</option>{% endif %}
+                            {% if fila.producto %}<option value="{{ fila.producto.pk|stringformat:"d" }}" selected>{{ fila.producto }}</option>{% endif %}
                         </select>
                     </div>
                     <div class="col-4"><input type="text" inputmode="decimal" name="entrega_cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control" placeholder="Cantidad" aria-label="Cantidad que se lleva"></div>
@@ -104,7 +104,7 @@
                 {% if saldo %}
                 <label class="form-label" for="medio">{% if a_cobrar %}Cobrar con{% else %}Devolver con{% endif %}</label>
                 <select name="medio" id="medio" class="form-select">
-                    {% for m in medios %}<option value="{{ m.pk }}"{% if datos.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
+                    {% for m in medios %}<option value="{{ m.pk|stringformat:"d" }}"{% if datos.medio == m.pk|stringformat:'s' %} selected{% endif %}>{{ m }}</option>{% endfor %}
                 </select>
                 {% if a_devolver %}<p class="form-text mb-0">Se devuelve por el mismo medio con que se pagó: lo cobrado con tarjeta se anula en el posnet y no sale del cajón.{% for m, total in con_recargo %} Con {{ m }} se devuelven {{ total|pesos }}, con su parte del recargo.{% endfor %}</p>{% endif %}
                 {% endif %}

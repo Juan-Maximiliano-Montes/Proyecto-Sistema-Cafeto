@@ -15,8 +15,8 @@
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
-                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;grafico={{ estilo }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
             </ul>
         </div>
     </div>
@@ -24,29 +24,42 @@
 
 {% include 'negocio/_tablero.html' %}
 
+<section id="seccion-reportes" class="seccion-anclada" aria-labelledby="titDetalle">
 <h2 class="h5 mb-2" id="titDetalle"><i class="bi {{ reporte.icono }} me-1" aria-hidden="true"></i>{{ reporte.titulo }}</h2>
 <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Reportes">
     {% for r in reportes %}
-    <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}&amp;grafico={{ estilo }}" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
+    <a href="?ver={{ r.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}#seccion-reportes" class="btn btn-sm {% if r.clave == reporte.clave %}btn-primary{% else %}btn-secundario{% endif %}"{% if r.clave == reporte.clave %} aria-current="page"{% endif %}><i class="bi {{ r.icono }} me-1"></i>{{ r.titulo }}</a>
     {% endfor %}
 </nav>
 
-{% if not sin_periodo %}
-<form method="get" class="herramientas">
+{% if not sin_periodo or filtros %}
+<form method="get" class="herramientas" action="#seccion-reportes">
     <input type="hidden" name="ver" value="{{ reporte.clave }}">
     <input type="hidden" name="grafico" value="{{ estilo }}">
+    {% if sin_periodo %}
+    <input type="hidden" name="desde" value="{{ desde|date:'Y-m-d' }}"><input type="hidden" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+    {% else %}
     <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}" class="form-control"></label>
     <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}" class="form-control"></label>
+    {% endif %}
+    {% for filtro in filtros %}
+    <label class="d-flex align-items-center gap-2 small text-secondary">{{ filtro.etiqueta }}
+        <select name="{{ filtro.clave }}" class="form-select">
+            <option value="">{% if filtro.clave == 'rubro' %}Todos los rubros{% else %}Todas las cajas{% endif %}</option>
+            {% for pk, nombre in filtro.opciones %}<option value="{{ pk|stringformat:'d' }}"{% if pk == filtro.elegido %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
+        </select>
+    </label>
+    {% endfor %}
     <button type="submit" class="btn btn-secundario"><i class="bi bi-arrow-repeat me-1"></i>Ver</button>
 </form>
 {% endif %}
 
 <figure class="tarjeta grafico-reporte mb-3">
     <div class="grafico-cabecera">
-        <figcaption class="small text-secondary"><i class="bi {% if estilo == 'torta' and not torta_no_aplica and grafico %}bi-pie-chart{% else %}bi-bar-chart-line{% endif %} me-1"></i>{% if sin_periodo %}Al día de hoy{% else %}Del {{ desde|date:"d/m" }} al {{ hasta|date:"d/m/Y" }}{% endif %} · el mismo dato de la tabla de abajo</figcaption>
+        <figcaption class="small text-secondary"><i class="bi {% if estilo == 'torta' and not torta_no_aplica and grafico %}bi-pie-chart{% else %}bi-bar-chart-line{% endif %} me-1"></i>{% if sin_periodo %}Al día de hoy{% else %}Del {{ desde|date:"d/m" }} al {{ hasta|date:"d/m/Y" }}{% endif %}{% if filtros_aplicados %} · {{ filtros_aplicados }}{% endif %} · el mismo dato de la tabla de abajo</figcaption>
         {% if estilos and grafico %}
         <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de gráfico">
-            {% for o in estilos %}<a href="{{ o.url }}" class="btn {% if o.activo %}btn-primary{% else %}btn-secundario{% endif %}"{% if o.activo %} aria-current="true"{% endif %}><i class="bi {{ o.icono }} me-1"></i>{{ o.etiqueta }}</a>{% endfor %}
+            {% for o in estilos %}<a href="{{ o.url }}#seccion-reportes" class="btn {% if o.activo %}btn-primary{% else %}btn-secundario{% endif %}"{% if o.activo %} aria-current="true"{% endif %}><i class="bi {{ o.icono }} me-1"></i>{{ o.etiqueta }}</a>{% endfor %}
         </div>
         {% endif %}
     </div>
@@ -57,7 +70,7 @@
         <div class="grafico-vacio">
             <i class="bi bi-bar-chart" aria-hidden="true"></i>
             <p class="mb-1">{% if sin_periodo %}No hay productos con stock para graficar.{% else %}No hay movimientos del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }} para graficar.{% endif %}</p>
-            {% if not sin_periodo %}<a class="btn btn-sm btn-secundario" href="?ver={{ reporte.clave }}&amp;desde={{ ultimos_30.0|date:'Y-m-d' }}&amp;hasta={{ ultimos_30.1|date:'Y-m-d' }}&amp;grafico={{ estilo }}"><i class="bi bi-calendar-range me-1"></i>Ver los últimos 30 días</a>{% endif %}
+            {% if not sin_periodo %}<a class="btn btn-sm btn-secundario" href="?ver={{ reporte.clave }}&amp;desde={{ ultimos_30.0|date:'Y-m-d' }}&amp;hasta={{ ultimos_30.1|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}#seccion-reportes"><i class="bi bi-calendar-range me-1"></i>Ver los últimos 30 días</a>{% endif %}
         </div>
     {% endif %}
 </figure>
@@ -89,6 +102,7 @@
     </div>
 </div>
 <p class="small text-tenue mt-2">Los importes salen de lo que quedó registrado en cada ticket (precio y costo de ese momento). Los cambios y devoluciones se ven en Ventas.</p>
+</section>
 {% endblock %}
 
 {% block scripts %}<script src="{% static 'cafeto/js/tablero.js' %}"></script>{% endblock %}

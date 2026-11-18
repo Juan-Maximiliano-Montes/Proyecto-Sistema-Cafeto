@@ -3,7 +3,6 @@
 PENDIENTE (borrador) → EMITIDA (se mandó) → RECEPCIONADA (llegó, la cierra
 la recepción) o CANCELADA. El PDF es lo que se le manda al proveedor.
 """
-import json
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -22,6 +21,8 @@ from seguridad.decorators import requiere_permiso
 from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock.models import Producto
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
+from nucleo import json_seguro
 
 
 def _texto(error):
@@ -50,18 +51,18 @@ def nueva_orden(request):
     if request.method == 'POST':
         token = request.POST.get('token_operacion')
         try:
-            proveedor = proveedores.filter(pk=request.POST.get('proveedor') or 0).first()
+            proveedor = proveedores.filter(pk=id_valido(request.POST.get('proveedor'))).first()
             if proveedor is None:
                 raise ValidationError('Elegí a qué proveedor se le pide.')
-            try:
-                crudos = json.loads(request.POST.get('renglones') or '[]')
-            except ValueError:
-                raise ValidationError('Los renglones llegaron mal armados.')
+            crudos = json_seguro.lista(request.POST.get('renglones'), 'La lista de renglones')
             productos = Producto.objects.in_bulk(
-                [c.get('producto') for c in crudos if isinstance(c, dict)])
+                [id_valido(c.get('producto')) for c in crudos
+                 if isinstance(c, dict) and id_valido(c.get('producto'))])
             items = []
             for crudo in crudos:
-                producto = productos.get(crudo.get('producto'))
+                if not isinstance(crudo, dict):
+                    raise ValidationError('La lista de renglones llegó mal armada. Recargá la página.')
+                producto = productos.get(id_valido(crudo.get('producto')))
                 cantidad = leer_numero(crudo.get('cantidad'), 3)
                 precio = leer_numero(crudo.get('costo') or '0', 2)
                 if producto is None or cantidad is None or precio is None or precio < 0:

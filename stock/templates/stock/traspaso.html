@@ -36,7 +36,7 @@
                 <label class="form-label small" for="destino_{{ fila.indice }}"><i class="bi bi-arrow-return-right me-1"></i>Pasa a</label>
                 <select name="destino_{{ fila.indice }}" id="destino_{{ fila.indice }}" class="form-select js-catalogo" data-catalogo="{{ catalogo }}">
                     <option value="">— Buscá el producto destino —</option>
-                    {% if fila.destino %}<option value="{{ fila.destino.pk }}" selected>{{ fila.destino }}</option>{% endif %}
+                    {% if fila.destino %}<option value="{{ fila.destino.pk|stringformat:"d" }}" selected>{{ fila.destino }}</option>{% endif %}
                 </select>
             </div>
             <div class="col-md-3">

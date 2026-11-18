@@ -17,6 +17,8 @@ from functools import wraps
 from django.contrib import messages
 from django.shortcuts import redirect
 
+from nucleo.errores import error_json, quiere_json
+
 
 def requiere_permiso(codigo_permiso, redirigir_a='seguridad:lista'):
     """Deja pasar sólo si el usuario logueado tiene ese permiso.
@@ -47,12 +49,17 @@ def requiere_permiso(codigo_permiso, redirigir_a='seguridad:lista'):
             # Sin sesión no debería llegar acá (lo frena el middleware),
             # pero si pasara, lo mandamos al login.
             if usuario is None:
+                if quiere_json(request):
+                    return error_json('Tenés que iniciar sesión.', 401)
                 return redirect('seguridad:login')
 
             if not usuario.tiene_permiso(codigo_permiso):
                 # DD-62: el intento queda en el Registro de Actividad.
                 from seguridad.servicios import registrar_acceso_denegado
                 registrar_acceso_denegado(request, codigo_permiso)
+                if quiere_json(request):
+                    return error_json('Tu perfil no tiene habilitado el permiso necesario para esta '
+                                      f'acción ("{codigo_permiso}").', 403)
                 messages.error(
                     request,
                     'Acceso denegado: tu perfil no tiene habilitado el '
@@ -80,10 +87,14 @@ def requiere_alguno(*codigos, redirigir_a='home'):
         def envoltura(request, *args, **kwargs):
             usuario = getattr(request, 'usuario_actual', None)
             if usuario is None:
+                if quiere_json(request):
+                    return error_json('Tenés que iniciar sesión.', 401)
                 return redirect('seguridad:login')
             if not any(usuario.puede(c) for c in codigos):
                 from seguridad.servicios import registrar_acceso_denegado
                 registrar_acceso_denegado(request, *codigos)
+                if quiere_json(request):
+                    return error_json('Tu perfil no tiene habilitada esta acción.', 403)
                 messages.error(
                     request,
                     'Acceso denegado: tu perfil no tiene habilitada esta '

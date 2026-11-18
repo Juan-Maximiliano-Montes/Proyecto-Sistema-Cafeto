@@ -1,11 +1,15 @@
-"""Carga un local de demostración: dos semanas de operación diaria.
+"""Carga un local de demostración: dos meses de ventas y dos semanas de
+operación diaria completa.
 
     docker compose exec web python manage.py cargar_datos_demo
 
 Para qué: tener datos con los que recorrer el sistema y buscar errores, con
 las situaciones que pasan de verdad en Cafeto —una factura con faltante, un
 cierre de caja con diferencia, una devolución, una venta anulada, un lote
-por vencer, un pago atrasado—, entre 7 y 20 casos por tabla.
+por vencer, un pago atrasado—, entre 7 y 20 casos por tabla. Antes de esas
+dos semanas hay una historia corta de ventas (de 60 a 15 días atrás) para
+que los reportes y los gráficos del Parcial comparen un período con el
+anterior. Las ventas se reparten entre las 8 y las 21 h.
 
 Cómo: las OPERACIONES pasan por las mismas pantallas del sistema (las
 vistas de Django, con un cliente HTTP interno): las mismas validaciones,
@@ -111,6 +115,7 @@ class Persona:
 
     def entrar(self, clave=CLAVE_DEMO):
         self.cliente = Client(HTTP_HOST='localhost')
+        self.desde = self.ultimo = self.comando.reloj.ahora
         respuesta = self.cliente.post(reverse('seguridad:login'), {
             'identificador': self.usuario.nombre_usuario, 'clave': clave})
         return respuesta.status_code == 302
@@ -130,6 +135,7 @@ class Persona:
         return nuevo
 
     def post(self, nombre, datos=None, args=None, consulta=''):
+        self.ultimo = self.comando.reloj.ahora
         respuesta = self.cliente.post(reverse(nombre, args=args) + consulta, datos or {})
         # Lo que la pantalla le habría avisado a la persona.
         guardados = getattr(respuesta.wsgi_request, '_messages', None)
@@ -150,6 +156,7 @@ class Persona:
         return ' / '.join(getattr(self, 'ultimos_avisos', [])) or 'sin aviso en pantalla'
 
     def post_json(self, nombre, cuerpo):
+        self.ultimo = self.comando.reloj.ahora
         return self.cliente.post(reverse(nombre), json.dumps(cuerpo),
                                  content_type='application/json')
 
@@ -161,7 +168,7 @@ class Persona:
 #  EL COMANDO
 # ===========================================================================
 class Command(BaseCommand):
-    help = ('Carga dos semanas de operación de un local de demostración '
+    help = ('Carga dos meses de ventas y dos semanas de operación de un local de demostración '
             '(7 a 20 casos por tabla) pasando por las pantallas del sistema.')
 
     def add_arguments(self, parser):
@@ -191,6 +198,9 @@ class Command(BaseCommand):
                   'cierra turnos de días anteriores.')
 
         random.seed(opciones['semilla'])
+        # Las horas de las ventas salen de otro generador: así la secuencia
+        # de siempre (motivos, demoras) no cambia por repartirlas en el día.
+        self.azar_horas = random.Random(opciones['semilla'])
         self.problemas = []
         self.creados = set()
         self.hoy = timezone.localdate()
@@ -202,6 +212,10 @@ class Command(BaseCommand):
             self.cargar_catalogos()
             self.operar()
         self.informar()
+
+    # El personal y los catálogos se dan de alta antes de la primera venta
+    # de la historia (HISTORIA, más abajo).
+    DIA_DE_ALTA = 61
 
     # ------------------------------------------------------------------
     def dia(self, atras):
@@ -222,7 +236,7 @@ class Command(BaseCommand):
         from seguridad.models import Perfil, Usuario
         from seguridad.servicios import instantanea, registrar_auditoria
 
-        self.reloj.ir_a(self.dia(15), 8, 0)
+        self.reloj.ir_a(self.dia(self.DIA_DE_ALTA), 8, 0)
         self.stdout.write('Personal del local')
         titular = Usuario.objects.filter(es_titular=True).first()
         equipo = [
@@ -351,7 +365,7 @@ class Command(BaseCommand):
         from ventas.models import MedioPago
 
         self.stdout.write('Catálogos')
-        self.reloj.ir_a(self.dia(15), 9, 0)
+        self.reloj.ir_a(self.dia(self.DIA_DE_ALTA), 9, 0)
 
         # -- Localidades ---------------------------------------------------
         salta = Provincia.objects.get(nombre_provincia='Salta')
@@ -515,7 +529,7 @@ class Command(BaseCommand):
                 beneficio = Beneficio(id_categoria=categoria, descripcion_beneficio=desc,
                                       tipo_beneficio=tipo, modo_entrega=modo,
                                       porcentaje_descuento=pct, puntos_requeridos=puntos,
-                                      vigencia_desde=self.dia(15))
+                                      vigencia_desde=self.dia(self.DIA_DE_ALTA))
                 beneficio = self.alta('beneficios', beneficio, opcional=True)
                 if beneficio is None:
                     continue
@@ -581,14 +595,42 @@ class Command(BaseCommand):
         1: ('tomas', 'Caja Cafetería', 1),
     }
 
+    # La historia: días sueltos entre 60 y 15 días atrás, con productos de
+    # reventa que se compran justo para esas ventas (al llegar a las dos
+    # semanas el stock es el mismo que sin historia).
+    # (días atrás) -> (quién abre, caja, ventas del día)
+    HISTORIA = {
+        59: ('tomas', 'Caja Cafetería', 3), 55: ('valen', 'Caja Minisuper', 2),
+        51: ('diego', 'Caja Minisuper', 3), 47: ('tomas', 'Caja Cafetería', 2),
+        43: ('valen', 'Caja Minisuper', 3), 39: ('tomas', 'Caja Cafetería', 2),
+        35: ('diego', 'Caja Minisuper', 3), 32: ('valen', 'Caja Cafetería', 2),
+        29: ('tomas', 'Caja Cafetería', 3), 26: ('valen', 'Caja Minisuper', 2),
+        23: ('diego', 'Caja Minisuper', 3), 20: ('tomas', 'Caja Cafetería', 2),
+        17: ('valen', 'Caja Minisuper', 3), 15: ('tomas', 'Caja Cafetería', 2),
+    }
+    PEDIDOS_HISTORIA = [
+        ([('cola', 2), ('alfajor', 1)], [('Efectivo', None)], False),
+        ([('yerba', 1), ('azucar', 1)], [('QR', None)], False),
+        ([('agua', 2), ('galletitas', 1)], [('Tarjeta de débito', None)], False),
+        ([('choco', 2)], [('Efectivo', None)], False),
+        ([('cola15', 1), ('alfajor', 2)], [('Transferencia', None)], False),
+        ([('galletitas', 2), ('yerba', 1)], [('Tarjeta de crédito', None)], False),
+        ([('agua', 1), ('choco', 1)], [('QR', None)], False),
+    ]
+    # Las ventas del día, entre la apertura (8 h) y el cierre (20:45), en
+    # minutos desde las 0 h: de 8:20 a 20:20.
+    PRIMERA_VENTA, ULTIMA_VENTA, CIERRE = 8 * 60 + 20, 20 * 60 + 20, 20 * 60 + 45
+
     def operar(self):
         """Día por día y hora por hora: el reloj nunca vuelve atrás (las
         sesiones, el kárdex y la caja dependen de ese orden)."""
-        self.stdout.write('Dos semanas de operación')
         self.ventas = []
         self.ordenes = {}
         self.egresos = {}
         self.mermas = {}
+        self.stdout.write('Dos meses de ventas (de 60 a 15 días atrás)')
+        self.historia()
+        self.stdout.write('Dos semanas de operación')
         for atras in range(14, 0, -1):
             self.manana(atras)
             if atras in self.PLAN:
@@ -613,7 +655,7 @@ class Command(BaseCommand):
             self.producir(dia)
 
     def noche(self, atras):
-        self.reloj.ir_a(self.dia(atras), 21, 0)
+        self.adelantar_a(self.dia(atras), 21 * 60)
         tareas = {14: self.egresos_del_mes, 13: self.pedir_reposicion,
                   6: self.pagar_cuentas, 5: self.pedir_mas, 4: self.conciliar_banco,
                   3: self.cargar_mermas, 2: self.resolver_mermas}
@@ -839,37 +881,152 @@ class Command(BaseCommand):
             datos = {}
         self.reloj.pasar(random.randint(8, 25))
         if not datos.get('ok'):
-            self.problema(f'Venta rechazada ({cajero}): {datos.get("error") or respuesta.status_code}')
+            destino = f' → {respuesta["Location"]}' if respuesta.has_header('Location') else ''
+            self.problema(f'Venta rechazada ({cajero}) a las {timezone.localtime(self.reloj.ahora):%d/%m %H:%M}: '
+                          f'{datos.get("error") or respuesta.status_code}{destino}')
             return None
         return Venta.objects.get(pk=datos['venta'])
 
-    def un_dia(self, atras, cajero, nombre_caja, cuantas):
-        from ventas import caja as servicio_caja
-        from ventas.models import CajaRegistradora, TurnoCaja
+    # -- El reloj del día -----------------------------------------------------
+    def adelantar_a(self, dia, minutos):
+        """Lleva el reloj a esa hora del día, nunca para atrás. Devuelve
+        cuánto tiempo pasó."""
+        destino = timezone.make_aware(datetime.combine(dia, time()) + timedelta(minutes=minutos))
+        salto = max(destino - self.reloj.ahora, timedelta())
+        self.reloj.ahora += salto
+        return salto
 
-        dia = self.dia(atras)
-        caja = CajaRegistradora.objects.get(nombre_caja_registradora=nombre_caja)
-        self.reloj.ir_a(dia, 8, 0)
+    def horarios(self, cuantas):
+        """Las horas de las ventas del día, repartidas de la mañana a la
+        noche (no todas a la apertura): el mapa de calor por hora tiene
+        algo que mostrar."""
+        franja = (self.ULTIMA_VENTA - self.PRIMERA_VENTA) // max(cuantas, 1)
+        return [self.PRIMERA_VENTA + franja * i + self.azar_horas.randint(0, max(franja - 30, 0))
+                for i in range(cuantas)]
+
+    def a_la_hora(self, cajero, caja, dia, minutos):
+        """La persona vuelve a la caja a esa hora. Si desde su último clic
+        pasó más que la inactividad permitida, o la sesión está por cumplir
+        su duración máxima, entra de nuevo."""
+        self.adelantar_a(dia, minutos)
+        quieta = self.reloj.ahora - getattr(cajero, 'ultimo', self.reloj.ahora)
+        abierta = self.reloj.ahora - getattr(cajero, 'desde', self.reloj.ahora)
+        if (quieta > timedelta(minutes=settings.SESION_INACTIVIDAD_MINUTOS - 10)
+                or abierta > timedelta(hours=settings.SESION_DURACION_HORAS) - timedelta(hours=1)):
+            cajero.salir()
+            cajero.entrar()
+            cajero.elegir_caja(caja)
+
+    def abrir_caja(self, cajero, caja, dia, monto='10000'):
+        from ventas.models import TurnoCaja
+        self.adelantar_a(dia, 8 * 60)
         cajero.entrar()
         cajero.elegir_caja(caja)
         cajero.post('ventas:abrir_turno', {'token_operacion': cajero.token(),
-                                           'monto_inicial': '10000'})
+                                           'monto_inicial': monto})
         turno = TurnoCaja.objects.filter(id_caja_registradora=caja).order_by('-pk').first()
         if turno is None or not turno.abierto:
             self.problema(f'No se abrió {caja} el {dia:%d/%m}: {cajero.aviso}')
             cajero.salir()
-            return
-        self.reloj.pasar(20)
+            return None
+        return turno
 
+    def vender_en_el_dia(self, cajero, caja, dia, cuantas, pedidos, lista):
+        """Las ventas del día a sus horas; cada una se suma a ``lista`` (el
+        orden de los pedidos y los clientes sale de cuántas ya hay en ella)."""
         hechas = []
-        for _ in range(cuantas):
-            pedido = self.PEDIDOS[len(self.ventas) % len(self.PEDIDOS)]
-            cliente = (self.clientes[len(self.ventas) % (len(self.clientes) - 1)]
-                       if pedido[2] else None)
+        for minutos in self.horarios(cuantas):
+            self.a_la_hora(cajero, caja, dia, minutos)
+            cuenta = len(lista)
+            pedido = pedidos[cuenta % len(pedidos)]
+            cliente = self.clientes[cuenta % (len(self.clientes) - 1)] if pedido[2] else None
             venta = self.vender(cajero, pedido, cliente)
             if venta is not None:
-                self.ventas.append(venta)
+                lista.append(venta)
                 hechas.append(venta)
+        return hechas
+
+    def historia(self):
+        """Ventas de días anteriores a las dos semanas: la mercadería se
+        compra (y se paga) el primer día, justo lo que se va a vender."""
+        from collections import Counter
+        from ventas.models import CajaRegistradora
+        azar = random.getstate()        # la historia no cambia el azar de las dos semanas
+        dias = sorted(self.HISTORIA, reverse=True)
+        primero = self.dia(dias[0] + 1)
+        necesarias, cuenta = Counter(), 0
+        for atras in dias:
+            for _ in range(self.HISTORIA[atras][2]):
+                for clave, cantidad in self.PEDIDOS_HISTORIA[cuenta % len(self.PEDIDOS_HISTORIA)][0]:
+                    necesarias[clave] += cantidad
+                cuenta += 1
+        costos = {'cola': 1500, 'cola15': 2600, 'agua': 800, 'galletitas': 1800, 'yerba': 3600,
+                  'azucar': 950, 'choco': 1000, 'alfajor': 1300}
+        golosinas = ('choco', 'alfajor')
+        carla, pr = self.carla, self.proveedores
+        self.adelantar_a(primero, 7 * 60)
+        carla.entrar()
+        for proveedor, numero, claves in (
+                (pr['Distribuidora Andina'], 9870, [c for c in necesarias if c not in golosinas]),
+                (pr['Golosinas del Norte'], 7302, [c for c in necesarias if c in golosinas])):
+            compra = self.recibir(carla, proveedor, numero, [
+                (self.p[clave], necesarias[clave], costos[clave], None) for clave in claves])
+            if compra is not None:
+                self.egreso(carla, 'ahora', 'Proveedores', compra.total_compra,
+                            f'Pago de la factura {numero}', proveedor=proveedor.pk,
+                            compra=compra.pk, medio=self.medio('Transferencia').pk)
+        carla.salir()
+        self.ventas_historia = []
+        for atras in dias:
+            quien, nombre_caja, cuantas = self.HISTORIA[atras]
+            cajero, dia = getattr(self, quien), self.dia(atras)
+            caja = CajaRegistradora.objects.get(nombre_caja_registradora=nombre_caja)
+            turno = self.abrir_caja(cajero, caja, dia)
+            if turno is None:
+                continue
+            self.vender_en_el_dia(cajero, caja, dia, cuantas, self.PEDIDOS_HISTORIA, self.ventas_historia)
+            cajero.salir()
+            self.cerrar_caja(cajero, caja, turno, dia)
+        random.setstate(azar)
+        self.paso(f'{len(self.ventas_historia)} ventas en {len(dias)} días, '
+                  f'del {self.dia(dias[0]):%d/%m} al {self.dia(dias[-1]):%d/%m}')
+
+    def cerrar_caja(self, cajero, caja, turno, dia, faltante=D('0'), observacion='', supervisor=None):
+        """A la noche vuelve a entrar para el cierre (la sesión de la
+        mañana ya venció por inactividad, como corresponde)."""
+        from ventas import caja as servicio_caja
+        self.adelantar_a(dia, self.CIERRE)
+        cajero.entrar()
+        cajero.elegir_caja(caja)
+        turno.refresh_from_db()
+        esperado = servicio_caja.saldo(turno)
+        contado = esperado - faltante
+        cajero.post('ventas:declarar_arqueo', {'token_operacion': cajero.token(),
+                                               'monto_contado': str(contado)})
+        if supervisor is not None:
+            # Con una diferencia grande el sistema no la muestra hasta que la
+            # cajera dice que su conteo es definitivo (DD-81).
+            cajero.post('ventas:cierre', {'cerrar_igual': '1'})
+        datos = {'token_operacion': cajero.token(), 'observacion': observacion}
+        if supervisor is not None:
+            datos.update({'autoriza_usuario': supervisor.usuario.nombre_usuario,
+                          'autoriza_clave': CLAVE_DEMO})
+        cajero.post('ventas:cierre', datos)
+        turno.refresh_from_db()
+        if turno.abierto:
+            self.problema(f'No se cerró {caja} el {dia:%d/%m} (contado {contado}, esperado '
+                          f'{esperado}): {cajero.aviso}')
+        cajero.salir()
+
+    def un_dia(self, atras, cajero, nombre_caja, cuantas):
+        from ventas.models import CajaRegistradora
+
+        dia = self.dia(atras)
+        caja = CajaRegistradora.objects.get(nombre_caja_registradora=nombre_caja)
+        turno = self.abrir_caja(cajero, caja, dia)
+        if turno is None:
+            return
+        hechas = self.vender_en_el_dia(cajero, caja, dia, cuantas, self.PEDIDOS, self.ventas)
 
         # Lo que pasa algunos días.
         if atras == 11 and hechas:
@@ -892,40 +1049,14 @@ class Command(BaseCommand):
                                                   'tipo': 'REFUERZO', 'monto': '5000',
                                                   'concepto': 'Cambio chico del banco'})
         cajero.salir()
-
-        # A la noche vuelve a entrar para el cierre (la sesión de la mañana
-        # ya venció por inactividad, como corresponde).
-        self.reloj.ir_a(dia, 20, 30)
-        cajero.entrar()
-        cajero.elegir_caja(caja)
-        turno.refresh_from_db()
-        esperado = servicio_caja.saldo(turno)
-        contado = esperado
-        observacion = ''
-        supervisor = None
         if atras == 10:
-            contado = esperado - D('200')
-            observacion = 'Faltó cambio chico; se redondeó a favor del cliente.'
-        if atras == 6:
-            contado = esperado - D('3500')
-            observacion = 'Se pagó un flete con plata del cajón y no se anotó.'
-            supervisor = self.lucia
-        cajero.post('ventas:declarar_arqueo', {'token_operacion': cajero.token(),
-                                               'monto_contado': str(contado)})
-        if supervisor is not None:
-            # Con una diferencia grande el sistema no la muestra hasta que la
-            # cajera dice que su conteo es definitivo (DD-81).
-            cajero.post('ventas:cierre', {'cerrar_igual': '1'})
-        datos = {'token_operacion': cajero.token(), 'observacion': observacion}
-        if supervisor is not None:
-            datos.update({'autoriza_usuario': supervisor.usuario.nombre_usuario,
-                          'autoriza_clave': CLAVE_DEMO})
-        cajero.post('ventas:cierre', datos)
-        turno.refresh_from_db()
-        if turno.abierto:
-            self.problema(f'No se cerró {caja} el {dia:%d/%m} (contado {contado}, esperado '
-                          f'{esperado}): {cajero.aviso}')
-        cajero.salir()
+            self.cerrar_caja(cajero, caja, turno, dia, D('200'),
+                             'Faltó cambio chico; se redondeó a favor del cliente.')
+        elif atras == 6:
+            self.cerrar_caja(cajero, caja, turno, dia, D('3500'),
+                             'Se pagó un flete con plata del cajón y no se anotó.', self.lucia)
+        else:
+            self.cerrar_caja(cajero, caja, turno, dia)
 
     def anular(self, cajero, venta, autoriza, motivo):
         datos = {'token_operacion': cajero.token(), 'motivo': motivo, 'desde': 'cambios',

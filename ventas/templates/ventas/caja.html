@@ -37,7 +37,7 @@
     {% for c, abierto in cajas %}
     <form method="post" action="{% url 'ventas:elegir_caja' %}" class="tarjeta">
         {% csrf_token %}
-        <input type="hidden" name="caja" value="{{ c.pk }}">
+        <input type="hidden" name="caja" value="{{ c.pk|stringformat:"d" }}">
         <div class="tarjeta-cabeza">
             <h2 class="tarjeta-titulo"><i class="bi bi-shop me-1 text-marca"></i>{{ c }}</h2>
             {% if abierto %}<span class="insignia insignia-exito">Abierta</span>{% else %}<span class="insignia insignia-neutra">Cerrada</span>{% endif %}

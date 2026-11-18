@@ -18,6 +18,7 @@ from seguridad.servicios import instantanea, registrar_auditoria
 from stock import servicios
 from stock.models import Produccion, Producto, TipoProducto
 from nucleo.templatetags.cafeto import pesos
+from nucleo.validaciones import id_valido
 
 
 def _texto(error):
@@ -33,7 +34,7 @@ def producciones(request):
     if request.method == 'POST':
         token = request.POST.get('token_operacion')
         try:
-            producto = productos.filter(pk=request.POST.get('producto') or 0).first()
+            producto = productos.filter(pk=id_valido(request.POST.get('producto'))).first()
             if producto is None:
                 raise ValidationError('Elegí qué se produjo.')
             cantidad = leer_numero(request.POST.get('cantidad'), 3)

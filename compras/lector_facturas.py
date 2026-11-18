@@ -96,14 +96,33 @@ _STREAM = re.compile(rb'stream\r?\n(.*?)\r?\nendstream', re.S)
 _CADENA = re.compile(rb'\((?:\\.|[^\\)])*\)')
 
 
+MAXIMO_DESCOMPRIMIDO = 16 * 1024 * 1024
+DEMASIADO_GRANDE = ('El PDF tiene un contenido comprimido demasiado grande para ser una factura. '
+                    'Pedile al proveedor el PDF original o cargá la compra a mano.')
+
+
+def _descomprimir(flujo, disponible):
+    """Un flujo comprimido del PDF, sin dejar que se infle más de lo
+    ``disponible`` (un PDF armado para estallar al descomprimirse)."""
+    descompresor = zlib.decompressobj()
+    datos = descompresor.decompress(flujo, disponible)
+    if descompresor.unconsumed_tail:
+        raise ValidationError(DEMASIADO_GRANDE)
+    return datos
+
+
 def _texto_de_pdf(contenido):
     """El texto visible de un PDF común y el contenido crudo (para el QR)."""
     partes, crudo = [], [contenido]
+    disponible = MAXIMO_DESCOMPRIMIDO
     for flujo in _STREAM.findall(contenido):
         try:
-            datos = zlib.decompress(flujo)
+            datos = _descomprimir(flujo, disponible)
         except zlib.error:
             datos = flujo
+        disponible -= len(datos)
+        if disponible <= 0:
+            raise ValidationError(DEMASIADO_GRANDE)
         crudo.append(datos)
         if b'BT' not in datos:
             continue
@@ -255,7 +274,7 @@ def interpretar(texto, qr=None):
         # Lo del QR es lo oficial: manda sobre lo leído del texto.
         if qr.get('cuit'):
             datos['cuit_proveedor'] = str(qr['cuit'])
-        if TIPOS_ARCA.get(qr.get('tipoCmp')):
+        if isinstance(qr.get('tipoCmp'), (int, str)) and TIPOS_ARCA.get(qr['tipoCmp']):
             datos['tipo_comprobante'] = TIPOS_ARCA[qr['tipoCmp']]
         if qr.get('ptoVta'):
             datos['punto_venta'] = str(qr['ptoVta'])

@@ -8,8 +8,8 @@
     <form method="post" action="{% url 'stock:producto_foto' fila.pk %}" enctype="multipart/form-data" class="d-flex flex-wrap gap-2 align-items-end">
         {% csrf_token %}
         <div class="flex-grow-1">
-            <label class="form-label small" for="fotoProducto{{ fila.pk }}">{% if foto %}Cambiarla{% else %}Sacá una foto o elegí un archivo{% endif %}</label>
-            <input type="file" name="foto" id="fotoProducto{{ fila.pk }}" accept="image/*" capture="environment" class="form-control" required>
+            <label class="form-label small" for="fotoProducto{{ fila.pk|stringformat:"d" }}">{% if foto %}Cambiarla{% else %}Sacá una foto o elegí un archivo{% endif %}</label>
+            <input type="file" name="foto" id="fotoProducto{{ fila.pk|stringformat:"d" }}" accept="image/*" capture="environment" class="form-control" required>
         </div>
         <button type="submit" class="btn btn-secundario"><i class="bi bi-camera me-1"></i>Guardar la foto</button>
     </form>

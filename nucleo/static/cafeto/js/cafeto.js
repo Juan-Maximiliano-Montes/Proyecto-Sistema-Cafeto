@@ -68,11 +68,23 @@
     //  Sin conexión: una tablet que pierde el wifi tiene que AVISAR antes
     //  de que alguien intente cobrar.
     // ---------------------------------------------------------------------
+    // Sin red se apaga lo que necesita el servidor; al volver se prende sólo
+    // lo que apagó la red: un «Cobrar» con el ticket en $ 0 o un «Sacar del
+    // cajón» con la caja cerrada siguen apagados.
     function estadoDeRed() {
+        var enLinea = navigator.onLine;
         var aviso = document.querySelector('.sin-conexion');
-        if (aviso) { aviso.classList.toggle('visible', !navigator.onLine); }
+        if (aviso) { aviso.classList.toggle('visible', !enLinea); }
         document.querySelectorAll('[data-requiere-red]').forEach(function (control) {
-            control.disabled = !navigator.onLine;
+            if (!enLinea) {
+                if (!control.disabled) {
+                    control.disabled = true;
+                    control.dataset.deshabilitadoPorRed = '1';
+                }
+            } else if (control.dataset.deshabilitadoPorRed === '1') {
+                control.disabled = false;
+                delete control.dataset.deshabilitadoPorRed;
+            }
         });
     }
     window.addEventListener('online', estadoDeRed);
@@ -114,6 +126,14 @@
             function alCerrar() {
                 aceptar.removeEventListener('click', alAceptar);
                 modal.removeEventListener('hidden.bs.modal', alCerrar);
+                // Se abrió encima de otro modal (un formulario, un egreso):
+                // Bootstrap le saca al body el estado de "modal abierto" al
+                // cerrar éste, y el de abajo quedaría con la página corriendo
+                // por detrás.
+                if (document.querySelector('.modal.show')) {
+                    document.body.classList.add('modal-open');
+                    document.body.style.overflow = 'hidden';
+                }
                 resolver(respuesta);
             }
             aceptar.addEventListener('click', alAceptar);
@@ -145,9 +165,22 @@
         var origen = boton && boton.dataset.confirmar ? boton : form;
         if (!origen.dataset.confirmar || form.dataset.confirmado === '1') { return; }
         evento.preventDefault();
+        // Un form.form-una-vez con pregunta propia (abrir la caja, el arqueo
+        // parcial) muestra también lo cargado, y no se confirma un monto mal
+        // escrito.
+        // Este modal reemplaza al resumen genérico: sin stopPropagation se
+        // abrían dos confirmaciones sobre el mismo modal y la segunda pisaba
+        // a la primera.
+        var resumen = '';
+        if (form.matches('.form-una-vez')) {
+            evento.stopPropagation();
+            if (!numerosValidos(form)) { return; }
+            resumen = resumenDelFormulario(form);
+        }
         Cafeto.confirmar({
             titulo: origen.dataset.titulo || '¿Confirmás?',
             texto: origen.dataset.confirmar,
+            html: resumen ? '<p class="mb-2">' + escapar(origen.dataset.confirmar) + '</p>' + resumen : '',
             aceptar: origen.dataset.aceptar,
             // data-peligro (sin valor) o data-peligro="1": botón rojo.
             peligro: origen.dataset.peligro !== undefined && origen.dataset.peligro !== '0'
@@ -221,11 +254,67 @@
         destino.focus();
     }, true);
 
+    // Los importes y cantidades se revisan antes del resumen: un «-500» o
+    // un «abc» no llegan a la ventana de confirmación como si estuvieran
+    // bien (DD-103). Las mismas reglas que leer_numero del servidor.
+    function leerNumero(texto) {
+        texto = String(texto || '').replace(/[\s$]/g, '').replace(/\u2212/g, '-');
+        if (!/^-?[\d.,]+$/.test(texto) || !/\d/.test(texto)) { return NaN; }
+        var coma = texto.lastIndexOf(','), punto = texto.lastIndexOf('.');
+        var decimal = coma > punto ? ',' : '.';
+        if (coma >= 0 && punto >= 0) {
+            texto = texto.split(decimal === ',' ? '.' : ',').join('');
+        }
+        return parseFloat(texto.replace(',', '.'));
+    }
+
+    function numerosValidos(form) {
+        var primero = null;
+        form.querySelectorAll('input[data-minimo]').forEach(function (control) {
+            if (control.disabled || control.closest('.d-none')) { return; }
+            var contenedor = control.closest('.input-group') || control;
+            var viejo = contenedor.parentNode.querySelector(':scope > .error-campo.js-numero');
+            if (viejo) { viejo.remove(); }
+            control.classList.remove('is-invalid');
+            if (control.value.trim() === '') { return; }
+            var numero = leerNumero(control.value);
+            var minimo = parseFloat(control.dataset.minimo);
+            var texto = null;
+            if (isNaN(numero)) {
+                texto = 'Escribí un número, por ejemplo 1500 o 1500,50.';
+            } else if (numero < minimo) {
+                texto = minimo > 0 ? 'Tiene que ser mayor que cero.' : 'No puede ser negativo.';
+            }
+            if (!texto) { return; }
+            var error = document.createElement('p');
+            error.className = 'error-campo js-numero';
+            error.setAttribute('role', 'alert');
+            error.textContent = texto;
+            contenedor.insertAdjacentElement('afterend', error);
+            control.classList.add('is-invalid');
+            control.setAttribute('aria-invalid', 'true');
+            if (!primero) { primero = control; }
+        });
+        if (primero) { primero.focus(); }
+        return !primero;
+    }
+
+    document.addEventListener('input', function (evento) {
+        var control = evento.target;
+        if (!control.matches || !control.matches('input[data-minimo].is-invalid')) { return; }
+        control.classList.remove('is-invalid');
+        control.removeAttribute('aria-invalid');
+        var contenedor = control.closest('.input-group') || control;
+        var viejo = contenedor.parentNode.querySelector(':scope > .error-campo.js-numero');
+        if (viejo) { viejo.remove(); }
+    });
+
     document.addEventListener('submit', function (evento) {
         var form = evento.target;
         if (!form.matches('.form-una-vez')) { return; }
         if (form.dataset.confirmado === '1') { apagarBotones(form); return; }
         evento.preventDefault();
+        if (!numerosValidos(form)) { return; }
         Cafeto.confirmar({
             titulo: '¿Guardamos estos datos?',
             html: resumenDelFormulario(form),
@@ -521,6 +610,43 @@
                 guardar(CLAVE_MENU, JSON.stringify(lista));
             });
         });
+    });
+
+    // ---------------------------------------------------------------------
+    //  Diseño: la altura real de la barra de arriba (para que un ancla no
+    //  quede debajo) y las tablas que no entran a lo ancho (primera
+    //  columna fija y sombra que avisa que hay más a la derecha).
+    // ---------------------------------------------------------------------
+    function medirBarra() {
+        var barra = document.querySelector('.barra');
+        document.documentElement.style.setProperty('--alto-barra', (barra ? barra.offsetHeight : 0) + 'px');
+    }
+    function marcarDesbordes() {
+        document.querySelectorAll('.table-responsive').forEach(function (caja) {
+            caja.classList.toggle('desborda', caja.scrollWidth > caja.clientWidth + 1);
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        medirBarra();
+        marcarDesbordes();
+        if (window.ResizeObserver) {
+            var observador = new ResizeObserver(function () { medirBarra(); marcarDesbordes(); });
+            var barra = document.querySelector('.barra');
+            if (barra) { observador.observe(barra); }
+            document.querySelectorAll('.table-responsive').forEach(function (caja) { observador.observe(caja); });
+        } else {
+            window.addEventListener('resize', function () { medirBarra(); marcarDesbordes(); });
+        }
+        document.addEventListener('toggle', marcarDesbordes, true);
+        document.addEventListener('shown.bs.modal', marcarDesbordes);
+        // Lo que llega después por fetch (la ficha de un turno en un modal).
+        if (window.MutationObserver) {
+            var pendiente = null;
+            new MutationObserver(function () {
+                clearTimeout(pendiente);
+                pendiente = setTimeout(marcarDesbordes, 60);
+            }).observe(document.body, {childList: true, subtree: true});
+        }
     });
 
     // ---------------------------------------------------------------------

@@ -23,9 +23,12 @@ Colores: ámbar Cafeto para la serie principal y coral para la secundaria.
 El texto y los ejes salen en ``currentColor``, así el mismo SVG se lee en
 el tema oscuro y en el claro.
 """
+import contextvars
 import io
 import os
+from contextlib import contextmanager
 from decimal import Decimal
+from pathlib import Path
 
 # matplotlib escribe su caché de fuentes; en el contenedor el usuario puede
 # no tener un HOME escribible.
@@ -41,8 +44,9 @@ matplotlib.rcParams['font.family'] = 'sans-serif'
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+from matplotlib.colors import LinearSegmentedColormap, to_rgb  # noqa: E402
 from matplotlib.dates import DateFormatter  # noqa: E402
-from matplotlib.ticker import FuncFormatter  # noqa: E402
+from matplotlib.ticker import FuncFormatter, MaxNLocator  # noqa: E402
 
 AMBAR = '#FAB41F'
 CORAL = '#F4796B'
@@ -70,6 +74,14 @@ DIAS_EN_BARRAS = 31
 DIAS_POR_DIA = 92
 DIAS_POR_SEMANA = 366
 PALETA = (AMBAR, PIZARRA, CORAL, '#8FB996', '#C9A7E8', '#A6B0C3')
+# Para el papel (PNG sobre blanco, DD-102): la paleta de la pantalla está
+# pensada para el fondo oscuro y sobre blanco el ámbar no contrasta (1,8:1).
+# Ésta abre con el ámbar oscuro de Cafeto y sigue con pasos que pasan las
+# pruebas de daltonismo y de visión normal entre vecinos.
+PAPEL = ('#C98500', '#2a78d6', '#1baf7a', '#eb6834', '#6250d6', '#e87ba4')
+# Mapa de calor: un solo tono, de claro (poco) a oscuro (mucho).
+CALOR = ('#FBE3A6', '#E9A82A', '#B67800', '#6B4200')
+SIN_DATOS = '#F2F1EE'
 
 ESTILOS = {'barras': ('Barras', 'bi-bar-chart-line'),
            'torta': ('Torta', 'bi-pie-chart')}
@@ -83,14 +95,20 @@ def _miles(valor):
     return ('−' if valor < 0 else '') + texto
 
 
+def _corto(numero):
+    """1 decimal sólo si hace falta: 2 / 1,5 (nunca «2» para 1.500 y 2.500)."""
+    return f'{numero:.1f}'.rstrip('0').rstrip('.').replace('.', ',')
+
+
 def _pesos_cortos(valor, _pos=None):
-    """$ 1,2 M / $ 350 mil / $ 900: los ejes no necesitan centavos."""
+    """$ 1,2 M / $ 3,6 mil / $ 900: los ejes no necesitan centavos, pero dos
+    marcas distintas nunca pueden decir lo mismo."""
     absoluto = abs(valor)
     signo = '−' if valor < 0 else ''
     if absoluto >= 1_000_000:
-        return f'{signo}$ {absoluto / 1_000_000:.1f} M'.replace('.', ',')
+        return f'{signo}$ {_corto(absoluto / 1_000_000)} M'
     if absoluto >= 1_000:
-        return f'{signo}$ {absoluto / 1_000:.0f} mil'
+        return f'{signo}$ {_corto(absoluto / 1_000)} mil'
     return f'{signo}$ {absoluto:.0f}'
 
 
@@ -129,7 +147,41 @@ def _lienzo(alto=3.2):
     return figura, eje
 
 
+# Con ``a_png(ruta)`` activo, cada gráfico se guarda como PNG en esa ruta
+# (y la función devuelve la ruta) en lugar de devolver el SVG de la pantalla.
+_PNG = contextvars.ContextVar('cafeto_png', default=None)
+
+
+@contextmanager
+def a_png(ruta):
+    marca = _PNG.set(Path(ruta))
+    try:
+        yield
+    finally:
+        _PNG.reset(marca)
+
+
+def _guardar_png(figura, titulo, destino, ajustar):
+    figura.suptitle(titulo, x=0.01, ha='left', fontsize=13, fontweight='bold', color=TINTA)
+    if ajustar:
+        figura.tight_layout(rect=(0, 0, 1, 0.93))
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    figura.savefig(destino, format='png', dpi=150, facecolor='white', bbox_inches='tight',
+                   pad_inches=0.25)
+    plt.close(figura)
+    return destino
+
+
+def _tinta_sobre(color):
+    """Texto oscuro sobre un relleno claro y blanco sobre uno oscuro."""
+    r, g, b = (c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in to_rgb(color))
+    return '#161616' if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.25 else '#FFFFFF'
+
+
 def _svg(figura, descripcion, estilo='barras', ajustar=True):
+    destino = _PNG.get()
+    if destino is not None:
+        return _guardar_png(figura, descripcion, destino, ajustar)
     if ajustar:
         figura.tight_layout()
     salida = io.StringIO()
@@ -204,7 +256,7 @@ def _sin_barras_gordas(eje, cantidad):
         eje.set_ylim(-1.5 + (cantidad - 1) * 0.5, cantidad + 0.5 - (cantidad - 1) * 0.5)
 
 
-def _torta(datos, etiqueta, valor, titulo, dinero):
+def _torta(datos, etiqueta, valor, titulo, dinero, colores=PALETA):
     """Una dona: el total en el centro y cada porción con su porcentaje.
 
     El color no es lo único que distingue una porción: la leyenda repite
@@ -213,17 +265,17 @@ def _torta(datos, etiqueta, valor, titulo, dinero):
     total = float(datos[valor].sum())
     figura, eje = plt.subplots(figsize=(9.6, 3.4), dpi=100)
     figura.patch.set_alpha(0)
-    colores = list(PALETA[:len(datos)])
+    colores = list(colores[:len(datos)])
     porciones, _ = eje.pie(
         datos[valor], colors=colores, startangle=90, counterclock=False,
         wedgeprops={'width': 0.38, 'edgecolor': 'none'})
-    for porcion, cantidad in zip(porciones, datos[valor]):
+    for porcion, cantidad, color in zip(porciones, datos[valor], colores):
         parte = cantidad / total
         if parte >= MINIMO_ROTULO_TORTA:
             angulo = np.deg2rad((porcion.theta1 + porcion.theta2) / 2)
             eje.text(0.81 * np.cos(angulo), 0.81 * np.sin(angulo), f'{parte:.0%}',
                      ha='center', va='center', fontsize=9, fontweight='bold',
-                     color='#161616')
+                     color=_tinta_sobre(color))
     formato = _formato(dinero)
     eje.text(0, 0.08, formato(total), ha='center', va='center', fontsize=12,
              fontweight='bold', color=TINTA)
@@ -288,39 +340,180 @@ def divergente(marco, etiqueta, valor, titulo):
 # ---------------------------------------------------------------------------
 #  Evolución en el tiempo
 # ---------------------------------------------------------------------------
-def evolucion(serie, desde, hasta, titulo, dinero=True, nombre='Vendido'):
+def evolucion(serie, desde, hasta, titulo, dinero=True, nombre='Vendido',
+              forma='auto', colores=(AMBAR, CORAL), estadisticas=False):
     """Una serie diaria (índice de fechas) con la granularidad que conviene.
 
     pandas completa los días sin movimiento con cero (``reindex``) y, si el
     período es largo, la junta por semana o por mes (``resample``).
+    ``forma='linea'`` dibuja siempre líneas (la evolución del parcial).
+    ``estadisticas=True`` agrega la media (``np.mean``) y la recta de
+    tendencia por mínimos cuadrados (``np.polyfit``) de lo que se dibuja:
+    por día, por semana o por mes, según el largo del período.
     """
+    color, color_promedio = colores[:2]
+    color_estadistica = colores[2] if len(colores) > 2 else PIZARRA
     serie = serie.groupby(level=0).sum()
     serie.index = pd.to_datetime(serie.index)
     dias = (hasta - desde).days + 1
     serie = serie.reindex(pd.date_range(desde, hasta, freq='D'), fill_value=0.0)
     figura, eje = _lienzo()
+    lineas = forma == 'linea'
     if dias > DIAS_POR_SEMANA:
         serie = serie.resample('MS').sum()
-        eje.bar(serie.index, serie.values, color=AMBAR, width=20, label=f'{nombre} por mes')
+        if lineas:
+            eje.plot(serie.index, serie.values, color=color, linewidth=2, marker='o',
+                     markersize=4, label=f'{nombre} por mes')
+        else:
+            eje.bar(serie.index, serie.values, color=color, width=20, label=f'{nombre} por mes')
         eje.xaxis.set_major_formatter(DateFormatter('%m/%Y'))
     elif dias > DIAS_POR_DIA:
         serie = serie.resample('W-MON', label='left', closed='left').sum()
-        eje.bar(serie.index, serie.values, color=AMBAR, width=5, label=f'{nombre} por semana')
+        if lineas:
+            eje.plot(serie.index, serie.values, color=color, linewidth=2, marker='o',
+                     markersize=4, label=f'{nombre} por semana')
+        else:
+            eje.bar(serie.index, serie.values, color=color, width=5, label=f'{nombre} por semana')
         eje.xaxis.set_major_formatter(DateFormatter('%d/%m'))
     else:
-        if dias <= DIAS_EN_BARRAS:
-            eje.bar(serie.index, serie.values, color=AMBAR, width=0.75, label=f'{nombre} en el día')
+        if dias <= DIAS_EN_BARRAS and not lineas:
+            eje.bar(serie.index, serie.values, color=color, width=0.75, label=f'{nombre} en el día')
         else:
-            eje.plot(serie.index, serie.values, color=AMBAR, linewidth=1.6, label=f'{nombre} en el día')
-            eje.fill_between(serie.index, serie.values, color=AMBAR, alpha=0.15)
+            eje.plot(serie.index, serie.values, color=color, linewidth=1.6, label=f'{nombre} en el día')
+            eje.fill_between(serie.index, serie.values, color=color, alpha=0.15)
         if dias >= 14:
             promedio = serie.rolling(7, min_periods=1).mean()
-            eje.plot(promedio.index, promedio.values, color=CORAL, linewidth=2,
+            eje.plot(promedio.index, promedio.values, color=color_promedio, linewidth=2,
                      label='Promedio de 7 días')
         eje.xaxis.set_major_formatter(DateFormatter('%d/%m'))
+    if estadisticas and len(serie):
+        _media_y_tendencia(eje, serie, dinero, color_estadistica,
+                           'mes' if dias > DIAS_POR_SEMANA else 'semana' if dias > DIAS_POR_DIA else 'día')
     eje.yaxis.set_major_formatter(FuncFormatter(_formato(dinero)))
     figura.autofmt_xdate(rotation=0, ha='center')
     _leyenda(eje, loc='upper left')
+    return _svg(figura, titulo)
+
+
+def _media_y_tendencia(eje, serie, dinero, color, unidad):
+    valores = np.asarray(serie.values, dtype=float)
+    media = float(np.mean(valores))
+    texto = _formato(dinero)(media)
+    eje.axhline(media, color=color, linewidth=1.4, linestyle=':',
+                label=f'Media por {unidad}: {texto}')
+    if len(valores) >= 2:
+        posiciones = np.arange(len(valores))
+        pendiente, ordenada = np.polyfit(posiciones, valores, 1)
+        signo = '+' if pendiente >= 0 else '−'
+        eje.plot(serie.index, ordenada + pendiente * posiciones, color=color, linewidth=1.6,
+                 linestyle='--',
+                 label=f'Tendencia: {signo}{_formato(dinero)(abs(pendiente))} por {unidad}')
+
+
+def participacion(marco, etiqueta, valor, titulo, dinero=True, colores=PALETA):
+    """Partes de un total como dona (con el resto en "Otros"), o None si no
+    hay al menos dos partes con valor."""
+    if marco.empty or not admite_torta(marco, valor):
+        return None
+    partes = marco[marco[valor] > 0]
+    return _torta(con_otros(partes, etiqueta, valor, TOPE_TORTA), etiqueta, valor, titulo,
+                  dinero, colores)
+
+
+def comparar_periodos(marco, etiqueta, actual, anterior, titulo, nombres=None,
+                      colores=(AMBAR, PIZARRA), dinero=True):
+    """Barras agrupadas: cada categoría en este período y en el anterior,
+    con la variación escrita al lado (las más grandes arriba, el resto en
+    "Otros" para que los totales sigan cerrando)."""
+    if marco.empty or not (marco[actual].sum() or marco[anterior].sum()):
+        return None
+    nombres = nombres or (actual, anterior)
+    marco = marco.assign(_peso=marco[actual] + marco[anterior])
+    marco = marco.sort_values(['_peso', actual], ascending=False, kind='stable')
+    if len(marco) > TOPE_BARRAS:
+        resto = marco.iloc[TOPE_BARRAS - 1:]
+        otros = pd.DataFrame({etiqueta: [f'Otros ({len(resto)})'], actual: [resto[actual].sum()],
+                              anterior: [resto[anterior].sum()]})
+        marco = pd.concat([marco.head(TOPE_BARRAS - 1), otros], ignore_index=True)
+    datos = marco.iloc[::-1].reset_index(drop=True)
+    alto = max(2.6, 0.62 * len(datos) + 1.1)
+    figura, eje = _lienzo(alto)
+    eje.grid(axis='x', color=TINTA, alpha=0.12, linewidth=0.8)
+    eje.grid(axis='y', visible=False)
+    posiciones = np.arange(len(datos))
+    grosor = 0.36
+    formato = _formato(dinero)
+    barras_ahora = eje.barh(posiciones + grosor / 2 + 0.02, datos[actual], height=grosor,
+                            color=colores[0], label=nombres[0])
+    eje.barh(posiciones - grosor / 2 - 0.02, datos[anterior], height=grosor,
+             color=colores[1], label=nombres[1])
+    for barra, ahora, antes in zip(barras_ahora, datos[actual], datos[anterior]):
+        if antes:
+            cambio = (ahora - antes) / antes
+            variacion = f'{"+" if cambio >= 0 else "−"}{abs(cambio):.0%}'
+        else:
+            variacion = 'nuevo' if ahora else ''
+        texto = f'  {formato(ahora)}' + (f'  ({variacion})' if variacion else '')
+        eje.text(barra.get_width(), barra.get_y() + barra.get_height() / 2, texto,
+                 va='center', fontsize=8.5, color=TINTA)
+    eje.set_yticks(posiciones, [str(n)[:40] for n in datos[etiqueta]])
+    eje.set_ylim(-0.75 - max(0, 3 - len(datos)) * 0.5, len(datos) - 0.25 + max(0, 3 - len(datos)) * 0.5)
+    eje.xaxis.set_major_formatter(FuncFormatter(formato))
+    eje.margins(x=0.25)
+    _leyenda(eje, loc='lower right')
+    return _svg(figura, titulo)
+
+
+DIAS_DE_LA_SEMANA = ('Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom')
+
+
+def mapa_de_calor(marco, titulo, valor='tickets', unidad='tickets', colores=CALOR, horas=None):
+    """Operaciones por día de la semana (filas) y hora (columnas).
+
+    ``marco`` trae una fila por operación o ya agrupada, con ``dia`` (0 =
+    lunes) y ``hora`` (0 a 23). pandas arma la matriz con ``pivot_table`` y
+    completa con cero las horas sin movimiento; numpy la deja lista para
+    ``imshow``. Cada celda con movimiento lleva su número: en un PNG no hay
+    cómo pasar el mouse por encima. Las horas van de la primera a la última
+    con ventas (como en el tablero), salvo que se pida una franja fija.
+    """
+    if marco.empty:
+        return None
+    if horas is None:
+        horas = range(int(marco['hora'].min()), int(marco['hora'].max()) + 1)
+    matriz = (marco.pivot_table(index='dia', columns='hora', values=valor, aggfunc='sum',
+                                fill_value=0)
+              .reindex(index=range(7), columns=horas, fill_value=0))
+    valores = matriz.to_numpy(dtype=float)
+    mapa = LinearSegmentedColormap.from_list('cafeto_calor', list(colores))
+    mapa.set_bad(SIN_DATOS)
+    enmascarado = np.ma.masked_where(valores == 0, valores)
+    figura, eje = plt.subplots(figsize=(max(7.0, 0.55 * len(horas) + 2.2), 4.2), dpi=100)
+    figura.patch.set_alpha(0)
+    imagen = eje.imshow(enmascarado, cmap=mapa, aspect='auto', vmin=1,
+                        vmax=max(2.0, valores.max()))
+    for fila in range(valores.shape[0]):
+        for columna in range(valores.shape[1]):
+            cantidad = valores[fila, columna]
+            if cantidad:
+                eje.text(columna, fila, _miles(cantidad), ha='center', va='center', fontsize=8,
+                         color=_tinta_sobre(mapa(imagen.norm(cantidad))))
+    eje.set_xticks(range(len(horas)), [f'{h:02d}' for h in horas])
+    eje.set_yticks(range(7), DIAS_DE_LA_SEMANA)
+    eje.set_xlabel('Hora del día', color=TINTA, fontsize=9)
+    eje.tick_params(colors=TINTA, labelsize=9, length=0)
+    eje.set_xticks(np.arange(-0.5, len(horas), 1), minor=True)
+    eje.set_yticks(np.arange(-0.5, 7, 1), minor=True)
+    eje.grid(which='minor', color='white', linewidth=2)
+    eje.tick_params(which='minor', length=0)
+    for lado in eje.spines.values():
+        lado.set_visible(False)
+    barra = figura.colorbar(imagen, ax=eje, fraction=0.035, pad=0.02)
+    barra.set_label(f'{unidad.capitalize()} en el período', color=TINTA, fontsize=9)
+    barra.locator = MaxNLocator(integer=True)
+    barra.update_ticks()
+    barra.ax.tick_params(colors=TINTA, labelsize=8)
+    barra.outline.set_visible(False)
     return _svg(figura, titulo)
 
 

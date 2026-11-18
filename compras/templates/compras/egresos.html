@@ -38,7 +38,7 @@
 <h2 class="subtitulo h5">Facturas de compra sin pagar</h2>
 <div class="grilla mb-4">
     {% for c in compras_impagas %}
-    <article class="tarjeta h-100{% if c.fecha_vencimiento_pago and c.fecha_vencimiento_pago < hoy %} tarjeta-vencida{% elif c.fecha_vencimiento_pago and c.fecha_vencimiento_pago <= vence_pronto %} tarjeta-destacada{% endif %}">
+    <article id="compra-{{ c.pk|stringformat:"d" }}" class="tarjeta h-100{% if c.fecha_vencimiento_pago and c.fecha_vencimiento_pago < hoy %} tarjeta-vencida{% elif c.fecha_vencimiento_pago and c.fecha_vencimiento_pago <= vence_pronto %} tarjeta-destacada{% endif %}">
         <div class="tarjeta-cabeza">
             <div class="min-w-0"><h3 class="tarjeta-titulo">{{ c.id_proveedor }}</h3><p class="tarjeta-sub">{{ c.get_tipo_comprobante_display }} {{ c.numero_formateado }}</p></div>
             {% if c.fecha_vencimiento_pago %}{% include 'compras/_insignia_vencimiento.html' with fecha=c.fecha_vencimiento_pago %}{% endif %}
@@ -48,7 +48,7 @@
             {% if c.en_acreditacion %}<dt>En acreditación</dt><dd class="monto">{{ c.en_acreditacion|pesos }}</dd>{% endif %}
             <dt>Falta pagar</dt><dd class="monto text-peligro fw-semibold">{{ c.falta|pesos }}</dd>
         </dl>
-        {% if puede_registrar %}<div class="tarjeta-pie"><a href="?ver=a_pagar&amp;compra={{ c.pk }}" class="btn btn-sm btn-primary"><i class="bi bi-cash me-1" aria-hidden="true"></i>Pagar lo que falta</a></div>{% endif %}
+        {% if puede_registrar %}<div class="tarjeta-pie"><a href="?ver=a_pagar&amp;compra={{ c.pk|stringformat:"d" }}#compra-{{ c.pk|stringformat:"d" }}" class="btn btn-sm btn-primary"><i class="bi bi-cash me-1" aria-hidden="true"></i>Pagar lo que falta</a></div>{% endif %}
     </article>
     {% endfor %}
 </div>
@@ -78,7 +78,7 @@
               data-titulo="¿Pagamos {{ e.monto|pesos }}?" data-aceptar="Sí, pagar"
               data-confirmar="{{ e.concepto }}. Si elegiste efectivo, la plata sale del cajón. Un pago registrado no se borra.">
             {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}">
-            <select name="medio" class="form-select form-select-sm w-auto" aria-label="Medio de pago">{% for m in medios %}<option value="{{ m.pk }}">{{ m }}</option>{% endfor %}</select>
+            <select name="medio" class="form-select form-select-sm w-auto" aria-label="Medio de pago">{% for m in medios %}<option value="{{ m.pk|stringformat:"d" }}">{{ m }}</option>{% endfor %}</select>
             <button type="submit" class="btn btn-sm btn-primary ms-auto">Pagar</button>
         </form>
         {% elif e.estado_pago == 'PENDIENTE_ACREDITACION' and puede_conciliar %}
@@ -108,7 +108,7 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate{% if not compra_elegida %} data-acreedor{% endif %}>
             {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}">
-            {% if compra_elegida %}<input type="hidden" name="compra" value="{{ compra_elegida.pk }}">{% endif %}
+            {% if compra_elegida %}<input type="hidden" name="compra" value="{{ compra_elegida.pk|stringformat:"d" }}">{% endif %}
             <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>{% if compra_elegida %}Pagar {{ compra_elegida.get_tipo_comprobante_display }} {{ compra_elegida.numero_formateado }}{% else %}Nuevo pago{% endif %}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
             <div class="modal-body">
                 <div class="row g-2">
@@ -118,14 +118,14 @@
                             <input type="radio" class="btn-check" name="modo" id="modoAnotar" value="anotar"><label class="btn btn-secundario" for="modoAnotar">Anotar para pagar después</label>
                         </div>
                     </div>
-                    <div class="col-md-6"><label class="form-label" for="eTipo">Tipo</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="tipo" id="eTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk }}"{% if compra_elegida and t.nombre_tipo_egreso == 'Proveedores' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'tipos_egreso' 'eTipo' %}</div>{% panel_alta_rapida 'eTipo' %}</div>
+                    <div class="col-md-6"><label class="form-label" for="eTipo">Tipo</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="tipo" id="eTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk|stringformat:"d" }}"{% if compra_elegida and t.nombre_tipo_egreso == 'Proveedores' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'tipos_egreso' 'eTipo' %}</div>{% panel_alta_rapida 'eTipo' %}</div>
                     <div class="col-md-6"><label class="form-label" for="eMonto">Monto</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="monto" id="eMonto" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.saldo_pendiente|stringformat:'s'|cut:'.00' }}{% endif %}"></div></div>
                     <div class="col-12"><label class="form-label" for="eConcepto">Concepto</label><input type="text" name="concepto" id="eConcepto" maxlength="100" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.get_tipo_comprobante_display }} {{ compra_elegida.numero_formateado }}{% endif %}" placeholder="Luz de octubre"></div>
                     {% if not compra_elegida %}
-                    <div class="col-md-6"><label class="form-label" for="eProveedor">Proveedor</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="proveedor" id="eProveedor" class="form-select"><option value="">— Ninguno —</option>{% for p in proveedores %}<option value="{{ p.pk }}">{{ p }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'proveedores' 'eProveedor' %}</div>{% panel_alta_rapida 'eProveedor' %}</div>
+                    <div class="col-md-6"><label class="form-label" for="eProveedor">Proveedor</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="proveedor" id="eProveedor" class="form-select"><option value="">— Ninguno —</option>{% for p in proveedores %}<option value="{{ p.pk|stringformat:"d" }}">{{ p }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'proveedores' 'eProveedor' %}</div>{% panel_alta_rapida 'eProveedor' %}</div>
                     <div class="col-md-6"><label class="form-label" for="eDestinatario">O a quién</label><input type="text" name="destinatario" id="eDestinatario" maxlength="60" class="form-control" placeholder="EDESA, el plomero…"></div>
                     {% endif %}
-                    <div class="col-md-6" data-visible-si="modo=ahora"><label class="form-label" for="eMedio">Medio de pago</label><select name="medio" id="eMedio" class="form-select">{% for m in medios %}<option value="{{ m.pk }}">{{ m }}</option>{% endfor %}</select>{% if not turno %}<p class="form-text">En efectivo sale del cajón: esta caja no tiene turno abierto.</p>{% endif %}</div>
+                    <div class="col-md-6" data-visible-si="modo=ahora"><label class="form-label" for="eMedio">Medio de pago</label><select name="medio" id="eMedio" class="form-select">{% for m in medios %}<option value="{{ m.pk|stringformat:"d" }}">{{ m }}</option>{% endfor %}</select>{% if not turno %}<p class="form-text">En efectivo sale del cajón: esta caja no tiene turno abierto.</p>{% endif %}</div>
                     <div class="col-md-6 d-none" data-visible-si="modo=anotar"><label class="form-label" for="eVence">Vence el</label><input type="date" name="vence" id="eVence" class="form-control"></div>
                     <div class="col-md-6"><label class="form-label" for="eComprobante">Comprobante</label><input type="text" name="comprobante" id="eComprobante" maxlength="50" class="form-control" placeholder="Factura, recibo…"></div>
                 </div>
@@ -146,7 +146,7 @@
             <div class="modal-body">
                 {% if not turno %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>La caja de este dispositivo no tiene un turno abierto: el gasto sale de un cajón abierto.</span></div>{% else %}<p class="small text-secondary">Sale de {{ turno.id_caja_registradora }}.</p>{% endif %}
                 <div class="row g-2">
-                    <div class="col-md-6"><label class="form-label" for="cTipo">Tipo</label><select name="tipo" id="cTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk }}"{% if t.nombre_tipo_egreso == 'Gastos varios' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+                    <div class="col-md-6"><label class="form-label" for="cTipo">Tipo</label><select name="tipo" id="cTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk|stringformat:"d" }}"{% if t.nombre_tipo_egreso == 'Gastos varios' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
                     <div class="col-md-6"><label class="form-label" for="cMonto">Monto</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="monto" id="cMonto" class="form-control"></div></div>
                     <div class="col-12"><label class="form-label" for="cConcepto">En qué</label><input type="text" name="concepto" id="cConcepto" maxlength="100" class="form-control" placeholder="Bolsa de hielo"></div>
                     <div class="col-md-6"><label class="form-label" for="cDestinatario">A quién</label><input type="text" name="destinatario" id="cDestinatario" maxlength="60" class="form-control"></div>

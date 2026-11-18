@@ -27,7 +27,17 @@ from dataclasses import dataclass, field
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from nucleo.exportar import PELIGROSOS, texto_seguro
 from nucleo.validaciones import clave_normalizada
+
+
+def _sin_apostrofo(texto):
+    """El apóstrofo que ``texto_seguro`` le pone a una celda que empieza
+    con =, +, - o @ no es parte del dato: la planilla de errores corregida
+    vuelve a entrar igual que la original."""
+    if texto.startswith("'") and texto[1:2] and texto[1] in PELIGROSOS:
+        return texto[1:]
+    return texto
 
 MAXIMO_DE_FILAS = 5000
 MAXIMO_DE_BYTES = 2 * 1024 * 1024
@@ -143,7 +153,8 @@ class Importador:
             except UnicodeDecodeError:
                 continue
         separador = ';' if texto.count(';') > texto.count(',') else ','
-        crudas = [[c.strip() for c in fila] for fila in csv.reader(io.StringIO(texto), delimiter=separador)]
+        crudas = [[_sin_apostrofo(c.strip()) for c in fila]
+                  for fila in csv.reader(io.StringIO(texto), delimiter=separador)]
         return self._mapear(crudas)
 
     @staticmethod
@@ -154,7 +165,7 @@ class Importador:
             return str(int(valor))
         if hasattr(valor, 'isoformat'):
             return valor.isoformat()[:10]
-        return str(valor).strip()
+        return _sin_apostrofo(str(valor).strip())
 
     def _mapear(self, crudas):
         """Ubica la fila de títulos y arma {clave: valor} por fila."""
@@ -281,8 +292,10 @@ class Importador:
         for resultado in resultados:
             if resultado.ok:
                 continue
-            hoja.append([resultado.datos.get(c.clave, '') for c in usadas]
-                        + [resultado.numero, ' '.join(resultado.errores)])
+            # Lo que vino en la planilla subida vuelve a una planilla: una
+            # celda que empieza con =, +, - o @ sale como texto (DD-103).
+            hoja.append([texto_seguro(resultado.datos.get(c.clave, '')) for c in usadas]
+                        + [resultado.numero, texto_seguro(' '.join(resultado.errores))])
         for columna in hoja.columns:
             hoja.column_dimensions[columna[0].column_letter].width = 22
         hoja.column_dimensions[hoja.cell(row=1, column=len(usadas) + 2).column_letter].width = 90

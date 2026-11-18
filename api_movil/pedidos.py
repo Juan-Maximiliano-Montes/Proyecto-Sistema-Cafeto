@@ -13,18 +13,15 @@ from django.core.exceptions import ValidationError
 
 from stock import servicios
 from stock.models import Lote, Producto
+from nucleo.validaciones import id_valido
 
 MAXIMO_DE_RENGLONES = 120
 
 
 def entero(valor):
     """Un id: ``7`` o ``"7"``. ``None`` si no es un entero positivo."""
-    if isinstance(valor, bool):
-        return None
-    if isinstance(valor, int):
-        return valor if valor > 0 else None
-    if isinstance(valor, str) and valor.strip().isdigit():
-        return int(valor.strip()) or None
+    if isinstance(valor, (int, str)):
+        return id_valido(valor)
     return None
 
 
