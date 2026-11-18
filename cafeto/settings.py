@@ -341,7 +341,7 @@ if _correo('CAFETO_SMTP_HOST', 'DJANGO_CORREO_SERVIDOR'):
     # El 465 habla SSL desde el primer byte; el 587 arranca en claro y pasa
     # a TLS (STARTTLS). Django no admite las dos cosas a la vez.
     EMAIL_USE_SSL = EMAIL_PORT == 465
-    EMAIL_USE_TLS = not EMAIL_USE_SSL and _bool('DJANGO_CORREO_TLS', True)
+    EMAIL_USE_TLS = EMAIL_PORT == 587  # <--- Forzamos TLS explícito para el puerto 587
     EMAIL_TIMEOUT = 15
 elif DEBUG:
     EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
