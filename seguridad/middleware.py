@@ -7,7 +7,7 @@ ninguna pantalla queda desprotegida por olvido.
 En orden:
 
   1. Deja pasar el login, el logout y los archivos estáticos (y el /admin
-     de Django, que sólo existe en desarrollo). También la API de la app
+     de Django, si está habilitado: CAFETO_ADMIN_URL). También la API de la app
      móvil: no usa la sesión web sino su propio token, y cada una de sus
      vistas controla el token y el permiso (``api_movil.autenticacion``).
   2. Si NO hay sesión iniciada -> al login.
@@ -29,6 +29,7 @@ from django.urls import reverse
 
 from seguridad.models import Usuario
 from seguridad.servicios import validar_sesion
+from cafeto.settings import ruta_del_admin
 
 # Debajo de esto vive la API de la app móvil (cafeto/urls.py).
 PREFIJO_API_MOVIL = '/api/movil/'
@@ -63,7 +64,7 @@ class SeguridadMiddleware:
                 or ruta.startswith(fotos)
                 or ruta.startswith(PREFIJO_API_MOVIL)
                 or ruta.startswith('/api/servicio/')
-                or (settings.DEBUG and ruta.startswith('/admin'))):
+                or (ruta_del_admin() and ruta.startswith('/' + ruta_del_admin()))):
             return self.get_response(request)
 
         # 2) ¿Hay alguien logueado?

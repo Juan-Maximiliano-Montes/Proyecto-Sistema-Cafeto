@@ -319,6 +319,15 @@
                 "neverError": true
               }
             }
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "Cafeto/1.0 (sistema de gestion de Cafeto Las Lomitas)"
+              }
+            ]
           }
         },
         "name": "Buscar en Open Food Facts",
@@ -802,7 +811,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Sólo el sistema puede pedir: el mismo token que usa la API de servicio.\nconst pedido = $input.first().json;\nconst token = (pedido.headers || {})['x-cafeto-token'];\nif (!$env.CAFETO_N8N_TOKEN || token !== $env.CAFETO_N8N_TOKEN) { return []; }\nconst b = pedido.body || {};\nconst renglones = (b.renglones || []).map(r => '• ' + r).join('\\n');\nconst texto = '📲 *¿Autorizás?* ' + b.pedido + '.\\n' +\n  'Total del ticket: ' + b.total + '\\n' + (renglones ? renglones + '\\n' : '') +\n  '\\nPara aprobar: ' + b.enlace + '\\n' +\n  'O dictale este PIN a la caja: *' + b.pin + '*\\n' +\n  'Vale hasta las ' + b.vence + '.';\nreturn [{ json: { texto } }];"
+          "jsCode": "// Sólo el sistema puede pedir: el mismo token que usa la API de servicio.\nconst pedido = $input.first().json;\nconst recibida = (pedido.headers || {})['authorization'] || '';\nconst token = String($env.CAFETO_N8N_TOKEN || '');\nif (token.length < 32 || recibida !== 'Bearer ' + token) { return []; }\nconst b = pedido.body || {};\nconst renglones = (b.renglones || []).map(r => '• ' + r).join('\\n');\nconst texto = '📲 *¿Autorizás?* ' + b.pedido + '.\\n' +\n  'Total del ticket: ' + b.total + '\\n' + (renglones ? renglones + '\\n' : '') +\n  '\\nPara aprobar: ' + b.enlace + '\\n' +\n  'O dictale este PIN a la caja: *' + b.pin + '*\\n' +\n  'Vale hasta las ' + b.vence + '.';\nreturn [{ json: { texto } }];"
         },
         "name": "Armar el mensaje",
         "type": "n8n-nodes-base.code",
@@ -1260,6 +1269,205 @@
           [
             {
               "node": "Armar el aviso",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Fotos de los productos sin foto (Open Food Facts)",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "30 3 * * *"
+              }
+            ]
+          }
+        },
+        "name": "Cada noche 3:30",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/sin-foto/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "Productos sin foto",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "return ($input.first().json.productos || []).map((p) => ({ json: p }));"
+        },
+        "name": "Uno por producto",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://world.openfoodfacts.org/api/v2/product/{{ $json.codigo_barras }}.json?fields=image_front_url",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "Cafeto/1.0 (sistema de gestion de Cafeto Las Lomitas)"
+              }
+            ]
+          },
+          "options": {
+            "batching": {
+              "batch": {
+                "batchSize": 1,
+                "batchInterval": 1500
+              }
+            },
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "name": "Buscar la foto en Open Food Facts",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "const p = $('Uno por producto').item.json;\nconst d = $input.item.json;\nconst url = d && d.status === 1 && d.product ? d.product.image_front_url : '';\nif (!url) return null;\nreturn { json: { id: p.id, url: url.replace(/^http:/, 'https:') } };"
+        },
+        "name": "¿Tiene foto?",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/{{ $json.id }}/foto/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ url: $json.url }) }}",
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "name": "Ponerle la foto",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1100,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Cada noche 3:30": {
+        "main": [
+          [
+            {
+              "node": "Productos sin foto",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Productos sin foto": {
+        "main": [
+          [
+            {
+              "node": "Uno por producto",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Uno por producto": {
+        "main": [
+          [
+            {
+              "node": "Buscar la foto en Open Food Facts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Buscar la foto en Open Food Facts": {
+        "main": [
+          [
+            {
+              "node": "¿Tiene foto?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Tiene foto?": {
+        "main": [
+          [
+            {
+              "node": "Ponerle la foto",
               "type": "main",
               "index": 0
             }

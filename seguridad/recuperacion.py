@@ -70,8 +70,11 @@ def leer(token_recibido, proposito):
 
 
 def enlace(request, usuario, proposito):
-    return request.build_absolute_uri(
-        reverse('seguridad:elegir_clave', args=[proposito, token(usuario, proposito)]))
+    """La dirección pública del sistema (``CAFETO_URL_PUBLICA``) y, si no
+    está, la del pedido: detrás de Nginx el enlace nunca sale con
+    ``localhost`` ni con ``http://``."""
+    base = (settings.CAFETO_URL_PUBLICA or request.build_absolute_uri('/')).rstrip('/')
+    return base + reverse('seguridad:elegir_clave', args=[proposito, token(usuario, proposito)])
 
 
 def ofuscar(correo):

@@ -54,6 +54,7 @@ from django.utils.crypto import constant_time_compare, salted_hmac
 from nucleo.templatetags.cafeto import pesos
 from ventas.models import EstadoSolicitud, SolicitudAutorizacion, ViaAprobacion
 from nucleo.validaciones import id_valido
+from api_servicio.autenticacion import encabezados_para_n8n
 
 log = logging.getLogger(__name__)
 
@@ -391,11 +392,13 @@ def avisar(solicitud, token, pin, enlace_base, renglones):
     base = enlace_base.rstrip('/')
     titular_pin, titular_enlace = None, None
     for persona in candidatos(solicitud, control_de(solicitud)):
+        # El enlace de cada persona, la titular incluida, lleva su número y
+        # una firma: el sistema siempre sabe quién contesta.
+        su_token = enlace_de(token, persona.pk)
         if persona.es_titular:
-            su_pin, su_token = pin, token
-            titular_pin = pin
+            su_pin = titular_pin = pin
         else:
-            su_pin, su_token = pin_de(solicitud.token_hash, persona.pk), enlace_de(token, persona.pk)
+            su_pin = pin_de(solicitud.token_hash, persona.pk)
         enlace = base + reverse('ventas:autorizar_a_distancia', args=[su_token])
         if persona.es_titular:
             titular_enlace = enlace
@@ -429,37 +432,53 @@ def en_segundo_plano(funcion, *args):
     threading.Thread(target=funcion, args=args, daemon=True).start()
 
 
-def _webhook(url, datos):
+def _webhook(url, datos, intentos=2, espera=1):
+    """Avisa a n8n. Si no contesta o contesta con un error del servidor, se
+    reintenta una vez al segundo; un 4xx (token, dirección) no se arregla
+    reintentando. Cada falla queda en el log con su código o su error."""
+    import time
+    import urllib.error
     import urllib.request
 
-    pedido = urllib.request.Request(
-        url, data=json.dumps(datos).encode(), method='POST',
-        headers={'Content-Type': 'application/json',
-                 'X-Cafeto-Token': getattr(settings, 'CAFETO_N8N_TOKEN', '')})
-    try:
-        urllib.request.urlopen(pedido, timeout=5).close()
-    except Exception:                                       # noqa: BLE001
-        log.warning('n8n no recibió el pedido de autorización %s', datos.get('solicitud'))
+    cuerpo = json.dumps(datos).encode()
+    motivo = ''
+    for intento in range(1, intentos + 1):
+        pedido = urllib.request.Request(url, data=cuerpo, method='POST', headers=encabezados_para_n8n())
+        try:
+            with urllib.request.urlopen(pedido, timeout=5) as respuesta:
+                return respuesta.status
+        except urllib.error.HTTPError as error:
+            motivo = f'HTTP {error.code}'
+            if error.code < 500:
+                break
+        except Exception as error:                          # noqa: BLE001
+            motivo = f'{type(error).__name__}: {error}'
+        if intento < intentos:
+            log.warning('n8n no recibió el pedido de autorización %s (%s): se reintenta en %s s',
+                        datos.get('solicitud'), motivo, espera)
+            time.sleep(espera)
+    log.error('n8n no recibió el pedido de autorización %s (%s)', datos.get('solicitud'), motivo)
+    return None
 
 
 # ---------------------------------------------------------------------------
 #  Contestar
 # ---------------------------------------------------------------------------
 def por_token(token):
-    """``(solicitud, persona)`` del enlace, o ``(None, None)``. El enlace de
-    la titular es el token solo; el de otra persona lleva su número y una
-    firma que sólo puede calcular el servidor."""
+    """``(solicitud, persona)`` del enlace, o ``(None, None)``. Todos los
+    enlaces, el de la titular también, llevan el número de la persona y una
+    firma que sólo puede calcular el servidor: un token suelto no sirve."""
     from seguridad.models import Usuario
 
     if not token or len(token) > 160:
         return None, None
     crudo, _, resto = token.partition('.')
+    if not resto:
+        return None, None
     solicitud = (SolicitudAutorizacion.objects.select_related('id_usuario_solicitante', 'id_cliente')
                  .filter(token_hash=_hash_token(crudo)).first())
     if solicitud is None:
         return None, None
-    if not resto:
-        return solicitud, titular()
     numero, _, firma = resto.partition('.')
     numero = id_valido(numero)
     if numero is None or not constant_time_compare(firma, _firma(solicitud.token_hash, numero)):
@@ -546,18 +565,83 @@ def verificar_pin(solicitud, operador, pin, puede_autorizar, turno=None):
                           if not p.es_titular and constant_time_compare(pin_de(solicitud.token_hash, p.pk), pin)),
                          None)
         if quien is None:
-            solicitud.intentos_pin += 1
-            cambios = ['intentos_pin']
-            if solicitud.intentos_pin >= SolicitudAutorizacion.INTENTOS_DE_PIN:
-                solicitud.estado_solicitud = EstadoSolicitud.ANULADA
-                solicitud.fecha_resolucion = timezone.now()
-                cambios += ['estado_solicitud', 'fecha_resolucion']
-            solicitud.save(update_fields=cambios)
-            quedan = SolicitudAutorizacion.INTENTOS_DE_PIN - solicitud.intentos_pin
-            if quedan <= 0:
-                return None, 'El PIN no es correcto y ya se probó 5 veces: el pedido se anuló. Pedí uno nuevo.'
-            return None, f'El PIN no es correcto. Te quedan {quedan} intento{"s" if quedan != 1 else ""}.'
+            return None, _contar_error(solicitud, 'El PIN no es correcto', 'Pedí uno nuevo.')
     return resolver(solicitud, quien, True, ViaAprobacion.PIN, puede_autorizar), None
+
+
+def _contar_error(solicitud, que, despues):
+    """Un intento fallido más (PIN o clave). Al quinto la solicitud se
+    anula. Devuelve el texto para la persona."""
+    solicitud.intentos_pin += 1
+    cambios = ['intentos_pin']
+    if solicitud.intentos_pin >= SolicitudAutorizacion.INTENTOS_DE_PIN:
+        solicitud.estado_solicitud = EstadoSolicitud.ANULADA
+        solicitud.fecha_resolucion = timezone.now()
+        cambios += ['estado_solicitud', 'fecha_resolucion']
+    solicitud.save(update_fields=cambios)
+    quedan = SolicitudAutorizacion.INTENTOS_DE_PIN - solicitud.intentos_pin
+    if quedan <= 0:
+        return f'{que} y ya se probó 5 veces: el pedido se anuló. {despues}'
+    return f'{que}. Te quedan {quedan} intento{"s" if quedan != 1 else ""}.'
+
+
+def es_su_pin(solicitud, persona, pin):
+    """¿``pin`` es el de ``persona`` para esta solicitud?"""
+    if not (isinstance(pin, str) and len(pin) == 4 and pin.isascii() and pin.isdigit()):
+        return False
+    if persona.es_titular:
+        return constant_time_compare(_hash_pin(solicitud.token_hash, pin), solicitud.pin_hash)
+    return constant_time_compare(pin_de(solicitud.token_hash, persona.pk), pin)
+
+
+def confirmar_identidad(request, solicitud, persona, valor):
+    """El enlace se abrió en un navegador con la sesión de OTRA persona
+    (la cajera reenvió el mensaje, la titular lo abrió en la PC del local):
+    antes de contestar, quien aprueba pone su clave o el PIN de 4 dígitos
+    que le llegó. Devuelve None si alcanza, o el texto del error.
+
+    La clave pasa por los mismos controles que el login (bloqueo progresivo
+    y libro de intentos fallidos); cada error, de clave o de PIN, cuenta en
+    los 5 intentos de la solicitud.
+    """
+    from seguridad.servicios import (
+        describir_espera,
+        espera_por_bloqueo,
+        ip_del_request,
+        registrar_intento_fallido,
+    )
+
+    valor = (valor or '').strip()
+    if not valor:
+        return (f'En este navegador está abierta la sesión de otra persona: para contestar como '
+                f'{persona.nombre} {persona.apellido}, poné tu clave o el PIN de 4 dígitos del mensaje.')
+    with transaction.atomic():
+        solicitud = SolicitudAutorizacion.objects.select_for_update().get(pk=solicitud.pk)
+        _vencer_si_corresponde(solicitud)
+        if solicitud.estado_solicitud != EstadoSolicitud.PENDIENTE:
+            return _ya_no_esta(solicitud)
+        if len(valor) == 4 and valor.isascii() and valor.isdigit():
+            if es_su_pin(solicitud, persona, valor):
+                return None
+            return _contar_error(solicitud, 'El PIN no es correcto', 'Que pidan uno nuevo.')
+        espera = espera_por_bloqueo(persona.nombre_usuario, persona, ip_del_request(request))
+        if espera is not None:
+            registrar_intento_fallido(request, persona.nombre_usuario, persona, 'CUENTA_BLOQUEADA')
+            return f'Demasiados intentos fallidos con tu clave. Probá de nuevo en {describir_espera(espera)} o usá el PIN.'
+        if persona.verificar_clave(valor):
+            return None
+        registrar_intento_fallido(request, persona.nombre_usuario, persona, 'CLAVE_INCORRECTA')
+        return _contar_error(solicitud, 'La clave no es correcta', 'Que pidan uno nuevo.')
+
+
+def que_sigue(solicitud):
+    """Lo que hace la caja cuando ve la aprobación, según lo que se pidió."""
+    tipo = (solicitud.pedido or {}).get('tipo')
+    if tipo == CIERRE:
+        return 'terminar el cierre de la caja'
+    if tipo == AJUSTE:
+        return 'cargar el stock del producto'
+    return 'cobrar el ticket'
 
 
 # ---------------------------------------------------------------------------

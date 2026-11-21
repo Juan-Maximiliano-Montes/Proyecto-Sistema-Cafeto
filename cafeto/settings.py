@@ -51,20 +51,30 @@ if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
         'reales (por ejemplo: 192.168.0.10,cafeto.local).')
 
 # Orígenes desde los que se aceptan formularios (con esquema):
-# https://cafeto.midominio.com.ar
-CSRF_TRUSTED_ORIGINS = _lista('DJANGO_CSRF_TRUSTED_ORIGINS') + ['https://*.trycloudflare.com', 'http://localhost:8000', 'http://127.0.0.1:8000']
-CONFIAR_EN_PROXY = True
-# Con el proxy de confianza, la IP del cliente (registro de actividad,
-# bloqueo por intentos) sale primero de CF-Connecting-IP: la pone el
-# túnel de Cloudflare y quien entra no la puede elegir. Si no viene, de
-# X-Forwarded-For contando PROXIES_DE_CONFIANZA saltos desde la derecha
-# (la primera de la izquierda la escribe cualquiera).
-ENCABEZADO_IP_CLIENTE = os.environ.get('CAFETO_ENCABEZADO_IP', 'HTTP_CF_CONNECTING_IP')
+# https://cafeto.midominio.com.ar. En producción, sólo los del entorno.
+CSRF_TRUSTED_ORIGINS = _lista('DJANGO_CSRF_TRUSTED_ORIGINS') + (
+    ['https://*.trycloudflare.com', 'http://localhost:8000', 'http://127.0.0.1:8000'] if DEBUG else [])
+# Detrás de Nginx (VPS) o de un túnel: la IP del cliente sale de
+# X-Forwarded-For leído desde la derecha (PROXIES_DE_CONFIANZA saltos) y el
+# esquema, de X-Forwarded-Proto. CF-Connecting-IP sólo si se pide con
+# CAFETO_ENCABEZADO_IP: en un VPS con Nginx al frente lo escribe cualquiera.
+CONFIAR_EN_PROXY = _bool('DJANGO_CONFIAR_EN_PROXY', True)
+ENCABEZADO_IP_CLIENTE = os.environ.get('CAFETO_ENCABEZADO_IP', '')
 PROXIES_DE_CONFIANZA = max(1, int(os.environ.get('CAFETO_PROXIES_DE_CONFIANZA', '1')))
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-# ¿Se entra por HTTPS? En el local puede ser HTTP plano dentro de la LAN;
-# el acceso remoto, siempre HTTPS (o por VPN).
-USAR_HTTPS = _bool('DJANGO_HTTPS', False)
+if CONFIAR_EN_PROXY:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# En producción, HTTPS salvo que se diga lo contrario (DJANGO_HTTPS=False
+# sólo para un servidor dentro de una LAN sin certificado).
+USAR_HTTPS = _bool('DJANGO_HTTPS', not DEBUG)
+# El /admin/ de Django: en desarrollo en admin/; en producción no existe
+# salvo que CAFETO_ADMIN_URL diga en qué ruta (una difícil de adivinar).
+CAFETO_ADMIN_URL = os.environ.get('CAFETO_ADMIN_URL', '').strip().strip('/')
+CAFETO_ADMIN_URL = f'{CAFETO_ADMIN_URL}/' if CAFETO_ADMIN_URL else ''
+
+
+def ruta_del_admin():
+    from django.conf import settings
+    return settings.CAFETO_ADMIN_URL or ('admin/' if settings.DEBUG else '')
 
 
 # Application definition
@@ -76,6 +86,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # CORS sólo para la API móvil (más abajo): el frontend en React la
+    # consume desde otro origen.
+    'corsheaders',
     # Módulos del sistema, uno por área del DER. `nucleo` va primero: sus
     # migraciones crean la extensión unaccent y f_clave_normalizada, de las
     # que dependen las restricciones de todos los demás.
@@ -94,6 +107,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Primero de todos: contesta el «preflight» (OPTIONS) de /api/movil/
+    # antes de que otro middleware lo redirija o pida sesión.
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     # Sirve /static/ desde el mismo proceso (gunicorn en el NAS), antes que
     # cualquier middleware de sesión: un CSS no necesita estar logueado.
@@ -127,6 +143,25 @@ CAFETO_404_DE_DJANGO = os.environ.get('CAFETO_404_DE_DJANGO', '') == '1'
 # A dónde manda Django cuando falta iniciar sesión.
 LOGIN_URL = 'seguridad:login'
 
+# ---------------------------------------------------------------------------
+#  CORS: el frontend en React contra /api/movil/
+# ---------------------------------------------------------------------------
+# Sólo la API móvil: las pantallas (con cookie de sesión) y /api/servicio/
+# (n8n) nunca se abren a otro origen. Sin credenciales: la API se autentica
+# con «Authorization: Token …» y «Authorization: Firebase …», no con
+# cookies. Los orígenes salen de CAFETO_CORS_ORIGINS (separados por comas,
+# con esquema y sin barra final); en desarrollo, si no está, el de Vite.
+from corsheaders.defaults import default_headers  # noqa: E402
+
+CORS_URLS_REGEX = r'^/api/movil/.*$'
+CORS_ALLOW_CREDENTIALS = False
+CORS_ALLOWED_ORIGINS = [
+    o.strip().rstrip('/') for o in (
+        os.environ.get('CAFETO_CORS_ORIGINS')
+        or ('http://localhost:5173,http://127.0.0.1:5173' if DEBUG else '')).split(',')
+    if o.strip()]
+CORS_ALLOW_HEADERS = (*default_headers, 'idempotency-key')
+
 
 # ---------------------------------------------------------------------------
 #  SESIONES Y COOKIES
@@ -154,6 +189,8 @@ SECURE_REFERRER_POLICY = 'same-origin'
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 if USAR_HTTPS:
     SECURE_SSL_REDIRECT = _bool('DJANGO_REDIRIGIR_A_HTTPS', True)
+    # n8n habla con el sistema por la red interna de Docker (http://web:8000).
+    SECURE_REDIRECT_EXEMPT = [r'^api/servicio/']
     SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_HSTS_SEGUNDOS', '3600'))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
     SECURE_HSTS_PRELOAD = False

@@ -2,7 +2,8 @@
 
 Una automatización (n8n) no es una persona: no tiene usuario, ni perfil, ni
 sesión. Entra con UNA credencial propia, ``CAFETO_N8N_TOKEN``, que vive en
-el entorno del servidor y viaja en ``Authorization: Bearer …``.
+el entorno del servidor y viaja en ``Authorization: Bearer …``; con el mismo
+encabezado le habla el sistema a n8n (DD-104).
 
   * Sin la variable, la API entera responde 503: no existe hasta que alguien
     la habilita a propósito.
@@ -24,6 +25,14 @@ LARGO_MINIMO = 32
 
 def credencial():
     return (getattr(settings, 'CAFETO_N8N_TOKEN', '') or '').strip()
+
+
+def encabezados_para_n8n():
+    """Lo que el sistema le manda a n8n (el aviso de autorización, la
+    factura para leer): la misma credencial y el mismo formato con que n8n
+    le habla al sistema, ``Authorization: Bearer …``. Un solo encabezado en
+    los dos sentidos."""
+    return {'Content-Type': 'application/json', 'Authorization': f'Bearer {credencial()}'}
 
 
 def de_servicio(vista):

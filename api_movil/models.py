@@ -32,6 +32,7 @@ class SesionMovil(models.Model):
     MOTIVOS = (
         ('SALIDA', 'Salió desde la app'),
         ('NUEVO_INGRESO', 'Entró de nuevo (en este u otro celular)'),
+        ('CAMBIO_DE_CLAVE', 'Eligió una clave nueva'),
     )
 
     id_sesion_movil = models.BigAutoField('ID', primary_key=True)

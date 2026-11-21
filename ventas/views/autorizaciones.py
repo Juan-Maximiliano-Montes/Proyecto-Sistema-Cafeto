@@ -18,6 +18,7 @@ from ventas.models import EstadoSolicitud, SolicitudAutorizacion, ViaAprobacion
 from ventas.views.mostrador import _fidelizacion, _leer_pedido, _producto_para_ajuste, _vence_fiado, leer_datos
 from nucleo.validaciones import id_valido
 from nucleo import json_seguro
+from seguridad.servicios import sesion_del_navegador
 
 VISTAS_BANDEJA = (('pendientes', 'Esperando respuesta'), ('aprobadas', 'Aprobadas'),
                   ('rechazadas', 'Rechazadas'), ('anuladas', 'Vencidas o anuladas'), ('todas', 'Todas'))
@@ -202,8 +203,8 @@ def bandeja(request):
         except ValidationError as error:
             messages.error(request, _texto(error))
         else:
-            messages.success(request, 'Aprobado: la caja ya puede cobrar.' if aprobar
-                             else 'Rechazado: la caja ya lo ve.')
+            messages.success(request, f'Aprobado: la caja ya puede {a_distancia.que_sigue(solicitud)}.'
+                             if aprobar else 'Rechazado: la caja ya lo ve.')
         return redirect('ventas:autorizaciones')
     a_distancia.vencer_las_viejas()
     ver = request.GET.get('ver')
@@ -226,21 +227,36 @@ def bandeja(request):
 def enlace(request, token):
     """Lo que abre la dueña desde el correo o el WhatsApp. Sin sesión: el
     enlace es la credencial, y vale sólo para esa solicitud y 10 minutos.
-    Abrirlo no aprueba nada; hay que tocar el botón."""
+    Abrirlo no aprueba nada; hay que tocar el botón.
+
+    Si el navegador tiene abierta la sesión de quien aprueba, o ninguna,
+    alcanza con el botón (y esa sesión sigue: la caja no se traba). Si es
+    la de OTRA persona, se avisa y se pide la clave o el PIN de quien
+    aprueba antes de aceptar la respuesta."""
     solicitud, persona = a_distancia.por_token(token)
     if solicitud is None or persona is None:
         return render(request, 'ventas/autorizar_a_distancia.html', {'invalido': True}, status=404)
     a_distancia.estado(solicitud)          # la da por vencida si pasó la hora
     solicitud.refresh_from_db()
+    abierta = sesion_del_navegador(request)
+    otra = abierta.id_usuario if abierta is not None and abierta.id_usuario_id != persona.pk else None
     hecho = None
     if request.method == 'POST':
         aprobar = request.POST.get('accion') == 'aprobar'
-        try:
-            solicitud = _contestar(request, solicitud, persona, aprobar, ViaAprobacion.ENLACE)
-            hecho = 'aprobado' if aprobar else 'rechazado'
-        except ValidationError as error:
-            messages.error(request, _texto(error))
+        error = None
+        if otra is not None and solicitud.estado_solicitud == EstadoSolicitud.PENDIENTE:
+            error = a_distancia.confirmar_identidad(request, solicitud, persona, request.POST.get('confirmacion'))
+        if error:
+            messages.error(request, error)
+            solicitud.refresh_from_db()
+        else:
+            try:
+                solicitud = _contestar(request, solicitud, persona, aprobar, ViaAprobacion.ENLACE)
+                hecho = 'aprobado' if aprobar else 'rechazado'
+            except ValidationError as error:
+                messages.error(request, _texto(error))
     return render(request, 'ventas/autorizar_a_distancia.html', {
         'solicitud': solicitud, 'resumen': _resumen(solicitud), 'hecho': hecho,
         'pendiente': solicitud.estado_solicitud == EstadoSolicitud.PENDIENTE, 'persona': persona,
+        'otra': otra, 'sigue': a_distancia.que_sigue(solicitud),
     })

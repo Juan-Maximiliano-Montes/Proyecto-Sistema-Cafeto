@@ -12,7 +12,7 @@ from django.test import SimpleTestCase
 RUTA = Path(settings.BASE_DIR) / 'docs' / 'n8n_workflows_cafeto.json'
 
 
-class FlujosN8nTest(SimpleTestCase):
+class LeerFlujos:
 
     @classmethod
     def setUpClass(cls):
@@ -24,6 +24,9 @@ class FlujosN8nTest(SimpleTestCase):
 
     def siguientes(self, flujo, nombre, salida=0):
         return [d['node'] for d in flujo['connections'].get(nombre, {}).get('main', [[]] * (salida + 1))[salida]]
+
+
+class FlujosN8nTest(LeerFlujos, SimpleTestCase):
 
     def test_las_conexiones_apuntan_a_nodos_que_existen(self):
         for nombre, flujo in self.flujos.items():
@@ -70,3 +73,60 @@ class FlujosN8nTest(SimpleTestCase):
         self.assertEqual(self.siguientes(flujo, '¿Se pudo leer?', 1), ['Armar el aviso'])
         self.assertIn('!$json.detail', json.dumps(nodos['¿Se pudo leer?']['parameters']))
         self.assertIn('r.detail', nodos['Armar el aviso']['parameters']['jsCode'])
+
+
+class AlineacionConDjangoTest(LeerFlujos, SimpleTestCase):
+    """DD-104: un solo encabezado (``Authorization: Bearer``) en los dos
+    sentidos, y cada dirección del sistema que usan los flujos existe."""
+
+    def llamadas_al_sistema(self):
+        for flujo in self.flujos.values():
+            for n in flujo['nodes']:
+                url = n.get('parameters', {}).get('url', '')
+                if n['type'].endswith('httpRequest') and '$env.CAFETO_URL' in url:
+                    yield flujo['name'], n
+
+    def test_todas_las_llamadas_al_sistema_van_con_bearer(self):
+        llamadas = list(self.llamadas_al_sistema())
+        self.assertGreater(len(llamadas), 8)
+        for nombre, n in llamadas:
+            encabezados = {h['name']: h['value'] for h in n['parameters']['headerParameters']['parameters']}
+            self.assertEqual(encabezados.get('Authorization'), '=Bearer {{ $env.CAFETO_N8N_TOKEN }}',
+                             f'{nombre} · {n["name"]}')
+        self.assertNotIn('x-cafeto-token', RUTA.read_text(encoding='utf-8').lower())
+
+    def test_cada_direccion_del_sistema_existe(self):
+        import re
+
+        from django.urls import Resolver404, resolve
+        for nombre, n in self.llamadas_al_sistema():
+            ruta = n['parameters']['url'].split('}}', 1)[1]
+            ruta = re.sub(r'\{\{[^}]*\}\}', '1', ruta)
+            try:
+                coincidencia = resolve(ruta)
+            except Resolver404:
+                self.fail(f'{nombre} · {n["name"]}: {ruta} no existe')
+            self.assertEqual(coincidencia.namespace, 'api_servicio', ruta)
+
+    def test_el_aviso_de_autorizacion_exige_el_bearer_del_sistema(self):
+        flujo = self.flujos['Cafeto · Autorización a distancia por WhatsApp']
+        codigo = self.nodos(flujo)['Armar el mensaje']['parameters']['jsCode']
+        self.assertIn("['authorization']", codigo)
+        self.assertIn("recibida !== 'Bearer ' + token", codigo)
+        self.assertIn('token.length < 32', codigo)
+
+    def test_las_fotos_de_los_productos_sin_foto(self):
+        flujo = self.flujos['Cafeto · Fotos de los productos sin foto (Open Food Facts)']
+        nodos = self.nodos(flujo)
+        self.assertEqual(nodos['Productos sin foto']['parameters']['url'],
+                         '={{ $env.CAFETO_URL }}/api/servicio/productos/sin-foto/')
+        self.assertIn('/api/servicio/productos/{{ $json.id }}/foto/', nodos['Ponerle la foto']['parameters']['url'])
+        orden = ['Cada noche 3:30', 'Productos sin foto', 'Uno por producto',
+                 'Buscar la foto en Open Food Facts', '¿Tiene foto?', 'Ponerle la foto']
+        for actual, siguiente in zip(orden, orden[1:]):
+            self.assertEqual(self.siguientes(flujo, actual), [siguiente])
+        off = nodos['Buscar la foto en Open Food Facts']['parameters']
+        self.assertTrue(off['options']['response']['response']['neverError'])
+        self.assertEqual(off['options']['batching']['batch']['batchSize'], 1)
+        self.assertIn('User-Agent', {h['name'] for h in off['headerParameters']['parameters']})
+        self.assertIn("replace(/^http:/, 'https:')", nodos['¿Tiene foto?']['parameters']['jsCode'])

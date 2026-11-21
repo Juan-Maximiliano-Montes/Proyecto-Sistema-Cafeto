@@ -15,12 +15,13 @@
             {% else %}
             {% if messages %}{% for m in messages %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ m }}</span></div>{% endfor %}{% endif %}
             {% if hecho == 'aprobado' %}
-            <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span><strong>Listo, autorizado.</strong> La caja lo ve en unos segundos y cobra.</span></div>
+            <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span><strong>Listo, autorizado.</strong> La caja lo ve en unos segundos y puede {{ sigue }}.</span></div>
             {% elif hecho == 'rechazado' %}
             <div class="aviso aviso-info"><i class="bi bi-x-circle-fill"></i><span><strong>Rechazado.</strong> La caja ya lo ve.</span></div>
             {% endif %}
             <span class="eyebrow">{{ resumen.caja }} · pedido N° {{ resumen.id }}</span>
-            <h1 class="titulo-pantalla mb-2">¿Autorizás{% if persona and not persona.es_titular %}, {{ persona.nombre }}{% endif %}?</h1>
+            <h1 class="titulo-pantalla mb-2">¿Autorizás, {{ persona.nombre }} {{ persona.apellido }}?</h1>
+            <p class="small text-secondary mb-2">Contestás como <strong>{{ persona.nombre }} {{ persona.apellido }}</strong>{% if persona.es_titular %} (titular){% endif %}.</p>
             <p class="mb-2">{{ resumen.motivo|pesos_juntos }}.</p>
             <dl class="tarjeta-datos mb-3">
                 {% if resumen.es_ajuste %}<dt>Qué es</dt><dd>Ajuste de stock</dd>{% elif resumen.es_cierre %}<dt>Diferencia de caja</dt><dd class="monto">{{ resumen.total }}</dd>{% else %}<dt>Total del ticket</dt><dd class="monto">{{ resumen.total }}</dd>{% endif %}
@@ -31,8 +32,15 @@
             <ul class="small text-secondary mb-3 ps-3">{% for r in resumen.renglones %}<li>{{ r }}</li>{% endfor %}</ul>
             {% endif %}
             {% if pendiente %}
+            {% if otra %}
+            <div class="aviso aviso-aviso"><i class="bi bi-person-exclamation"></i><span>En este navegador está abierta la sesión de <strong>{{ otra.nombre }} {{ otra.apellido }}</strong>. Para contestar como {{ persona.nombre }} {{ persona.apellido }}, confirmá con tu clave o con el PIN de 4 dígitos del mensaje.</span></div>
+            {% endif %}
             <form method="post" class="d-grid gap-2">
                 {% csrf_token %}
+                {% if otra %}
+                <label class="form-label mb-0" for="confirmacion">Tu clave o el PIN del mensaje</label>
+                <input type="password" class="form-control" id="confirmacion" name="confirmacion" autocomplete="current-password" required>
+                {% endif %}
                 <button type="submit" name="accion" value="aprobar" class="btn btn-primary btn-xl"><i class="bi bi-check2-circle me-1"></i>Aprobar</button>
                 <button type="submit" name="accion" value="rechazar" class="btn btn-outline-secondary">No, rechazar</button>
             </form>

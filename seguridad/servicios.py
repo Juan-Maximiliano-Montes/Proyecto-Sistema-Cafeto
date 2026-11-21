@@ -33,6 +33,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from nucleo import contexto
+from nucleo.validaciones import id_valido
 
 
 def _duracion_sesion():
@@ -68,14 +69,16 @@ def ip_del_request(request):
     elegir la IP con la que queda registrado —y esquivar el bloqueo por IP
     cambiándola en cada intento—.
 
-    Con el proxy (DD-103): primero ``CF-Connecting-IP``, que pone
-    Cloudflare; si no viene, ``X-Forwarded-For`` leído desde la DERECHA,
-    saltando ``PROXIES_DE_CONFIANZA`` - 1 proxies propios: cada proxy
+    Con el proxy: ``X-Forwarded-For`` leído desde la DERECHA, saltando
+    ``PROXIES_DE_CONFIANZA`` - 1 proxies propios (DD-103): cada proxy
     agrega al final la IP de quien le habló, y lo de la izquierda lo pudo
-    escribir el cliente. Lo que no es una IP no se usa.
+    escribir el cliente. Detrás de Nginx en Docker, ``REMOTE_ADDR`` es la IP
+    del contenedor de Nginx y nunca se usa si el encabezado trae una IP
+    válida (DD-104). ``ENCABEZADO_IP_CLIENTE`` (CF-Connecting-IP) manda sólo
+    si se configuró. Lo que no es una IP no se usa.
     """
     if getattr(settings, 'CONFIAR_EN_PROXY', False):
-        encabezado = getattr(settings, 'ENCABEZADO_IP_CLIENTE', 'HTTP_CF_CONNECTING_IP')
+        encabezado = getattr(settings, 'ENCABEZADO_IP_CLIENTE', '')
         ip = _ip_o_nada(request.META.get(encabezado)) if encabezado else None
         if ip:
             return ip[:45]
@@ -192,6 +195,62 @@ def cerrar_sesion(id_sesion, motivo='CIERRE_MANUAL'):
         fecha_cierre=timezone.now(),
         motivo_cierre=motivo,
     )
+
+
+def cerrar_sesiones_de(usuario):
+    """Cierra todas las sesiones abiertas de ``usuario``: las de la web y
+    la de la app del celular. Es lo que pasa al elegir una clave nueva: con
+    la vieja no queda nada abierto. Devuelve cuántas cerró de cada una."""
+    from api_movil.models import SesionMovil
+    from seguridad.models import Sesion
+
+    ahora = timezone.now()
+    web = Sesion.objects.filter(id_usuario=usuario, activa=True).update(
+        activa=False, fecha_cierre=ahora, motivo_cierre='REVOCACION')
+    movil = SesionMovil.objects.filter(id_usuario=usuario, revocada_en__isnull=True).update(
+        revocada_en=ahora, motivo_revocacion='CAMBIO_DE_CLAVE')
+    return web, movil
+
+
+def sesion_del_navegador(request):
+    """La sesión web vigente que trae este navegador, o None.
+
+    Es para las páginas que se abren sin pasar por el control de sesión (los
+    enlaces del correo y del WhatsApp): ahí ``request.usuario_actual`` es
+    siempre None, aunque el navegador tenga a alguien adentro.
+    """
+    from seguridad.models import Usuario
+
+    session = getattr(request, 'session', None)
+    id_usuario = session.get('usuario_id') if session else None
+    usuario = Usuario.objects.filter(pk=id_valido(id_usuario), activo=True).first() if id_usuario else None
+    if usuario is None:
+        return None
+    return validar_sesion(request, usuario)[0]
+
+
+def cerrar_sesion_del_navegador(request, detalle):
+    """Deja el navegador sin la sesión de nadie: cierra la sesión de
+    negocio (queda en el Registro de Actividad, firmada por su dueño, con
+    ``detalle``), hace ``logout`` (sesión de Django nueva, sin nada de la
+    anterior) y rota el token CSRF. Devuelve la sesión cerrada, o None."""
+    from django.contrib.auth import logout
+    from django.middleware.csrf import rotate_token
+
+    from seguridad.models import Sesion
+
+    sesion = sesion_del_navegador(request)
+    if sesion is not None:
+        antes = instantanea(sesion)
+        cerrar_sesion(sesion.pk, 'REVOCACION')
+        registrar_auditoria(
+            request, 'CIERRE', 'SESION', instancia=sesion, anterior=antes,
+            nuevo=instantanea(Sesion.objects.get(pk=sesion.pk)), modulo='SEGURIDAD',
+            usuario=sesion.id_usuario, detalle=detalle)
+    if request.session.get('usuario_id') or request.session.get('id_sesion_negocio'):
+        logout(request)
+        rotate_token(request)
+    return sesion
 
 
 # Lo que se le dice a la persona cuando su sesión deja de valer.

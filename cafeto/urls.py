@@ -11,8 +11,9 @@
     /fidelizacion/       clientes del club, categorías y beneficios
     /api/movil/          la API de la app móvil (JSON, con su propio token)
 
-El /admin/ de Django sólo existe en desarrollo (DEBUG): en producción es
-una puerta trasera que saltea la auditoría y los permisos del sistema.
+El /admin/ de Django existe en desarrollo y, en producción, sólo si
+CAFETO_ADMIN_URL dice en qué ruta: es una puerta trasera que saltea la
+auditoría y los permisos del sistema.
 """
 from django.conf import settings
 from django.urls import include, path
@@ -39,6 +40,7 @@ urlpatterns = [
 # las pide sin sesión, igual que el catálogo. Sólo se sirve esa carpeta.
 from django.urls import re_path
 from django.views.static import serve
+from cafeto.settings import ruta_del_admin
 
 
 def foto_subida(request, path):
@@ -53,7 +55,7 @@ handler403 = 'nucleo.errores.pagina_403'
 handler404 = 'nucleo.errores.pagina_404'
 handler500 = 'nucleo.errores.pagina_500'
 
-if settings.DEBUG:
+if ruta_del_admin():
     from django.contrib import admin
 
-    urlpatterns.insert(0, path('admin/', admin.site.urls))
+    urlpatterns.insert(0, path(ruta_del_admin(), admin.site.urls))

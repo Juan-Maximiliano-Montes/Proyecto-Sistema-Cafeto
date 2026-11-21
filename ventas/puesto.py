@@ -11,6 +11,8 @@ sin que nadie tenga que elegirla. La firma impide fabricar el valor; y aun
 así sólo es una preferencia: elegir caja no habilita nada que el perfil no
 tenga.
 """
+from django.conf import settings
+
 from seguridad.servicios import sesion_del_request
 from ventas import caja as servicio_caja
 from ventas.models import CajaRegistradora
@@ -63,8 +65,10 @@ def fijar(request, caja):
 
 
 def recordar(respuesta, caja, segura=False):
+    """Con HTTPS (detrás de Nginx también) la cookie sólo viaja cifrada."""
+    segura = segura or settings.SESSION_COOKIE_SECURE
     if caja is None:
-        respuesta.delete_cookie(COOKIE)
+        respuesta.delete_cookie(COOKIE, samesite='Lax')
     else:
         respuesta.set_signed_cookie(
             COOKIE, str(caja.pk), salt=SAL, max_age=DURACION_COOKIE,

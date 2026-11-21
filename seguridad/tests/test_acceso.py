@@ -97,7 +97,8 @@ class SesionEnElServidorTest(Base):
         self.assertIn('¿Te olvidaste la clave?', html)
         self.assertIn(reverse('seguridad:olvide_clave'), html)
         pagina = self.client.get(reverse('seguridad:olvide_clave')).content.decode()
-        self.assertIn('recuperar_titular', pagina)
+        self.assertNotIn('recuperar_titular', pagina)
+        self.assertIn('quien administra el servidor', pagina)
         con_error = self.client.post(reverse('seguridad:login'),
                                      {'identificador': 'nadie99', 'clave': 'x'}).content.decode()
         self.assertIn('¿Te olvidaste la clave?', con_error)
@@ -623,29 +624,69 @@ class RecuperacionPorCorreoTest(Base):
 
     def test_el_enlace_en_un_navegador_con_otra_sesion_abierta(self):
         """La administradora tiene su sesión abierta y en el mismo navegador
-        Beto abre su enlace: al guardar, la sesión de ella se cierra y el
-        cambio queda firmado por Beto, no por ella."""
+        Beto abre su enlace: antes de ver el formulario, la sesión de ella se
+        cierra (y queda dicho por qué), y el cambio lo firma Beto."""
         self.entrar('31000001')
         admin = Usuario.objects.get(dni_usuario='31000001')
         abierta = Sesion.objects.get(id_usuario=admin, activa=True)
         self.pedir('40000002')
         url = self.enlace()
 
-        # Abrir el enlace (GET) o mandar una clave que no sirve no la cierra.
-        self.assertContains(self.client.get(url), 'Elegí tu clave nueva')
-        self.elegir(url, 'corta')
+        # Un enlace tocado no toca la sesión de nadie.
+        self.assertEqual(self.client.get(url[:-3] + 'xx/').status_code, 400)
         abierta.refresh_from_db()
         self.assertTrue(abierta.activa)
 
-        self.assertRedirects(self.elegir(url), reverse('seguridad:login'))
+        # El enlace válido: la sesión de ella se cierra antes de mostrar el formulario.
+        self.assertContains(self.client.get(url), 'Elegí tu clave nueva')
         abierta.refresh_from_db()
         self.assertFalse(abierta.activa)
         self.assertEqual(abierta.motivo_cierre, 'REVOCACION')
         self.assertNotIn('usuario_id', self.client.session)
+        cierre = LogAuditoria.objects.get(operacion_realizada='CIERRE DE SESION', id_usuario=admin)
+        self.assertIn(self.beto.nombre_usuario, cierre.detalle_operacion)
+
+        # Si ella vuelve a entrar en otra pestaña antes de guardar, se cierra otra vez.
+        self.entrar('31000001')
+        otra_vez = Sesion.objects.get(id_usuario=admin, activa=True)
+        self.assertRedirects(self.elegir(url), reverse('seguridad:login'))
+        otra_vez.refresh_from_db()
+        self.assertFalse(otra_vez.activa)
         registro = LogAuditoria.objects.get(operacion_realizada='RECUPERACION DE CLAVE POR CORREO')
         self.assertEqual(registro.id_usuario, self.beto)
         # La pantalla de ingreso queda limpia: no entra como la administradora.
         self.assertNotContains(self.client.get(reverse('home'), follow=True), admin.apellido)
+
+    def test_la_clave_nueva_cierra_las_sesiones_web_y_del_celular(self):
+        from django.test import RequestFactory
+
+        from api_movil.autenticacion import emitir_token, sesion_del_token
+        from api_movil.models import SesionMovil
+
+        en_la_pc = Client()
+        self.entrar('40000002', cliente=en_la_pc)
+        token = emitir_token(self.beto)
+        pedido = RequestFactory().get('/api/movil/panel/', HTTP_AUTHORIZATION=f'Token {token}')
+        self.assertEqual(sesion_del_token(pedido)[0], self.beto)
+        self.pedir('40000002')
+        self.elegir(self.enlace())
+        self.assertFalse(Sesion.objects.filter(id_usuario=self.beto, activa=True).exists())
+        movil = SesionMovil.objects.get(id_usuario=self.beto)
+        self.assertIsNotNone(movil.revocada_en)
+        self.assertEqual(movil.motivo_revocacion, 'CAMBIO_DE_CLAVE')
+        self.assertEqual(sesion_del_token(pedido), (None, None))
+
+    @override_settings(CAFETO_URL_PUBLICA='https://cafeto.ejemplo.com')
+    def test_el_enlace_usa_la_direccion_publica(self):
+        self.pedir('40000002')
+        cuerpo = mail.outbox[-1].body
+        self.assertIn('https://cafeto.ejemplo.com/elegir-clave/recuperar/', cuerpo)
+        self.assertNotIn('testserver', cuerpo)
+
+    def test_sin_direccion_publica_usa_la_del_pedido_detras_del_proxy(self):
+        self.client.post(reverse('seguridad:olvide_clave'), {'identificador': '40000002'},
+                         HTTP_HOST='cafeto.ejemplo.com', HTTP_X_FORWARDED_PROTO='https')
+        self.assertIn('https://cafeto.ejemplo.com/elegir-clave/recuperar/', mail.outbox[-1].body)
 
     def test_el_restablecimiento_del_admin_manda_el_enlace_y_anula_la_clave_vieja(self):
         self.entrar('31000001')

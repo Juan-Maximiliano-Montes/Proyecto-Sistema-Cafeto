@@ -14,7 +14,6 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
-from django.middleware.csrf import rotate_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -45,6 +44,8 @@ from seguridad.models import (
 from seguridad.servicios import (
     abrir_sesion,
     cerrar_sesion,
+    cerrar_sesion_del_navegador,
+    cerrar_sesiones_de,
     describir_espera,
     espera_por_bloqueo,
     instantanea,
@@ -214,23 +215,20 @@ def elegir_clave(request, proposito, token):
     if usuario is None:
         return render(request, 'seguridad/elegir_clave.html', {'invalido': True}, status=400)
 
+    # Con el enlace ya validado, y antes de mostrar o procesar el formulario,
+    # el navegador queda sin la sesión de nadie (la titular en otra pestaña,
+    # la cajera en la PC del local): el cambio no se mezcla con esa cuenta.
+    cerrar_sesion_del_navegador(
+        request, f'Se cerró al abrir en ese navegador el enlace para elegir la clave de '
+                 f'{usuario.nombre_usuario}.')
     usuario.debe_cambiar_clave = True        # no pide la clave actual
     form = CambioClaveForm(request.POST or None, usuario=usuario)
     if request.method == 'POST' and form.is_valid():
-        # Este navegador puede tener abierta la sesión de otra persona (la
-        # titular en otra pestaña). Se cierra antes de guardar, como en
-        # logout_view: la sesión de negocio y la de Django, con llave y
-        # token CSRF nuevos. Recién acá, con el token válido y por POST:
-        # abrir un enlace (GET) nunca saca a nadie del sistema.
-        cerrar_sesion(request.session.get('id_sesion_negocio'), motivo='REVOCACION')
-        request.session.flush()
-        rotate_token(request)
         anterior = instantanea(usuario)
         usuario.set_clave(form.cleaned_data['clave_nueva'])
         usuario.save()
-        # Si alguien tenía la cuenta abierta con la clave vieja, queda afuera.
-        for sesion in usuario.sesiones.filter(activa=True):
-            cerrar_sesion(sesion.pk, motivo='REVOCACION')
+        # Con la clave vieja no queda nada abierto: ni la web ni el celular.
+        cerrar_sesiones_de(usuario)
         registrar_auditoria(
             request, 'ACTIVACION' if proposito == 'activar' else 'RECUPERACION',
             'CLAVE POR CORREO', instancia=usuario, modulo='SEGURIDAD', usuario=usuario,

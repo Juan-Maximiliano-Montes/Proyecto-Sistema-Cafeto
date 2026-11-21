@@ -314,6 +314,100 @@ class ADistanciaTest(Pantalla):
 
 
 # ===========================================================================
+#  El enlace abierto en un navegador con una sesión (DD-104)
+# ===========================================================================
+class SesionEnElNavegadorTest(Pantalla):
+
+    def test_el_enlace_de_la_titular_lleva_su_numero_y_el_token_suelto_no_sirve(self):
+        self.entrar(self.cajera)
+        _r, _pin, enlace = self.pedir_a_distancia()
+        self.assertIn(f'.{self.duenia.pk}.', enlace)
+        suelto = enlace.split('.')[0] + '/'
+        self.assertEqual(self.client_class().get(suelto).status_code, 404)
+        pagina = self.client_class().get(enlace)
+        self.assertContains(pagina, f'¿Autorizás, {self.duenia.nombre} {self.duenia.apellido}?')
+        self.assertContains(pagina, 'Contestás como')
+
+    def test_con_la_sesion_de_otra_persona_pide_la_clave_o_el_pin(self):
+        self.entrar(self.cajera)
+        r, pin, enlace = self.pedir_a_distancia()
+        # La cajera abre en SU navegador el enlace de la titular.
+        pagina = self.client.get(enlace)
+        self.assertContains(pagina, 'está abierta la sesión de')
+        self.assertContains(pagina, f'{self.cajera.nombre} {self.cajera.apellido}')
+        self.assertContains(pagina, 'name="confirmacion"')
+        sin_nada = self.client.post(enlace, {'accion': 'aprobar'})
+        self.assertContains(sin_nada, 'poné tu clave o el PIN')
+        malo = '0000' if pin != '0000' else '1111'
+        mal = self.client.post(enlace, {'accion': 'aprobar', 'confirmacion': malo})
+        self.assertContains(mal, 'Te quedan 4')
+        self.assertEqual(SolicitudAutorizacion.objects.get().estado_solicitud, 'PENDIENTE')
+        bien = self.client.post(enlace, {'accion': 'aprobar', 'confirmacion': pin})
+        self.assertContains(bien, 'Listo, autorizado.')
+        self.assertContains(bien, 'puede cobrar el ticket')
+        solicitud = SolicitudAutorizacion.objects.get()
+        self.assertEqual((solicitud.estado_solicitud, solicitud.id_usuario_autorizante, solicitud.via_aprobacion),
+                         ('APROBADA', self.duenia, 'ENLACE'))
+        # La sesión de la cajera sigue: la caja no se traba.
+        estado = self.client.get(reverse('ventas:estado_autorizacion', args=[r['id']]))
+        self.assertEqual(estado.status_code, 200)
+
+    def test_con_la_clave_de_quien_aprueba_y_sin_tocar_la_sesion_abierta(self):
+        from seguridad.models import IntentoAcceso, Sesion
+        self.entrar(self.cajera)
+        self.pedir_a_distancia()
+        correo = next(m for m in reversed(mail.outbox) if self.admin.correo in m.to)
+        enlace = [linea for linea in correo.body.splitlines() if '/ventas/autorizar/' in linea][0].strip()
+        enlace = enlace[enlace.index('/ventas/'):]
+        mal = self.client.post(enlace, {'accion': 'aprobar', 'confirmacion': 'no-es-la-clave'})
+        self.assertContains(mal, 'La clave no es correcta')
+        self.assertTrue(IntentoAcceso.objects.filter(id_usuario=self.admin, motivo_rechazo='CLAVE_INCORRECTA').exists())
+        self.client.post(enlace, {'accion': 'rechazar', 'confirmacion': f.CLAVE})
+        solicitud = SolicitudAutorizacion.objects.get()
+        self.assertEqual(solicitud.estado_solicitud, 'RECHAZADA')
+        self.assertTrue(Sesion.objects.filter(id_usuario=self.cajera, activa=True).exists())
+
+    def test_cinco_errores_anulan_el_pedido(self):
+        self.entrar(self.cajera)
+        _r, pin, enlace = self.pedir_a_distancia()
+        malo = '0000' if pin != '0000' else '1111'
+        for _ in range(5):
+            ultimo = self.client.post(enlace, {'accion': 'aprobar', 'confirmacion': malo})
+        self.assertContains(ultimo, 'se anuló')
+        self.assertEqual(SolicitudAutorizacion.objects.get().estado_solicitud, 'ANULADA')
+        tarde = self.client.post(enlace, {'accion': 'aprobar', 'confirmacion': pin})
+        self.assertEqual(SolicitudAutorizacion.objects.get().estado_solicitud, 'ANULADA')
+        self.assertNotContains(tarde, 'Listo, autorizado.')
+
+    def test_con_la_sesion_de_quien_aprueba_no_pide_nada_ni_la_cierra(self):
+        from seguridad.models import Sesion
+        self.entrar(self.cajera)
+        _r, _pin, enlace = self.pedir_a_distancia()
+        suya = self.client_class()
+        f.entrar(suya, self.duenia)
+        pagina = suya.get(enlace)
+        self.assertNotContains(pagina, 'name="confirmacion"')
+        suya.post(enlace, {'accion': 'aprobar'})
+        self.assertEqual(SolicitudAutorizacion.objects.get().estado_solicitud, 'APROBADA')
+        self.assertTrue(Sesion.objects.filter(id_usuario=self.duenia, activa=True).exists())
+        self.assertEqual(suya.get(reverse('ventas:autorizaciones')).status_code, 200)
+
+    def test_lo_que_sigue_depende_de_lo_que_se_pidio(self):
+        self.entrar(self.cajera)
+        r, _pin, _enlace = self.pedir_a_distancia()
+        solicitud = SolicitudAutorizacion.objects.get(pk=r['id'])
+        self.assertEqual(a_distancia.que_sigue(solicitud), 'cobrar el ticket')
+        solicitud.pedido = dict(solicitud.pedido, tipo=a_distancia.AJUSTE)
+        self.assertEqual(a_distancia.que_sigue(solicitud), 'cargar el stock del producto')
+        solicitud.pedido = dict(solicitud.pedido, tipo=a_distancia.CIERRE)
+        self.assertEqual(a_distancia.que_sigue(solicitud), 'terminar el cierre de la caja')
+        self.entrar(self.admin)
+        respuesta = self.client.post(reverse('ventas:autorizaciones'), {'solicitud': r['id'], 'accion': 'aprobar'},
+                                     follow=True)
+        self.assertContains(respuesta, 'Aprobado: la caja ya puede cobrar el ticket.')
+
+
+# ===========================================================================
 #  Delegación: aprueba la encargada con SU enlace o SU PIN; y el ajuste de
 #  stock desde el mostrador también se puede pedir a distancia.
 # ===========================================================================

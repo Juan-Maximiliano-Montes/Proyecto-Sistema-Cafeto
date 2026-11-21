@@ -104,6 +104,9 @@ services:
       # Webhook de n8n que lee la foto o el PDF de una factura (DD-98). Vacío =
       # la lee el propio sistema (PDF y texto; fotos si hay OCR instalado).
       CAFETO_N8N_WEBHOOK_FACTURA: ${CAFETO_N8N_WEBHOOK_FACTURA:-}
+      # Desde qué orígenes el frontend en React puede usar /api/movil/.
+      # Vacío en desarrollo = el de Vite (http://localhost:5173).
+      CAFETO_CORS_ORIGINS: ${CAFETO_CORS_ORIGINS:-}
     depends_on:
       db:
         condition: service_healthy

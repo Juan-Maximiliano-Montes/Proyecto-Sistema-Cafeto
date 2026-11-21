@@ -1,6 +1,10 @@
-# docker-compose.prod.yml — el sistema en el NAS del local (Alternativa II).
+# docker-compose.prod.yml — el sistema en producción: un VPS con Nginx y HTTPS.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Con el Nginx de docs/nginx_vps_ejemplo.conf en un contenedor:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile vps up -d --build
 #
 # Lo que cambia respecto de desarrollo:
 #   * la base NO publica su puerto: sólo la ve el contenedor web;
@@ -10,9 +14,9 @@
 #   * un servicio de respaldo de la base cada hora (RPO < 1 h), a ./respaldos;
 #   * un servicio que pasa a histórico lo viejo el día 1 de cada mes (RPH).
 #
-# El acceso desde afuera del local (la dueña desde su casa) va por el
-# proxy inverso del NAS con HTTPS o por una VPN; nunca exponiendo el
-# puerto 8000 directo a internet. Ver el README.
+# Desde internet se entra SIEMPRE por Nginx con HTTPS: el puerto 8000 queda
+# atado a 127.0.0.1 (si Nginx corre en el VPS) y en la red interna de Docker
+# (si corre en el contenedor "nginx"); nunca expuesto directo.
 services:
   db:
     ports: !reset []
@@ -30,12 +34,26 @@ services:
       # imagen nueva (el código acá no está montado).
       - media_data:/opt/app/media
     restart: unless-stopped
+    ports: !override
+      - "${CAFETO_PUERTO_WEB:-127.0.0.1:8000}:8000"
     environment:
       DJANGO_DEBUG: "False"
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
-      DJANGO_CONFIAR_EN_PROXY: ${DJANGO_CONFIAR_EN_PROXY:-False}
-      DJANGO_HTTPS: ${DJANGO_HTTPS:-False}
+      # Los estáticos que juntó la imagen, con hash en el nombre: el celular
+      # los guarda un año y, cuando cambian, el nombre cambia solo.
+      CAFETO_ESTATICOS_CON_HASH: "True"
+      # Detrás de Nginx: la IP real del cliente y el https salen de sus
+      # encabezados. Sin esto, todo el local quedaría con la IP del proxy
+      # (y un bloqueo por intentos los frenaría a todos juntos).
+      DJANGO_CONFIAR_EN_PROXY: ${DJANGO_CONFIAR_EN_PROXY:-True}
+      DJANGO_HTTPS: ${DJANGO_HTTPS:-True}
+      DJANGO_REDIRIGIR_A_HTTPS: ${DJANGO_REDIRIGIR_A_HTTPS:-True}
+      DJANGO_HSTS_SEGUNDOS: ${DJANGO_HSTS_SEGUNDOS:-3600}
+      CAFETO_PROXIES_DE_CONFIANZA: ${CAFETO_PROXIES_DE_CONFIANZA:-1}
+      CAFETO_ENCABEZADO_IP: ${CAFETO_ENCABEZADO_IP:-}
+      # Vacío = sin /admin/ de Django.
+      CAFETO_ADMIN_URL: ${CAFETO_ADMIN_URL:-}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
 
   respaldo:
@@ -82,5 +100,26 @@ services:
       web:
         condition: service_started
 
+  # Nginx delante del sistema (docs/nginx_vps_ejemplo.conf): HTTPS,
+  # compresión, caché de estáticos y las páginas 502/503 autónomas.
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: cafeto_nginx
+    profiles: ["vps"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${CAFETO_NGINX_CONF:-./docs/nginx_vps_ejemplo.conf}:/etc/nginx/conf.d/default.conf:ro
+      - ./templates/502.html:/usr/share/nginx/html/errores/502.html:ro
+      - ./templates/503.html:/usr/share/nginx/html/errores/503.html:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./certbot:/var/www/certbot:ro
+      - nginx_cache:/var/cache/nginx
+    depends_on:
+      - web
+
 volumes:
   media_data:
+  nginx_cache:

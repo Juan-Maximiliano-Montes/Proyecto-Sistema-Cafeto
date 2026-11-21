@@ -30,3 +30,7 @@ whitenoise==6.12.0
 # firebase.py). Sin la credencial configurada no se usa: /clientes/ responde
 # 503 y el resto de la API anda igual.
 firebase-admin==6.5.0
+
+# El frontend en React (otro origen) contra /api/movil/: los encabezados CORS
+# sólo para esa API (cafeto/settings.py).
+django-cors-headers==4.9.0

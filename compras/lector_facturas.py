@@ -297,8 +297,9 @@ def por_n8n(contenido, tipo, nombre):
 
     cuerpo = json.dumps({'nombre': nombre, 'tipo': tipo,
                          'archivo': base64.b64encode(contenido).decode('ascii')}).encode()
-    pedido = urllib.request.Request(url, data=cuerpo, method='POST', headers={
-        'Content-Type': 'application/json', 'X-Cafeto-Token': getattr(settings, 'CAFETO_N8N_TOKEN', '')})
+    from api_servicio.autenticacion import encabezados_para_n8n
+
+    pedido = urllib.request.Request(url, data=cuerpo, method='POST', headers=encabezados_para_n8n())
     try:
         with urllib.request.urlopen(pedido, timeout=SEGUNDOS_PARA_N8N) as respuesta:
             datos = json.loads(respuesta.read(2 * 1024 * 1024).decode('utf-8'))
