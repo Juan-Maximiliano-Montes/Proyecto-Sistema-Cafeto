@@ -17,6 +17,10 @@
      [data-modal-auto]          modal que se abre al cargar la página
      [data-parecidos]           al escribir o salir del campo avisa iguales o parecidos
      .js-alta-rapida            "+" que despliega el alta del dato padre
+     [hx-boost]                 filtros, paginador, cápsulas y menú sin recargar
+
+   Cafeto.inicializar(raiz) engancha todo lo de arriba en un pedazo nuevo
+   de la página: al cargar y después de cada actualización parcial.
    ========================================================================== */
 (function () {
     'use strict';
@@ -37,9 +41,8 @@
         raiz.setAttribute('data-bs-theme', tema === 'claro' ? 'light' : 'dark');
         var meta = document.querySelector('meta[name="theme-color"]');
         if (meta) { meta.setAttribute('content', tema === 'claro' ? '#F4F1EA' : '#121128'); }
+        document.dispatchEvent(new CustomEvent('cafeto:tema', {detail: {tema: tema}}));
     }
-    var temaGuardado = leer('cafeto.tema');
-    if (temaGuardado === 'claro' || temaGuardado === 'oscuro') { aplicarTema(temaGuardado); }
     document.addEventListener('click', function (evento) {
         var boton = evento.target.closest('[data-tema-alternar]');
         if (!boton) { return; }
@@ -89,7 +92,6 @@
     }
     window.addEventListener('online', estadoDeRed);
     window.addEventListener('offline', estadoDeRed);
-    document.addEventListener('DOMContentLoaded', estadoDeRed);
 
     // ---------------------------------------------------------------------
     //  Confirmación con un modal propio (reemplaza a los alert del navegador)
@@ -534,9 +536,6 @@
     if (typeof jQuery !== 'undefined') {
         jQuery(document).on('change', 'select[data-lotes]', function () { cargarLotes(this); });
     }
-    document.addEventListener('DOMContentLoaded', function () {
-        document.querySelectorAll('select[data-lotes]').forEach(function (s) { if (s.value) { cargarLotes(s); } });
-    });
 
     // ---------------------------------------------------------------------
     //  Fragmentos que llegan por fetch (ficha, formulario de edición)
@@ -551,9 +550,7 @@
             })
             .then(function (html) {
                 destino.innerHTML = html;
-                Cafeto.activarRenglones(destino);
-                Cafeto.activarDependencias(destino);
-                Cafeto.enchufarCatalogo(destino);
+                Cafeto.inicializar(destino);
             })
             .catch(function () {
                 destino.innerHTML = '<div class="aviso aviso-error mb-0"><i class="bi bi-wifi-off"></i>' +
@@ -561,55 +558,27 @@
             });
     };
 
-    document.addEventListener('DOMContentLoaded', function () {
-        Cafeto.activarRenglones(document);
-        Cafeto.activarDependencias(document);
-        Cafeto.enchufarCatalogo(document);
-        document.querySelectorAll('.modal').forEach(function (modal) {
-            modal.addEventListener('shown.bs.modal', function () {
-                Cafeto.enchufarCatalogo(modal);
-                var primero = modal.querySelector('[autofocus], .modal-body input:not([type=hidden]), .modal-body select');
-                if (primero) { primero.focus(); }
-            });
-        });
-        // Sólo una ventana (.modal) se abre sola: el atributo en otro
-        // elemento —un botón— dejaba el fondo oscuro y la pantalla trabada.
-        document.querySelectorAll('.modal[data-modal-auto]').forEach(function (modal) {
-            bootstrap.Modal.getOrCreateInstance(modal).show();
-        });
-        // Abre un fragmento remoto en un modal: [data-remoto="url"][data-destino="#id"]
-        document.addEventListener('click', function (evento) {
-            var boton = evento.target.closest('[data-remoto]');
-            if (!boton) { return; }
-            evento.preventDefault();
-            var modal = document.querySelector(boton.dataset.modal);
-            var cuerpo = modal.querySelector('.js-remoto');
-            var form = modal.querySelector('form');
-            if (form && boton.dataset.accion) { form.action = boton.dataset.accion; }
-            var titulo = modal.querySelector('.js-titulo-remoto');
-            if (titulo && boton.dataset.titulo) { titulo.textContent = boton.dataset.titulo; }
-            bootstrap.Modal.getOrCreateInstance(modal).show();
-            Cafeto.cargar(boton.dataset.remoto, cuerpo);
-        });
+    document.addEventListener('shown.bs.modal', function (evento) {
+        var modal = evento.target;
+        if (!modal.classList || !modal.classList.contains('modal')) { return; }
+        Cafeto.enchufarCatalogo(modal);
+        var primero = modal.querySelector('[autofocus], .modal-body input:not([type=hidden]), .modal-body select');
+        if (primero) { primero.focus(); }
+        marcarDesbordes();
     });
-    // ---------------------------------------------------------------------
-    //  Panel lateral: las áreas que la persona abrió quedan abiertas en la
-    //  pantalla siguiente (el área de la pantalla actual se abre siempre).
-    // ---------------------------------------------------------------------
-    var CLAVE_MENU = 'cafeto.menu.abiertos';
-    function areasAbiertas() {
-        try { return JSON.parse(leer(CLAVE_MENU) || '[]'); } catch (e) { return []; }
-    }
-    document.addEventListener('DOMContentLoaded', function () {
-        var abiertas = areasAbiertas();
-        document.querySelectorAll('details.lateral-desplegable').forEach(function (area) {
-            if (abiertas.indexOf(area.dataset.grupo) >= 0) { area.open = true; }
-            area.addEventListener('toggle', function () {
-                var lista = areasAbiertas().filter(function (g) { return g !== area.dataset.grupo; });
-                if (area.open) { lista.push(area.dataset.grupo); }
-                guardar(CLAVE_MENU, JSON.stringify(lista));
-            });
-        });
+    // Abre un fragmento remoto en un modal: [data-remoto="url"][data-destino="#id"]
+    document.addEventListener('click', function (evento) {
+        var boton = evento.target.closest('[data-remoto]');
+        if (!boton) { return; }
+        evento.preventDefault();
+        var modal = document.querySelector(boton.dataset.modal);
+        var cuerpo = modal.querySelector('.js-remoto');
+        var form = modal.querySelector('form');
+        if (form && boton.dataset.accion) { form.action = boton.dataset.accion; }
+        var titulo = modal.querySelector('.js-titulo-remoto');
+        if (titulo && boton.dataset.titulo) { titulo.textContent = boton.dataset.titulo; }
+        bootstrap.Modal.getOrCreateInstance(modal).show();
+        Cafeto.cargar(boton.dataset.remoto, cuerpo);
     });
 
     // ---------------------------------------------------------------------
@@ -626,26 +595,265 @@
             caja.classList.toggle('desborda', caja.scrollWidth > caja.clientWidth + 1);
         });
     }
-    document.addEventListener('DOMContentLoaded', function () {
+    var tamanios = window.ResizeObserver ? new ResizeObserver(function () { medirBarra(); marcarDesbordes(); }) : null;
+    var barraObservada = null;
+    function observarBarra() {
+        var barra = document.querySelector('.barra');
+        if (!tamanios || barra === barraObservada) { return; }
+        if (barraObservada) { tamanios.unobserve(barraObservada); }
+        barraObservada = barra;
+        if (barra) { tamanios.observe(barra); }
+    }
+    if (!tamanios) { window.addEventListener('resize', function () { medirBarra(); marcarDesbordes(); }); }
+    document.addEventListener('toggle', marcarDesbordes, true);
+
+    function todos(contenedor, selector) {
+        var lista = Array.prototype.slice.call(contenedor.querySelectorAll(selector));
+        if (contenedor.matches && contenedor.matches(selector)) { lista.unshift(contenedor); }
+        return lista;
+    }
+
+    // ---------------------------------------------------------------------
+    //  Cafeto.inicializar(raiz): todo lo que se engancha a un pedazo nuevo.
+    //  Cafeto.limpiar(raiz): lo que hay que soltar antes de reemplazarlo.
+    // ---------------------------------------------------------------------
+    Cafeto.inicializar = function (contenedor) {
+        contenedor = contenedor || document;
+        Cafeto.activarRenglones(contenedor);
+        Cafeto.activarDependencias(contenedor);
+        Cafeto.enchufarCatalogo(contenedor);
+        estadoDeRed();
+        todos(contenedor, 'select[data-lotes]').forEach(function (s) {
+            if (s.value && !s.dataset.lotesPedidos) { s.dataset.lotesPedidos = '1'; cargarLotes(s); }
+        });
+        todos(contenedor, '.js-camara').forEach(function (boton) { boton.hidden = !puedeCamara; });
+        // Sólo una ventana (.modal) se abre sola: el atributo en otro
+        // elemento —un botón— dejaba el fondo oscuro y la pantalla trabada.
+        todos(contenedor, '.modal[data-modal-auto]').forEach(function (modal) {
+            if (modal.dataset.abiertaSola) { return; }
+            modal.dataset.abiertaSola = '1';
+            bootstrap.Modal.getOrCreateInstance(modal).show();
+        });
+        if (tamanios) {
+            todos(contenedor, '.table-responsive').forEach(function (caja) { tamanios.observe(caja); });
+        }
+        observarBarra();
         medirBarra();
         marcarDesbordes();
-        if (window.ResizeObserver) {
-            var observador = new ResizeObserver(function () { medirBarra(); marcarDesbordes(); });
-            var barra = document.querySelector('.barra');
-            if (barra) { observador.observe(barra); }
-            document.querySelectorAll('.table-responsive').forEach(function (caja) { observador.observe(caja); });
-        } else {
-            window.addEventListener('resize', function () { medirBarra(); marcarDesbordes(); });
+        if (window.CafetoTablero) { window.CafetoTablero.iniciar(contenedor); }
+    };
+
+    Cafeto.limpiar = function (contenedor) {
+        if (!contenedor) { return; }
+        if (window.CafetoTablero) { window.CafetoTablero.liberar(contenedor); }
+        if (typeof jQuery !== 'undefined' && jQuery.fn.select2) {
+            jQuery(contenedor).find('select.js-catalogo').each(function () {
+                var combo = jQuery(this);
+                if (combo.data('select2')) { combo.select2('destroy'); }
+            });
         }
-        document.addEventListener('toggle', marcarDesbordes, true);
-        document.addEventListener('shown.bs.modal', marcarDesbordes);
-        // Lo que llega después por fetch (la ficha de un turno en un modal).
-        if (window.MutationObserver) {
-            var pendiente = null;
-            new MutationObserver(function () {
-                clearTimeout(pendiente);
-                pendiente = setTimeout(marcarDesbordes, 60);
-            }).observe(document.body, {childList: true, subtree: true});
+        if (typeof bootstrap !== 'undefined') {
+            todos(contenedor, '.modal').forEach(function (modal) {
+                var instancia = bootstrap.Modal.getInstance(modal);
+                if (instancia) { instancia.dispose(); }
+            });
+            todos(contenedor, '[data-bs-toggle="dropdown"]').forEach(function (boton) {
+                var instancia = bootstrap.Dropdown.getInstance(boton);
+                if (instancia) { instancia.dispose(); }
+            });
+        }
+        if (tamanios) {
+            todos(contenedor, '.table-responsive').forEach(function (caja) { tamanios.unobserve(caja); });
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () { Cafeto.inicializar(document); });
+
+    // ---------------------------------------------------------------------
+    //  Navegación parcial (htmx): filtros, paginador, cápsulas, períodos y
+    //  menú cambian sólo #contenido, sin volver arriba ni redibujar el
+    //  menú. Una pantalla con JavaScript propio que no se reinicia
+    //  (data-reinicia) se abre entera: sus scripts sólo corren al cargar.
+    // ---------------------------------------------------------------------
+    var CLAVE_FIRMAS = 'cafeto.firmas';
+    function firmaDe(doc) {
+        var partes = [];
+        doc.querySelectorAll('head link[rel="stylesheet"]').forEach(function (hoja) {
+            partes.push('css:' + hoja.getAttribute('href'));
+        });
+        doc.querySelectorAll('body script').forEach(function (s) {
+            var tipo = (s.getAttribute('type') || '').toLowerCase();
+            if (s.hasAttribute('data-global') || (tipo && tipo !== 'text/javascript' && tipo !== 'module')) { return; }
+            partes.push((s.hasAttribute('data-reinicia') ? '' : '!') + (s.getAttribute('src') || 'en-linea:' + s.textContent.length));
+        });
+        return {texto: partes.join('|'), reinicia: partes.every(function (p) { return p.charAt(0) !== '!'; })};
+    }
+    function firmas() {
+        try { return JSON.parse(leer(CLAVE_FIRMAS) || '{}') || {}; } catch (e) { return {}; }
+    }
+    function anotarFirma(ruta, texto) {
+        var todas = firmas();
+        if (todas[ruta] === texto) { return; }
+        var claves = Object.keys(todas);
+        if (claves.length > 300) { claves.slice(0, 100).forEach(function (c) { delete todas[c]; }); }
+        todas[ruta] = texto;
+        guardar(CLAVE_FIRMAS, JSON.stringify(todas));
+    }
+    var firmaActual = null;
+    document.addEventListener('DOMContentLoaded', function () {
+        firmaActual = firmaDe(document);
+        anotarFirma(location.pathname, firmaActual.texto);
+    });
+
+    function urlDe(elemento) {
+        try {
+            if (elemento.tagName === 'FORM') {
+                var url = new URL(elemento.getAttribute('action') || '', location.href);
+                url.search = new URLSearchParams(new FormData(elemento)).toString();
+                return url;
+            }
+            return elemento.href ? new URL(elemento.href) : null;
+        } catch (e) { return null; }
+    }
+    function sePuedeParcial(url) {
+        if (!firmaActual || !firmaActual.reinicia || url.origin !== location.origin) { return false; }
+        var conocida = firmas()[url.pathname];
+        return conocida === undefined || conocida === firmaActual.texto;
+    }
+    function irA(url, elemento) {
+        quitarEspera();
+        if (elemento && elemento.tagName === 'FORM') { HTMLFormElement.prototype.submit.call(elemento); return; }
+        window.location.assign(url.href || url);
+    }
+    function reducirMovimiento() {
+        return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+    function ponerEspera() {
+        raiz.classList.add('cargando-parcial');
+        var contenido = document.getElementById('contenido');
+        if (contenido) { contenido.setAttribute('aria-busy', 'true'); }
+    }
+    function quitarEspera() {
+        raiz.classList.remove('cargando-parcial');
+        var contenido = document.getElementById('contenido');
+        if (contenido) { contenido.removeAttribute('aria-busy'); }
+    }
+    function marcarMenu(enlaces) {
+        var lateral = document.querySelector('.lateral');
+        if (!lateral) { return; }
+        lateral.querySelectorAll('.lateral-link').forEach(function (enlace) {
+            var activo = enlaces.indexOf(enlace.getAttribute('href')) >= 0;
+            enlace.classList.toggle('activo', activo);
+            if (activo) { enlace.setAttribute('aria-current', 'page'); } else { enlace.removeAttribute('aria-current'); }
+        });
+        lateral.querySelectorAll('details.lateral-desplegable').forEach(function (area) {
+            if (area.querySelector('.lateral-link.activo')) {
+                area.setAttribute('data-actual', '');
+                if (!area.open) { area.open = true; }
+            } else {
+                area.removeAttribute('data-actual');
+            }
+        });
+    }
+    function descripcionDelFoco() {
+        var activo = document.activeElement;
+        var contenido = document.getElementById('contenido');
+        if (!activo || !contenido || activo === document.body) { return null; }
+        if (!contenido.contains(activo) && !(activo.form && contenido.contains(activo.form))) { return null; }
+        return {id: activo.id, nombre: activo.getAttribute('name'), etiqueta: activo.tagName.toLowerCase(),
+                href: activo.tagName === 'A' ? activo.getAttribute('href') : null};
+    }
+    function devolverFoco(foco) {
+        if (!foco || (document.activeElement && document.activeElement !== document.body)) { return; }
+        var buscar = function (atributo, valor) {
+            return Array.prototype.find.call(document.querySelectorAll('#contenido ' + foco.etiqueta + '[' + atributo + ']'),
+                                             function (e) { return e.getAttribute(atributo) === valor; });
+        };
+        var nuevo = (foco.id && document.getElementById(foco.id)) || (foco.nombre && buscar('name', foco.nombre)) ||
+                    (foco.href && buscar('href', foco.href));
+        if (nuevo) { nuevo.focus({preventScroll: true}); }
+    }
+
+    var enCurso = null;
+    document.addEventListener('htmx:confirm', function (evento) {
+        var elemento = evento.detail.elt;
+        var url = elemento && urlDe(elemento);
+        if (!url || sePuedeParcial(url)) { return; }
+        evento.preventDefault();
+        irA(url, elemento);
+    });
+    document.addEventListener('htmx:beforeRequest', function (evento) {
+        var elemento = evento.detail.elt;
+        var desdeMenu = !!(elemento && elemento.closest && elemento.closest('.lateral'));
+        enCurso = {desdeMenu: desdeMenu, foco: desdeMenu ? null : descripcionDelFoco(), menu: null,
+                   desplazado: window.scrollY};
+        if (desdeMenu) {
+            var lateral = document.querySelector('.lateral.abierta');
+            if (lateral) { lateral.classList.remove('abierta'); }
+            var velo = document.querySelector('.velo.visible');
+            if (velo) { velo.classList.remove('visible'); }
+        }
+        ponerEspera();
+    });
+    document.addEventListener('htmx:beforeSwap', function (evento) {
+        var detalle = evento.detail;
+        if (!detalle.boosted) { return; }
+        var xhr = detalle.xhr;
+        var url = new URL(xhr.responseURL || detalle.pathInfo.finalRequestPath, location.href);
+        quitarEspera();
+        if (xhr.status >= 400) { detalle.shouldSwap = false; irA(url); return; }
+        var doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+        var destino = detalle.target && detalle.target.id;
+        var firma = firmaDe(doc);
+        anotarFirma(url.pathname, firma.texto);
+        if (!destino || !doc.getElementById(destino) || !firma.reinicia || !firmaActual || firma.texto !== firmaActual.texto) {
+            detalle.shouldSwap = false;
+            irA(url);
+            return;
+        }
+        detalle.pathInfo.anchor = undefined;
+        if (enCurso) {
+            enCurso.menu = Array.prototype.map.call(doc.querySelectorAll('.lateral .lateral-link.activo'),
+                                                    function (enlace) { return enlace.getAttribute('href'); });
+        }
+        Cafeto.limpiar(detalle.target);
+    });
+    document.addEventListener('htmx:afterSwap', function (evento) {
+        var nuevo = evento.target;
+        if (nuevo && !nuevo.isConnected && nuevo.id) { nuevo = document.getElementById(nuevo.id); }
+        if (!nuevo || !nuevo.isConnected) { return; }
+        if (enCurso && nuevo.id !== 'barra') {
+            if (enCurso.menu) { marcarMenu(enCurso.menu); enCurso.menu = null; }
+            if (!enCurso.desdeMenu) { window.scrollTo({top: enCurso.desplazado, behavior: 'instant'}); }
+        }
+        Cafeto.inicializar(nuevo);
+    });
+    document.addEventListener('htmx:afterSettle', function (evento) {
+        var destino = evento.target;
+        if (destino && !destino.isConnected && destino.id) { destino = document.getElementById(destino.id); }
+        if (window.CafetoTablero && destino && destino.isConnected && destino.id !== 'barra') {
+            window.CafetoTablero.iniciar(destino);
+        }
+        var hecho = enCurso;
+        enCurso = null;
+        if (!hecho) { return; }
+        if (hecho.desdeMenu) {
+            var contenido = document.getElementById('contenido');
+            if (contenido) { contenido.focus({preventScroll: true}); }
+            window.scrollTo({top: 0, behavior: reducirMovimiento() ? 'auto' : 'smooth'});
+        } else {
+            devolverFoco(hecho.foco);
+        }
+    });
+    document.addEventListener('htmx:afterRequest', function () { quitarEspera(); });
+    document.addEventListener('htmx:sendError', function (evento) {
+        quitarEspera();
+        enCurso = null;
+        if (navigator.onLine) {
+            var url = urlDe(evento.detail.elt);
+            if (url) { irA(url, evento.detail.elt); }
+        } else {
+            estadoDeRed();
         }
     });
 
@@ -924,7 +1132,6 @@
     //  se presta con https o en localhost), el botón directamente no aparece.
     // ---------------------------------------------------------------------
     var puedeCamara = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
-    document.querySelectorAll('.js-camara').forEach(function (boton) { boton.hidden = !puedeCamara; });
     function leerConCamara(destino) {
         var capa = document.createElement('div');
         capa.className = 'camara-capa';

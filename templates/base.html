@@ -5,18 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#121128">
     <title>{% block titulo %}Cafeto{% endblock %}</title>
-    {# El tema se aplica antes de pintar: sin esto, quien eligió el claro ve un parpadeo oscuro en cada pantalla. #}
-    <script>
-        (function () {
-            try {
-                var tema = window.localStorage.getItem('cafeto.tema');
-                if (tema === 'claro' || tema === 'oscuro') {
-                    document.documentElement.setAttribute('data-tema', tema);
-                    document.documentElement.setAttribute('data-bs-theme', tema === 'claro' ? 'light' : 'dark');
-                }
-            } catch (e) { /* sin almacenamiento: queda el oscuro */ }
-        })();
-    </script>
+    <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true, "scrollIntoViewOnBoost": false, "includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true}'>
+    <script src="{% static 'cafeto/js/tema.js' %}" data-global></script>
     <link rel="icon" type="image/png" href="{% static 'cafeto/marca/cafeto-favicon-32.png' %}">
     <link rel="icon" type="image/svg+xml" href="{% static 'cafeto/marca/cafeto-icono-ambar.svg' %}">
     {# Todo servido por el propio sistema: en el NAS del local tiene que andar sin internet. #}
@@ -26,7 +16,7 @@
     <link rel="stylesheet" href="{% static 'cafeto/css/cafeto.css' %}">
     {% block estilos %}{% endblock %}
 </head>
-<body>
+<body hx-history="false">
 {% block pantalla %}
 <div class="app">
     {% if request.usuario_actual %}
@@ -35,7 +25,7 @@
     trabajo y filtrado por los permisos del perfil EFECTIVO: un grupo sin
     ítems visibles no se dibuja.
     {% endcomment %}
-    <aside class="lateral" aria-label="Menú principal">
+    <aside class="lateral" aria-label="Menú principal" hx-boost="true" hx-target="#contenido" hx-select="#contenido" hx-select-oob="#barra" hx-swap="outerHTML show:none" hx-push-url="true">
         <a class="lateral-marca" href="{% url 'home' %}" aria-label="Inicio">
             <img class="logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
             <img class="logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
@@ -49,7 +39,7 @@
             {% comment %}
             Cada área es un desplegable (<details>): funciona sin JavaScript y
             con el teclado. El área de la pantalla actual viene abierta; las
-            que la persona abrió a mano las recuerda cafeto.js.
+            que la persona abrió a mano las recuerda menu.js.
             {% endcomment %}
             {% for grupo in menu_sistema %}
             {% if grupo.items|length == 1 %}{% with item=grupo.items.0 %}
@@ -77,13 +67,14 @@
             Cafeto Las Lomitas · Campo Quijano
         </div>
     </aside>
+    <script src="{% static 'cafeto/js/menu.js' %}" data-global></script>
     <div class="velo" aria-hidden="true"></div>
     {% endif %}
 
     <div class="contenido">
         {% if request.usuario_actual %}
         {% with u=request.usuario_actual %}
-        <header class="barra">
+        <header class="barra" id="barra">
             <button type="button" class="btn btn-icono btn-secundario d-lg-none" data-lateral-abrir aria-label="Abrir el menú">
                 <i class="bi bi-list"></i>
             </button>
@@ -148,7 +139,7 @@
         {% endwith %}
         {% endif %}
 
-        <main class="pagina" id="contenido">
+        <main class="pagina" id="contenido" tabindex="-1" hx-target="#contenido" hx-select="#contenido" hx-swap="outerHTML show:none" hx-push-url="true">
             {% include 'parciales/_mensajes.html' %}
             {% block contenido %}{% endblock %}
         </main>
@@ -173,10 +164,11 @@
     </div>
 </div>
 
-<script src="{% static 'cafeto/vendor/jquery/jquery.min.js' %}"></script>
-<script src="{% static 'cafeto/vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
-<script src="{% static 'cafeto/vendor/select2/select2.min.js' %}"></script>
-<script src="{% static 'cafeto/js/cafeto.js' %}"></script>
+<script src="{% static 'cafeto/vendor/jquery/jquery.min.js' %}" data-global></script>
+<script src="{% static 'cafeto/vendor/bootstrap/bootstrap.bundle.min.js' %}" data-global></script>
+<script src="{% static 'cafeto/vendor/select2/select2.min.js' %}" data-global></script>
+<script src="{% static 'cafeto/vendor/htmx/htmx.min.js' %}" data-global></script>
+<script src="{% static 'cafeto/js/cafeto.js' %}" data-global></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -9,7 +9,7 @@
     </div>
     <div class="acciones"><a href="{% url 'compras:nueva_orden' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Nueva orden</a></div>
 </div>
-<form method="get" id="herramientas" class="herramientas">
+<form method="get" id="herramientas" class="herramientas" hx-boost="true">
     <input type="hidden" name="pagina" value="1">
     <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
         <option value="">Estado: todos</option>

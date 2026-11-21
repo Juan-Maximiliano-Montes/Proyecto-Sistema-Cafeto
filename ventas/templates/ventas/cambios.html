@@ -18,7 +18,7 @@
 <div class="aviso aviso-aviso"><i class="bi bi-cash-stack"></i><span>La caja de este dispositivo no tiene un turno abierto: podés consultar, pero para registrar el cambio hay que <a href="{% url 'ventas:caja' %}">abrir la caja</a>.</span></div>
 {% endif %}
 
-<form method="get" class="herramientas" role="search">
+<form method="get" class="herramientas" role="search" hx-boost="true">
     <div class="buscador" style="max-width: 320px">
         <i class="bi bi-receipt"></i>
         <input type="search" name="venta" value="{{ numero }}" class="form-control" inputmode="numeric" placeholder="N° de venta (está en el ticket)" aria-label="Número de venta" autofocus>

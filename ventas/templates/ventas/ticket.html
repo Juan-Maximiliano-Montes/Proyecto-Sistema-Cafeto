@@ -68,4 +68,4 @@
 {% endblock %}
 
 {% block pie %}Comprobante interno, no válido como factura.<br>Cambios dentro de los {{ negocio.dias_para_cambios }} días con este ticket.<br>¡Gracias por elegirnos!{% endblock %}
-{% block autoimprimir %}<script>window.addEventListener('load', function () { try { window.print(); } catch (e) {} });</script>{% endblock %}
+{% block autoimprimir %} data-autoimprimir{% endblock %}

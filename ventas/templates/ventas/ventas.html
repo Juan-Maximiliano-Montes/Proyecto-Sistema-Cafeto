@@ -22,10 +22,10 @@
     </div>
 </div>
 
-<nav class="d-flex flex-wrap gap-2 mb-2" aria-label="Períodos">
+<nav class="d-flex flex-wrap gap-2 mb-2" aria-label="Períodos" hx-boost="true">
     {% for etiqueta, d, h in periodos %}<a href="?desde={{ d }}&amp;hasta={{ h }}" class="btn btn-sm {% if desde == d and hasta == h %}btn-primary{% else %}btn-secundario{% endif %}">{{ etiqueta }}</a>{% endfor %}
 </nav>
-<form method="get" id="herramientas" class="herramientas">
+<form method="get" id="herramientas" class="herramientas" hx-boost="true">
     <input type="hidden" name="pagina" value="1">
     <div class="buscador" style="max-width: 180px"><i class="bi bi-hash"></i><input type="search" name="numero" value="{{ filtro.numero }}" class="form-control" inputmode="numeric" placeholder="N° de venta" aria-label="Número de venta"></div>
     <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde }}" class="form-control"></label>

@@ -18,18 +18,19 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
-from django.db.models.functions import Abs, ExtractHour, TruncDate
+from django.db.models.functions import Abs, ExtractHour, ExtractIsoWeekDay, TruncDate
 
 from compras.models import Egreso
 from fidelizacion.models import MovimientoCuenta
 from negocio import ganancia
 from negocio.mensual import PAGADOS
 from stock.models import MovimientoStock, TipoMovimientoStock
-from ventas.models import DetalleVenta, Venta
+from ventas.models import DetalleVenta
 
 CERO = Decimal('0')
 CENTAVO = Decimal('0.01')
 TOP = 10
+DIAS_SEMANA = ('Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo')
 DIAS_POR_DIA = 62          # hasta dos meses, una barra por día
 DIAS_POR_SEMANA = 400      # hasta un año y monedas, una por semana; después, por mes
 CAMPOS_DIA = ('vendido', 'interes', 'costo', 'gastos', 'mermas', 'incobrable')
@@ -166,15 +167,26 @@ def top(desde, hasta):
 
 
 def franjas(desde, hasta):
-    filas = (ganancia.completadas(desde, hasta).annotate(hora=ExtractHour('hora_venta')).values('hora')
+    """Por hora del día y, para el mapa de calor, por día de la semana y
+    hora: una fila por día (de lunes a domingo) con las mismas horas."""
+    ventas = ganancia.completadas(desde, hasta)
+    filas = (ventas.annotate(hora=ExtractHour('hora_venta')).values('hora')
              .annotate(tickets=Count('pk'), monto=Sum('total_venta')).order_by('hora'))
     por_hora = {f['hora']: f for f in filas}
     if not por_hora:
-        return {'horas': []}
+        return {'horas': [], 'semana': []}
     primera, ultima = min(por_hora), max(por_hora)
+    celdas = {(f['dia'], f['hora']): f for f in
+              ventas.annotate(dia=ExtractIsoWeekDay('fecha_venta'), hora=ExtractHour('hora_venta'))
+              .values('dia', 'hora').annotate(tickets=Count('pk'), monto=Sum('total_venta')).order_by()}
     return {'horas': [{'hora': h, 'etiqueta': f'{h:02d} h', 'tickets': por_hora.get(h, {}).get('tickets', 0),
                        'monto': _t(por_hora.get(h, {}).get('monto'))}
-                      for h in range(primera, ultima + 1)]}
+                      for h in range(primera, ultima + 1)],
+            'semana': [{'dia': nombre, 'corto': nombre[:3],
+                        'horas': [{'tickets': celdas.get((numero, h), {}).get('tickets', 0),
+                                   'monto': _t(celdas.get((numero, h), {}).get('monto'))}
+                                  for h in range(primera, ultima + 1)]}
+                       for numero, nombre in enumerate(DIAS_SEMANA, start=1)]}
 
 
 def del_periodo(desde, hasta):

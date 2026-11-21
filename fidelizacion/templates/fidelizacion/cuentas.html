@@ -21,7 +21,7 @@
     <div class="tarjeta kpi h-100"><span class="eyebrow">Dado por perdido</span><span class="valor{% if perdido %} text-peligro{% endif %}">{{ perdido|pesos }}</span><span class="detalle">{% if incobrables %}{{ incobrables }} cliente{{ incobrables|pluralize }} incobrable{{ incobrables|pluralize }}{% else %}Ninguna deuda perdida{% endif %}</span></div>
 </div>
 
-<form method="get" class="herramientas">
+<form method="get" class="herramientas" hx-boost="true">
     <input type="hidden" name="ver" value="{{ ver }}">
     <div class="buscador"><i class="bi bi-search"></i><input type="search" name="q" value="{{ busqueda }}" class="form-control" placeholder="Buscar un cliente: nombre, DNI, teléfono o QR" aria-label="Buscar un cliente"></div>
     <button type="submit" class="btn btn-secundario">Buscar</button>

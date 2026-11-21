@@ -171,3 +171,13 @@ def foto_de(producto):
     """La dirección de la foto de un producto, o None."""
     from stock import imagenes
     return imagenes.url_de(producto)
+
+
+@register.filter
+def a_json(valor):
+    """JSON plano (sin ``mark_safe``): Django escapa ``<``, ``>`` y ``&`` al
+    volcarlo dentro de ``<template>``, así ningún texto cierra la etiqueta ni
+    inyecta HTML, y ``htmx`` no lo borra con ``allowScriptTags: false``."""
+    import json
+    return json.dumps(valor, ensure_ascii=False)
+

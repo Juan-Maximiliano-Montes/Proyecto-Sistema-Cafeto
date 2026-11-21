@@ -24,7 +24,7 @@
 </div>
 
 {% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Tipo de alerta' %}
-<form id="herramientas" method="get"><input type="hidden" name="ver" value="{{ pestania }}"></form>
+<form id="herramientas" method="get" hx-boost="true"><input type="hidden" name="ver" value="{{ pestania }}"></form>
 
 {% if filas %}
 <div class="grilla">

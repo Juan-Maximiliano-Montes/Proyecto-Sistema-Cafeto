@@ -74,7 +74,7 @@ class ReportesAncladosTest(TestCase):
         pildoras = re.findall(r'<a href="(\?ver=[^"]+)" class="btn btn-sm', bloque)
         self.assertGreater(len(pildoras), 5)
         self.assertTrue(all(p.endswith('#seccion-reportes') for p in pildoras), pildoras)
-        self.assertIn('<form method="get" class="herramientas" action="#seccion-reportes">', bloque)
+        self.assertRegex(bloque, r'<form method="get" class="herramientas" action="#seccion-reportes"[^>]*>')
         estilos = re.findall(r'href="(\?[^"]*grafico=(?:barras|torta)[^"]*)" class="btn', bloque)
         self.assertTrue(estilos and all(e.endswith('#seccion-reportes') for e in estilos), estilos)
         self.assertIn('aria-current="page"', bloque)

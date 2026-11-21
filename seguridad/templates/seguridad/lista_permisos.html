@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block titulo %}Cafeto · Permisos{% endblock %}
 
@@ -33,7 +34,7 @@ perfil", con el tilde de permisos agrupado por módulo).
     {% endif %}
 </div>
 
-<form method="get" id="herramientas" class="herramientas" role="search">
+<form method="get" id="herramientas" class="herramientas" role="search" hx-boost="true">
     <input type="hidden" name="pagina" value="1">
     <div class="buscador">
         <i class="bi bi-search"></i>
@@ -130,30 +131,5 @@ perfil", con el tilde de permisos agrupado por módulo).
 
 
 {% block scripts %}
-<script>
-(function () {
-    'use strict';
-    function texto(id, valor) { document.getElementById(id).textContent = valor || '—'; }
-    document.addEventListener('click', function (evento) {
-        var boton = evento.target.closest('.btn-detalle');
-        if (!boton) { return; }
-        var t = boton.closest('.tarjeta');
-        ['id', 'codigo', 'nombre', 'descripcion'].forEach(function (c) { texto('det_' + c, t.dataset[c]); });
-        texto('det_modulo', t.dataset.moduloTexto);
-        texto('det_modificado', t.dataset.modificado);
-        texto('det_modificado_por', t.dataset.modificadoPor);
-        var destino = document.getElementById('det_perfiles');
-        destino.textContent = '';
-        var perfiles = (t.dataset.perfiles || '').split(', ').filter(Boolean);
-        if (!perfiles.length) { destino.textContent = 'Ningún perfil'; }
-        perfiles.forEach(function (nombre) {
-            var chip = document.createElement('span');
-            chip.className = 'insignia insignia-neutra me-1 mb-1';
-            chip.textContent = nombre;
-            destino.appendChild(chip);
-        });
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('modalDetalle')).show();
-    });
-})();
-</script>
+<script src="{% static 'cafeto/js/permisos.js' %}"></script>
 {% endblock %}

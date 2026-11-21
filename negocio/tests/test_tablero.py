@@ -4,6 +4,7 @@ Lo que importa no es el dibujo sino que los números cierren: la suma de
 las barras tiene que dar el resultado del mes, los medios de pago el 100 %
 y los rankings estar bien ordenados.
 """
+import html
 import json
 from decimal import Decimal as D
 
@@ -68,14 +69,27 @@ class TableroTest(TestCase):
         horas = tablero.franjas(self.hoy, self.hoy)['horas']
         self.assertEqual(sum(h['tickets'] for h in horas), 2)
 
+    def test_mapa_de_calor_por_dia_de_la_semana_y_hora(self):
+        datos = tablero.franjas(self.hoy, self.hoy)
+        semana = datos['semana']
+        self.assertEqual([d['dia'] for d in semana], list(tablero.DIAS_SEMANA))
+        self.assertTrue(all(len(d['horas']) == len(datos['horas']) for d in semana))
+        for i, hora in enumerate(datos['horas']):
+            self.assertEqual(sum(d['horas'][i]['tickets'] for d in semana), hora['tickets'])
+        hoy = semana[self.hoy.isoweekday() - 1]
+        self.assertEqual(sum(c['tickets'] for c in hoy['horas']), 2)
+        self.assertEqual(sum(D(c['monto']) for c in hoy['horas']), D('10000'))
+        self.assertEqual(tablero.franjas(self.hoy.replace(year=self.hoy.year - 1), self.hoy.replace(year=self.hoy.year - 1)),
+                         {'horas': [], 'semana': []})
+
     def test_las_pantallas_traen_el_tablero(self):
         f.entrar(self.client, self.duenia)
         for url in (reverse('negocio:reportes'), reverse('negocio:resumen_del_mes')):
             respuesta = self.client.get(url)
-            self.assertContains(respuesta, 'id="datosTablero"')
+            self.assertContains(respuesta, '<template id="datosTablero">')
             self.assertContains(respuesta, 'tablero.js')
             self.assertContains(respuesta, 'Por margen de ganancia')
-            datos = json.loads(respuesta.content.decode().split('id="datosTablero" type="application/json">')[1]
-                               .split('</script>')[0])
+            crudo = respuesta.content.decode().split('<template id="datosTablero">')[1].split('</template>')[0]
+            datos = json.loads(html.unescape(crudo))
             self.assertIn('evolucion', datos)
         self.assertContains(self.client.get(reverse('negocio:reportes')), '90 días')

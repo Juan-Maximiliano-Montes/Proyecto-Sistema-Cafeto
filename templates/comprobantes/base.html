@@ -43,14 +43,13 @@
     }
 </style>
 </head>
-<body>
+<body{% block autoimprimir %}{% endblock %}>
 <h1>{{ negocio.nombre_fantasia }}</h1>
 <div class="comercio">{{ negocio.razon_social }}{% if negocio.cuit %}<br>CUIT {{ negocio.cuit }}{% endif %}{% if negocio.domicilio %}<br>{{ negocio.domicilio }}{% endif %}</div>
 <div class="tipo">{% block tipo %}{% endblock %}</div>
 {% block cuerpo %}{% endblock %}
 <div class="pie">{% block pie %}Comprobante interno, no válido como factura.{% endblock %}{% if impreso %}<br>Emitido {{ impreso|date:"d/m/Y H:i:s" }}{% endif %}</div>
 <div class="acciones"><button type="button" data-imprimir>Imprimir</button>{% block acciones %}{% endblock %}</div>
-{% block autoimprimir %}{% endblock %}
 <script src="{% static 'cafeto/js/imprimir.js' %}"></script>
 </body>
 </html>

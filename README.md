@@ -90,6 +90,8 @@ Nunca abriendo el puerto 8000 directo a internet.
 | openpyxl · WeasyPrint | — | Excel (exportar e importar) y PDF |
 | pandas · numpy · matplotlib | 3.1 · 2.4 · 3.11 | Gráficos de los reportes, en SVG (DD-72, DD-74) |
 | Bootstrap 5.3 · Bootstrap Icons · Select2 | servidos por el sistema | Front-end, sin CDN |
+| htmx | 2.0.11, servido por el sistema | Filtros, paginador, cápsulas y menú sin recargar la pantalla (DD-105) |
+| Apache ECharts | 6.1.0, bundle propio servido por el sistema | Tablero interactivo de Reportes y del Resumen del mes (DD-105) |
 | Caveat · Lora · Inter | servidas por el sistema | Tipografías del manual de identidad |
 
 Cada reporte trae su gráfico arriba de la tabla (y en el PDF). El tipo sale de

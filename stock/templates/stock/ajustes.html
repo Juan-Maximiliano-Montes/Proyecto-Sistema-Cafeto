@@ -20,7 +20,7 @@
 <div class="aviso aviso-aviso"><i class="bi bi-clipboard-check"></i><span>Hay un conteo {{ conteo.get_estado_ajuste_display|lower }} (lo empezó {{ conteo.id_usuario.nombre }} el {{ conteo.fecha_ajuste|date:"d/m H:i" }}).</span></div>
 {% endif %}
 
-<form method="get" id="herramientas" class="herramientas">
+<form method="get" id="herramientas" class="herramientas" hx-boost="true">
     <input type="hidden" name="pagina" value="1">
     <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
         <option value=""{% if not estado %} selected{% endif %}>Estado: todos</option>

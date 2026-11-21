@@ -588,38 +588,35 @@ kbd { font-size: .7em; opacity: .75; }
 }
 .grafico-vacio > .bi { font-size: 1.75rem; opacity: .5; }
 
-/* Tablero interactivo (DD-100): SVG dibujado por tablero.js. Los colores de
-   las series pasan 3:1 contra la tarjeta en los dos temas (WCAG 1.4.11). */
-:root { --c-serie-ingresos: #FAB41F; --c-serie-egresos: var(--c-info); --c-serie-neta: var(--c-exito); }
-[data-tema="claro"] { --c-serie-ingresos: #B07A00; }
+/* Tablero interactivo (DD-100, DD-105): Apache ECharts dibujado por
+   tablero.js con los colores de acá. Paleta categórica de 8: cada color
+   pasa 3:1 contra la tarjeta en su tema (WCAG 1.4.11) y el orden separa a
+   los vecinos también para daltonismo; la leyenda, el rótulo y la tabla
+   «Ver los datos» nombran cada parte. */
+:root, [data-tema="oscuro"] {
+    --c-cat-1: #FAB41F; --c-cat-2: #35D97C; --c-cat-3: #FB923C; --c-cat-4: #60A5FA;
+    --c-cat-5: #F472B6; --c-cat-6: #A78BFA; --c-cat-7: #F26458; --c-cat-8: #2DD4BF;
+    --c-calor-bajo: #26264A; --c-calor-alto: #FAB41F;
+}
+[data-tema="claro"] {
+    --c-cat-1: #B07A00; --c-cat-2: #13804A; --c-cat-3: #C2410C; --c-cat-4: #2563EB;
+    --c-cat-5: #C0266E; --c-cat-6: #7C3AED; --c-cat-7: #C93A2E; --c-cat-8: #0F7C73;
+    --c-calor-bajo: #FFF6E0; --c-calor-alto: #8A6100;
+}
+:root { --c-serie-ingresos: var(--c-cat-1); --c-serie-egresos: var(--c-cat-4); --c-serie-neta: var(--c-exito); }
 .tablero-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem; }
 .tablero-grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 1rem; align-items: start; }
 .tablero-ancho { grid-column: 1 / -1; }
 .grafico-vivo { margin: 0; color: var(--c-texto-2); min-width: 0; }
 .grafico-lienzo { position: relative; }
-.grafico-svg { display: block; width: 100%; height: auto; overflow: visible; }
-.grafico-svg .grilla { stroke: var(--c-divisor); stroke-width: 1; }
-.grafico-svg .eje-cero { stroke: var(--c-texto-3); stroke-width: 1; }
-.grafico-svg .rotulo { fill: var(--c-texto-2); font-size: 11px; }
-.grafico-svg .rotulo-fuerte { fill: var(--c-texto); font-size: 13px; font-weight: 600; }
-.grafico-svg .zona { fill: transparent; pointer-events: all; }
-.grafico-svg .pista { fill: var(--c-superficie-activa); }
-.grafico-svg .serie-ingresos { fill: var(--c-serie-ingresos); }
-.grafico-svg .serie-egresos { fill: var(--c-serie-egresos); }
-.grafico-svg .serie-negativa { fill: var(--c-peligro); }
-.grafico-svg .serie-neta { fill: none; stroke: var(--c-serie-neta); stroke-width: 2.25; stroke-linejoin: round; pointer-events: none; }
-.grafico-svg .punto-neta { fill: var(--c-serie-neta); pointer-events: none; }
-.grafico-svg .punto-negativo { fill: var(--c-peligro); pointer-events: none; }
-.grafico-svg .grafico-punto { cursor: pointer; outline: none; }
-.grafico-svg .grafico-punto.activo .zona { fill: var(--c-marca-suave); }
-.grafico-svg .grafico-punto:focus-visible .zona { fill: var(--c-marca-suave); stroke: var(--c-marca); stroke-width: 2; }
-.grafico-tip {
-    position: absolute; z-index: 5; min-width: 12rem; max-width: 18rem; padding: .5rem .65rem;
-    background: var(--c-superficie); color: var(--c-texto); border: 1px solid var(--c-borde);
-    border-radius: .5rem; box-shadow: var(--c-sombra); font-size: .8rem; pointer-events: none;
-}
-.grafico-tip strong { display: block; margin-bottom: .25rem; }
-.grafico-tip-fila { display: flex; justify-content: space-between; gap: 1rem; }
+.js .grafico-lienzo { min-height: 280px; height: 280px; }
+.js .grafico-vivo:not(.tablero-ancho) .grafico-lienzo { min-height: 240px; height: 240px; }
+.js .grafico-top .grafico-lienzo { min-height: 320px; height: 320px; }
+@media (max-width: 575.98px) { .js .grafico-vivo[data-grafico="medios"] .grafico-lienzo { min-height: 320px; height: 320px; } }
+.grafico-echarts { width: 100%; height: 100%; }
+.grafico-lienzo > .grafico-sin-datos { position: absolute; inset: 0; display: grid; place-items: center; }
+.grafico-tip-titulo { font-weight: 600; margin-bottom: .25rem; }
+.grafico-tip-fila { display: flex; justify-content: space-between; gap: 1rem; font-size: .8rem; }
 .grafico-tip-fila > span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .grafico-resumen { margin: .5rem 0 .25rem; color: var(--c-texto); }
 .grafico-sin-datos { padding: 2rem 1rem; text-align: center; margin: 0; }
@@ -628,10 +625,22 @@ kbd { font-size: .7em; opacity: .75; }
 .muestra-ingresos { background: var(--c-serie-ingresos); }
 .muestra-egresos { background: var(--c-serie-egresos); }
 .muestra-neta { background: var(--c-serie-neta); border-radius: 50%; }
+.muestra-negativa { background: var(--c-peligro); border-radius: 50%; }
+.muestra-cat-1 { background: var(--c-cat-1); } .muestra-cat-2 { background: var(--c-cat-2); }
+.muestra-cat-3 { background: var(--c-cat-3); } .muestra-cat-4 { background: var(--c-cat-4); }
+.muestra-cat-5 { background: var(--c-cat-5); } .muestra-cat-6 { background: var(--c-cat-6); }
+.muestra-cat-7 { background: var(--c-cat-7); } .muestra-cat-8 { background: var(--c-cat-8); }
 .grafico-vivo button[aria-pressed="false"] .muestra { opacity: .3; }
 .grafico-vivo [data-exclusivo] button[aria-pressed="true"],
 .grafico-vivo button[data-serie][aria-pressed="true"] { background: var(--c-marca-suave); border-color: var(--c-marca); color: var(--c-texto); }
-@media (prefers-reduced-motion: no-preference) { .grafico-svg rect { transition: fill .15s; } }
+
+/* Reportes: las cápsulas y, pegado a ellas, lo que exporta la elegida. */
+.capsulas-reportes { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.capsulas-reportes > nav { flex: 1 1 auto; min-width: 0; }
+.exportar-capsula { margin-left: auto; }
+.exportar-capsula-nombre { display: inline-block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.exportar-capsula .dropdown-header { white-space: normal; max-width: 20rem; }
+@media (max-width: 575.98px) { .exportar-capsula-nombre { max-width: 8rem; } }
 
 /* Panel lateral por áreas desplegables (<details>). */
 .lateral-desplegable > summary {
@@ -739,3 +748,14 @@ kbd { font-size: .7em; opacity: .75; }
 .botones-cobrado { display: grid; grid-template-columns: 1fr; gap: .5rem; }
 .botones-cobrado .btn { display: flex; align-items: center; justify-content: center; gap: .35rem; flex-wrap: wrap; }
 @media (min-width: 576px) { .botones-cobrado { grid-template-columns: 1fr 1fr; } }
+
+/* Navegación parcial (DD-105): mientras llega la pantalla nueva el contenido
+   se atenúa, y sólo si tarda (un pedido rápido no titila). */
+main.pagina:focus { outline: none; }
+html.cargando-parcial { cursor: progress; }
+html.cargando-parcial #contenido { opacity: .55; transition: opacity .2s ease .15s; }
+@media (prefers-reduced-motion: no-preference) {
+    @view-transition { navigation: auto; }
+    .lateral { view-transition-name: lateral; }
+    .barra { view-transition-name: barra; }
+}

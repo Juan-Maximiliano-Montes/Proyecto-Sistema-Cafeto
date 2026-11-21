@@ -6,7 +6,7 @@ tamanios, parametros, paginas. El selector de tamaño envía el formulario
 de búsqueda de la pantalla (form="herramientas") para no perder los filtros.
 {% endcomment %}
 {% if total %}
-<nav class="paginador" aria-label="Paginación">
+<nav class="paginador" aria-label="Paginación" hx-boost="true">
     <div class="d-flex align-items-center gap-2 text-secondary small">
         <span>
             {{ pagina.start_index }}–{{ pagina.end_index }} de <strong class="text-body">{{ total }}</strong>

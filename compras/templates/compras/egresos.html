@@ -28,7 +28,7 @@
 {% endif %}
 
 {% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Qué pagos ver' %}
-<form method="get" id="herramientas" class="herramientas{% if pestania != 'historial' %} d-none{% endif %}">
+<form method="get" id="herramientas" class="herramientas{% if pestania != 'historial' %} d-none{% endif %}" hx-boost="true">
     <input type="hidden" name="ver" value="{{ pestania }}"><input type="hidden" name="pagina" value="1">
     <div class="buscador"><i class="bi bi-search"></i><input type="search" name="q" value="{{ filtro.q }}" class="form-control" placeholder="Concepto, proveedor o destinatario…" aria-label="Buscar"></div>
     <button type="submit" class="btn btn-secundario">Buscar</button>
