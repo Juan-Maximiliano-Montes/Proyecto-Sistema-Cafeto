@@ -5,8 +5,10 @@
     PantallaTest    cada opción muestra su gráfico; selector; PDF
     MenuTest        el panel lateral se pliega por áreas
 """
+import re
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.test import TestCase
 from django.urls import reverse
@@ -15,7 +17,7 @@ from django.utils import timezone
 import pandas as pd
 
 from negocio.graficos import (TOPE_BARRAS, TOPE_TORTA, admite_torta, comparar, con_otros,
-                              evolucion, grafico, tabla)
+                              evolucion, grafico, para_pdf, tabla)
 from negocio.reportes import CONSULTAS, REPORTES
 from nucleo.tests import fabrica as f
 from ventas import servicios as ventas
@@ -169,3 +171,69 @@ class MenuTest(Base):
         self.assertIn('data-grupo="reportes" open data-actual', html)
         html = self.client.get(reverse('ventas:ventas')).content.decode()
         self.assertIn('data-grupo="mostrador" open data-actual', html)
+
+
+class AnchoEnElPdfTest(Base):
+    """El gráfico del PDF entra en el ancho útil de la hoja (DD-109)."""
+
+    UTIL_VERTICAL_PT = 516
+    UTIL_APAISADO_PT = 763
+
+    @staticmethod
+    def _raiz(svg):
+        return svg[:svg.index('>') + 1]
+
+    def _ancho_pt(self, svg):
+        viewbox = re.search(r'viewBox="([\d.\s-]+)"', self._raiz(svg)).group(1).split()
+        return float(viewbox[2])
+
+    def _mermas(self):
+        return pd.DataFrame({'Motivo': ['Vencido', 'Consumo interno', 'Rotura o daño', 'Deterioro (mal estado)'],
+                             'Valor al costo': [13500.0, 7000.0, 3000.0, 632.0]})
+
+    def test_en_a4_vertical_no_pasa_el_ancho_util(self):
+        columnas, filas, _ = CONSULTAS['ventas_dia'](self.desde, self.hasta)
+        with para_pdf(apaisado=False):
+            dibujos = {'mermas': comparar(self._mermas(), 'Motivo', 'Valor al costo', 'Mermas'),
+                       'ventas_dia': grafico('ventas_dia', columnas, list(filas), self.desde, self.hasta)}
+        for nombre, svg in dibujos.items():
+            with self.subTest(grafico=nombre):
+                raiz = self._raiz(svg)
+                self.assertIn('width="100%"', raiz)
+                self.assertNotRegex(raiz, r'\sheight="')
+                self.assertLessEqual(self._ancho_pt(svg), self.UTIL_VERTICAL_PT)
+
+    def test_en_a4_apaisado_usa_mas_ancho_sin_pasarse(self):
+        with para_pdf(apaisado=True):
+            svg = comparar(self._mermas(), 'Motivo', 'Valor al costo', 'Mermas')
+        self.assertGreater(self._ancho_pt(svg), self.UTIL_VERTICAL_PT)
+        self.assertLessEqual(self._ancho_pt(svg), self.UTIL_APAISADO_PT)
+
+    def test_la_pantalla_sigue_igual(self):
+        svg = comparar(self._mermas(), 'Motivo', 'Valor al costo', 'Mermas')
+        self.assertIn('width="691.2pt"', self._raiz(svg))
+
+    def test_el_pdf_exportado_escala_el_grafico_y_no_parte_los_importes(self):
+        f.entrar(self.client, self.admin)
+        capturado = {}
+
+        class HTMLFalso:
+            def __init__(self, string):
+                capturado['html'] = string
+
+            def write_pdf(self):
+                return b'%PDF-1.7'
+
+        with mock.patch('weasyprint.HTML', HTMLFalso):
+            respuesta = self.client.get(reverse('negocio:exportar_reporte'),
+                                        {'ver': 'ventas_dia', 'formato': 'pdf',
+                                         'desde': self.desde.isoformat(), 'hasta': self.hasta.isoformat()})
+        self.assertEqual(respuesta.status_code, 200)
+        html = capturado['html']
+        self.assertIn('size: A4 portrait', html)
+        svg = html[html.index('<svg'):]
+        self.assertIn('width="100%"', self._raiz(svg))
+        self.assertLessEqual(self._ancho_pt(svg), self.UTIL_VERTICAL_PT)
+        self.assertIn('.grafico svg { display: block; width: 100%; max-width: 100%; height: auto; }', html)
+        self.assertIn('<span class="dinero">$&nbsp;', html)
+        self.assertIn('.dinero { white-space: nowrap; }', html)

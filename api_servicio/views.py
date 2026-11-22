@@ -209,10 +209,9 @@ def enriquecer_producto(request, pk):
     quedaría igual a otro (misma marca, nombre y presentación), no se toca.
     """
     from django.db import transaction
-    from nucleo.validaciones import clave_normalizada
     from seguridad.servicios import registrar_auditoria
     from stock import imagenes
-    from stock.models import MARCA_GENERICA, Marca, Producto
+    from stock.models import Producto
 
     producto = get_object_or_404(Producto.objects.select_related('id_marca'), pk=pk, borrado_logico=False)
     try:

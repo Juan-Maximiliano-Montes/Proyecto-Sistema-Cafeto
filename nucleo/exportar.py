@@ -228,6 +228,10 @@ def _renglon_pdf(columnas, fila, es_total=False):
     return renglon
 
 
+def es_apaisado(columnas):
+    return len(columnas) > 6
+
+
 def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar_pdf.html',
           grafico=None, totales=None):
     from weasyprint import HTML
@@ -247,7 +251,7 @@ def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar
         'columnas': columnas,
         'renglones': renglones,
         'total': _renglon_pdf(columnas, totales, es_total=True) if totales and renglones else None,
-        'apaisado': len(columnas) > 6,
+        'apaisado': es_apaisado(columnas),
         'fuente_inter': _ruta_estatica('cafeto/fuentes/inter-latin-400-normal.woff2'),
         'fuente_inter_negrita': _ruta_estatica('cafeto/fuentes/inter-latin-600-normal.woff2'),
         'fuente_lora': _ruta_estatica('cafeto/fuentes/lora-latin-600-normal.woff2'),

@@ -26,6 +26,7 @@ el tema oscuro y en el claro.
 import contextvars
 import io
 import os
+import re
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -132,8 +133,29 @@ def tabla(columnas, filas):
 # ---------------------------------------------------------------------------
 #  Dibujo
 # ---------------------------------------------------------------------------
+# Ancho del dibujo en pulgadas. En pantalla el SVG se escala con CSS; en el
+# PDF se dibuja al ancho útil de la hoja (A4 vertical 515 pt, apaisada
+# 762 pt) para que ninguna barra ni rótulo quede afuera (DD-109).
+ANCHO_PANTALLA = 9.6
+ANCHO_PDF = {False: 7.0, True: 10.0}
+_ANCHO_PDF = contextvars.ContextVar('cafeto_ancho_pdf', default=None)
+
+
+@contextmanager
+def para_pdf(apaisado=False):
+    marca = _ANCHO_PDF.set(ANCHO_PDF[bool(apaisado)])
+    try:
+        yield
+    finally:
+        _ANCHO_PDF.reset(marca)
+
+
+def _ancho():
+    return _ANCHO_PDF.get() or ANCHO_PANTALLA
+
+
 def _lienzo(alto=3.2):
-    figura, eje = plt.subplots(figsize=(9.6, alto), dpi=100)
+    figura, eje = plt.subplots(figsize=(_ancho(), alto), dpi=100)
     figura.patch.set_alpha(0)
     eje.set_facecolor('none')
     for lado in ('top', 'right'):
@@ -185,14 +207,27 @@ def _svg(figura, descripcion, estilo='barras', ajustar=True):
     if ajustar:
         figura.tight_layout()
     salida = io.StringIO()
-    figura.savefig(salida, format='svg', transparent=True)
+    if _ANCHO_PDF.get():
+        figura.savefig(salida, format='svg', transparent=True, bbox_inches='tight', pad_inches=0.04)
+    else:
+        figura.savefig(salida, format='svg', transparent=True)
     plt.close(figura)
     svg = salida.getvalue()
     svg = svg[svg.index('<svg'):]                    # sin la cabecera XML
+    if _ANCHO_PDF.get():
+        svg = _al_ancho_de_la_hoja(svg)
     svg = svg.replace(TINTA, 'currentColor')
     # Accesible: el lector de pantalla lee la descripción.
     return svg.replace(
         '<svg ', f'<svg role="img" aria-label="{descripcion}" data-estilo="{estilo}" ', 1)
+
+
+def _al_ancho_de_la_hoja(svg):
+    """Sin alto ni ancho fijos: width="100%" y el viewBox, así WeasyPrint
+    lo escala al ancho útil de la hoja y mantiene la proporción."""
+    apertura = svg[:svg.index('>') + 1]
+    nueva = re.sub(r'\s(width|height)="[^"]*"', '', apertura).replace('<svg ', '<svg width="100%" ', 1)
+    return nueva + svg[len(apertura):]
 
 
 def _leyenda(eje, **opciones):
@@ -263,7 +298,7 @@ def _torta(datos, etiqueta, valor, titulo, dinero, colores=PALETA):
     el nombre, el importe y el porcentaje de cada una.
     """
     total = float(datos[valor].sum())
-    figura, eje = plt.subplots(figsize=(9.6, 3.4), dpi=100)
+    figura, eje = plt.subplots(figsize=(_ancho(), 3.4), dpi=100)
     figura.patch.set_alpha(0)
     colores = list(colores[:len(datos)])
     porciones, _ = eje.pie(

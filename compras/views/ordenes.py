@@ -16,7 +16,7 @@ from compras.models import OrdenCompra, Proveedor
 from negocio.models import ParametrosNegocio
 from nucleo import idempotencia
 from nucleo.formularios import leer_numero
-from nucleo.paginacion import TAMANIOS_TABLA, paginar
+from nucleo.paginacion import paginar
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock.models import Producto

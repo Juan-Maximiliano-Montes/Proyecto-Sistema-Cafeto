@@ -706,7 +706,7 @@ class ReglasPorEntidadTest(BaseMaestros):
             codigo_barras='7790387011456').exists())
 
     def test_un_codigo_que_no_es_de_fabrica_entra_como_propio(self):
-        respuesta = self.crear('productos', {
+        self.crear('productos', {
             'nombre_producto': 'Yerba Playadito 1 kg',
             'id_marca': self.marca.pk, 'contenido': '1',
             'id_rubro': self.rubro.pk, 'id_proveedor': self.proveedor.pk,

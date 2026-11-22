@@ -14,7 +14,7 @@ from fidelizacion.models import (
 )
 from geografia.models import Localidad
 from nucleo.formularios import FormularioMaestro, SelectorConBusqueda, vigentes_mas_el_actual
-from nucleo.validaciones import nombre_de_persona, normalizar_telefono, texto_de_catalogo
+from nucleo.validaciones import nombre_de_persona, normalizar_telefono
 from stock.models import Producto
 
 

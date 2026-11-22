@@ -116,7 +116,7 @@ class PdfTest(TestCase):
         celdas = re.findall(r'<td[^>]*>(.*?)</td>', fila, re.S)
         self.assertEqual(celdas[0], 'Total')
         self.assertEqual(celdas[1], '140')
-        self.assertEqual(celdas[2], '$&nbsp;520.860,00')
+        self.assertEqual(celdas[2], '<span class="dinero">$&nbsp;520.860,00</span>')
         self.assertEqual(celdas[3], '31,5')
         self.assertIn('tr.total td { font-weight: 600; background: #FDF3D8; border-top: 1.2pt solid #161616;', html)
 

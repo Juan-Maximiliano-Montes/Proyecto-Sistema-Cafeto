@@ -26,7 +26,6 @@ from nucleo.tests import fabrica as f
 from seguridad.models import LogAuditoria
 from ventas import cambios
 from ventas import servicios as ventas
-from ventas.models import Venta
 
 D = Decimal
 

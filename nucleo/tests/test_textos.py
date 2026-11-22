@@ -30,14 +30,13 @@ class PluralizarTest(SimpleTestCase):
         self.assertEqual(html.render(Context({'n': 4})), '4 renglones se vendieron · bajalas, corregilas')
 
     def test_no_quedan_plurales_mecanicos_a_la_vista(self):
-        """Fuera de Vender (alcance de la entrega), comentarios y comandos de consola."""
+        """En toda la interfaz; quedan fuera los comentarios y los comandos de consola."""
         raiz = Path(settings.BASE_DIR)
         quedan = []
-        for archivo in list(raiz.glob('*/templates/**/*.html')) + list(raiz.glob('*/static/cafeto/js/*.js')) + [
+        for archivo in list(raiz.glob('*/templates/**/*.html')) + list(raiz.glob('templates/**/*.html')) + list(
+                raiz.glob('*/static/cafeto/js/*.js')) + [
                 p for p in raiz.glob('*/**/*.py') if '/tests/' not in str(p) and '/management/' not in str(p)
                 and '/migrations/' not in str(p)]:
-            if archivo.name == 'mostrador.html':
-                continue
             for numero, linea in enumerate(archivo.read_text(encoding='utf-8').splitlines(), 1):
                 limpia = linea.strip()
                 if limpia.startswith(('#', '*', '{#', '//', '"""', "'''")) or 'No se puede dar de baja "Cafetería"' in linea:
@@ -49,8 +48,6 @@ class PluralizarTest(SimpleTestCase):
 
 class ComillasTest(SimpleTestCase):
     """La interfaz nombra opciones en negrita o entre comillas rectas, nunca con « »."""
-
-    RESERVADAS = ('mostrador.html', 'conteo.html')
 
     @staticmethod
     def _cadenas_de_python(texto):
@@ -79,8 +76,6 @@ class ComillasTest(SimpleTestCase):
         for archivo in (list(raiz.glob('*/templates/**/*.html')) + list(raiz.glob('*/templates/**/*.txt'))
                         + list(raiz.glob('templates/**/*.html')) + list(raiz.glob('*/static/cafeto/js/*.js'))):
             texto = archivo.read_text(encoding='utf-8')
-            if archivo.name in self.RESERVADAS:
-                texto = re.sub(r'<script\b.*?</script>', '', texto, flags=re.S)
             if archivo.suffix == '.html':
                 texto = re.sub(r'<script\b.*?</script>', lambda m: comentarios.sub('', m.group(0)), texto, flags=re.S)
                 texto = re.sub(r'\{% comment %\}.*?\{% endcomment %\}|\{#.*?#\}|<!--.*?-->', '', texto, flags=re.S)

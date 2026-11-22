@@ -21,7 +21,7 @@ try:
 except ImportError:              # pragma: no cover - fuera del entorno de pruebas
     sync_playwright = None
 
-GRAFICOS_DIBUJADOS = "document.querySelectorAll('[data-grafico] .grafico-echarts canvas').length >= 4"
+GRAFICOS_DIBUJADOS = "() => document.querySelectorAll('[data-grafico] .grafico-echarts canvas').length >= 4"
 # Los cuatro gráficos del tablero de la pantalla ACTUAL (#contenido) están
 # vivos: cada uno con su instancia de ECharts sin soltar y un <canvas> que se
 # ve (ancho y alto mayores que cero, en la página y en píxeles del lienzo).
@@ -113,7 +113,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             antes = pagina.evaluate('window.scrollY')
             self.assertGreater(antes, 300)
             capsula.click()
-            pagina.wait_for_function(f"location.search.includes('ver={clave}')")
+            pagina.wait_for_function(f"() => location.search.includes('ver={clave}')")
             pagina.wait_for_selector(f'.capsulas-reportes nav a[aria-current="page"][href*="ver={clave}&"]')
             pagina.wait_for_load_state('networkidle')
             self.assertTrue(self.sigue_sin_recargar(pagina))
@@ -135,7 +135,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             valor = selector.locator('option').nth(1).get_attribute('value')
             selector.select_option(valor)
             pagina.click('.informe-filtros button[type="submit"]')
-            pagina.wait_for_function(f"location.search.includes('{nombre}={valor}')")
+            pagina.wait_for_function(f"() => location.search.includes('{nombre}={valor}')")
             pagina.wait_for_load_state('networkidle')
             self.assertTrue(self.sigue_sin_recargar(pagina))
             for href in pagina.eval_on_selector_all('.informe-descarga a', 'es => es.map(e => e.getAttribute("href"))'):
@@ -149,12 +149,12 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             pagina.goto(self.url('negocio:reportes'))
             pagina.wait_for_function(GRAFICOS_DIBUJADOS)
             pagina.click('[data-franja-vista="calor"]')
-            pagina.wait_for_function("document.querySelector('[data-grafico=franjas] .js-pico').textContent.includes('Más movimiento')")
+            pagina.wait_for_function("() => document.querySelector('[data-grafico=franjas] .js-pico').textContent.includes('Más movimiento')")
             self.assertEqual(pagina.get_attribute('[data-franja-vista="calor"]', 'aria-pressed'), 'true')
             pagina.evaluate("document.querySelectorAll('[data-grafico] canvas').forEach(c => c.dataset.marca = 'x')")
             pagina.click('[data-tema-alternar]')
-            pagina.wait_for_function("document.documentElement.dataset.tema === 'claro'")
-            pagina.wait_for_function("Array.from(document.querySelectorAll('[data-grafico] canvas')).every(c => !c.dataset.marca)"
+            pagina.wait_for_function("() => document.documentElement.dataset.tema === 'claro'")
+            pagina.wait_for_function("() => Array.from(document.querySelectorAll('[data-grafico] canvas')).every(c => !c.dataset.marca)"
                                      " && document.querySelectorAll('[data-grafico] canvas').length >= 4")
             pagina.set_viewport_size({'width': 390, 'height': 800})
             pagina.wait_for_timeout(400)
@@ -167,7 +167,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             pagina.wait_for_load_state('networkidle')
             self.marcar(pagina)
             pagina.click('.lateral a.lateral-link[href="/ventas/turnos/"]')
-            pagina.wait_for_function("location.pathname === '/ventas/turnos/' && document.title.includes('Turnos')")
+            pagina.wait_for_function("() => location.pathname === '/ventas/turnos/' && document.title.includes('Turnos')")
             pagina.wait_for_selector('.lateral a.lateral-link.activo[href="/ventas/turnos/"]')
             pagina.wait_for_load_state('networkidle')
             self.assertTrue(self.sigue_sin_recargar(pagina))
@@ -177,7 +177,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             self.assertEqual(pagina.evaluate('window.scrollY'), 0)
             self.assertEqual(pagina.locator('#barra').count(), 1)
             pagina.go_back()
-            pagina.wait_for_function("location.pathname === '/ventas/ventas/'")
+            pagina.wait_for_function("() => location.pathname === '/ventas/ventas/'")
             pagina.wait_for_load_state('networkidle')
             self.assertEqual(pagina.locator('.lateral a[href="/ventas/ventas/"].activo').count(), 1)
         self.con_pagina(hacer)
@@ -206,7 +206,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             pagina.wait_for_load_state('networkidle')
             self.marcar(pagina)
             pagina.select_option('#herramientas [name="estado"]', 'ANULADA')
-            pagina.wait_for_function("location.search.includes('estado=ANULADA')")
+            pagina.wait_for_function("() => location.search.includes('estado=ANULADA')")
             pagina.wait_for_load_state('networkidle')
             self.assertTrue(self.sigue_sin_recargar(pagina))
             self.assertEqual(pagina.input_value('#herramientas [name="estado"]'), 'ANULADA')
@@ -218,7 +218,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             pagina.wait_for_load_state('networkidle')
             pagina.context.clear_cookies()
             pagina.click('.lateral a.lateral-link[href="/ventas/turnos/"]')
-            pagina.wait_for_function("location.pathname.startsWith('/login/')")
+            pagina.wait_for_function("() => location.pathname.startsWith('/login/')")
             self.assertEqual(pagina.locator('[name="identificador"]').count(), 1)
         self.con_pagina(hacer)
 
@@ -258,7 +258,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             pagina.wait_for_load_state('networkidle')
             self.abrir_area(pagina, '/negocio/reportes/')
             pagina.click('.lateral a.lateral-link[href="/negocio/reportes/"]')
-            pagina.wait_for_function("location.pathname === '/negocio/reportes/'")
+            pagina.wait_for_function("() => location.pathname === '/negocio/reportes/'")
             pagina.wait_for_load_state('networkidle')
             pagina.wait_for_function(CUATRO_A_LA_VISTA)
 
@@ -313,7 +313,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             pagina.click('.lateral a.lateral-link[href="/negocio/reportes/"]')
             pagina.wait_for_function(CUATRO_A_LA_VISTA)
             pagina.click('#contenido .acciones a[href="/negocio/resumen-del-mes/"]')
-            pagina.wait_for_function("location.pathname === '/negocio/resumen-del-mes/'")
+            pagina.wait_for_function("() => location.pathname === '/negocio/resumen-del-mes/'")
             pagina.wait_for_load_state('networkidle')
             pagina.wait_for_function(CUATRO_A_LA_VISTA)
             pagina.click('#contenido [data-franja-vista="calor"]')

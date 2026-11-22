@@ -67,7 +67,7 @@ class StockVencidoALaVistaTest(TestCase):
         self.assertEqual((D(datos['stock']), D(datos['vencido']), datos['agotado']), (3, 5, False))
 
     def test_la_lista_de_productos_muestra_lo_apto_y_aclara_lo_vencido(self):
-        from stock.views.catalogos import PRODUCTOS, con_stock_vencido
+        from stock.views.catalogos import con_stock_vencido
         from stock.models import Producto
         fila = con_stock_vencido(Producto.objects.filter(pk=self.yogur.pk)).get()
         self.assertEqual(fila.stock_para_mostrar, 3)

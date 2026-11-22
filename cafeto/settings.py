@@ -111,6 +111,8 @@ MIDDLEWARE = [
     # antes de que otro middleware lo redirija o pida sesión.
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    # La CSP también para los estáticos que sirve WhiteNoise (DD-109).
+    'seguridad.middleware_csp.PoliticaDeContenidoMiddleware',
     # Sirve /static/ desde el mismo proceso (gunicorn en el NAS), antes que
     # cualquier middleware de sesión: un CSS no necesita estar logueado.
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -187,6 +189,23 @@ X_FRAME_OPTIONS = 'DENY'                # nadie nos mete en un iframe
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'same-origin'
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+# Content-Security-Policy (DD-109): sólo se ejecuta JavaScript de archivos
+# del propio sistema. style-src admite atributos style="" porque ECharts,
+# Bootstrap y Select2 los escriben al dibujar. connect-src suma Open Food
+# Facts, que sugiere el nombre de un producto nuevo en el conteo.
+CAFETO_CSP = {
+    'default-src': ["'self'"],
+    'script-src': ["'self'"],
+    'style-src': ["'self'", "'unsafe-inline'"],
+    'img-src': ["'self'", 'data:', 'blob:'],
+    'font-src': ["'self'", 'data:'],
+    'connect-src': ["'self'", 'https://world.openfoodfacts.org'],
+    'media-src': ["'self'", 'blob:'],
+    'object-src': ["'none'"],
+    'base-uri': ["'self'"],
+    'form-action': ["'self'"],
+    'frame-ancestors': ["'none'"],
+}
 if USAR_HTTPS:
     SECURE_SSL_REDIRECT = _bool('DJANGO_REDIRIGIR_A_HTTPS', True)
     # n8n habla con el sistema por la red interna de Docker (http://web:8000).

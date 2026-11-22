@@ -177,8 +177,12 @@ class EtiquetasYMostradorTest(Base):
         self.assertContains(self.client.get(url, {'q': 'no existe'}), 'No hay productos')
 
     def test_el_mostrador_trae_el_visor_y_los_atajos(self):
+        from pathlib import Path
+
+        from django.contrib.staticfiles import finders
         from django.template.loader import get_template
-        fuente = get_template('ventas/mostrador.html').template.source
+        fuente = (get_template('ventas/mostrador.html').template.source
+                  + Path(finders.find('cafeto/js/vender.js')).read_text(encoding='utf-8'))
         for texto in ('visor-vuelto', "e.key === 'F9'", "e.key === 'F4'", "e.key === 'F2'",
                       # Cobrar confirma con el resumen; después, imprimir o no, en grande (DD-101).
                       '¿Confirmamos el cobro?', 'Imprimir ticket <kbd>P</kbd>',
@@ -239,7 +243,7 @@ class ProveedorHabitualTest(Base):
     def test_los_inactivos_y_la_reasignacion(self):
         from datetime import timedelta
         from compras import habitual
-        from compras.models import Compra, Egreso
+        from compras.models import Compra
         from django.utils import timezone
         import warnings
         viejo = timezone.localdate() - timedelta(days=200)

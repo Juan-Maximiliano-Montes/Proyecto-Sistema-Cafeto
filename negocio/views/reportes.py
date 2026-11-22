@@ -6,11 +6,11 @@ from urllib.parse import urlencode
 from django.shortcuts import render
 from django.utils import timezone
 
-from negocio.graficos import estilo_pedido, estilos_de, opciones_de_estilo
+from negocio.graficos import estilo_pedido, estilos_de, opciones_de_estilo, para_pdf
 from negocio.graficos import grafico as armar_grafico
 from negocio import tablero as tablero_
 from negocio.reportes import CONSULTAS, ETIQUETAS_DE_FILTRO, REPORTES, opciones_de_filtro
-from nucleo.exportar import exportar
+from nucleo.exportar import es_apaisado, exportar
 from nucleo.validaciones import id_valido
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
@@ -140,8 +140,10 @@ def exportar_reporte(request):
     filas = list(filas)
     formato = request.GET.get('formato')
     estilo = estilo_pedido(request, estilos_de(reporte.clave))
-    grafico = (_grafico(reporte, columnas, filas, desde, hasta, estilo)
-               if formato == 'pdf' else None)
+    grafico = None
+    if formato == 'pdf':
+        with para_pdf(apaisado=es_apaisado(columnas)):
+            grafico = _grafico(reporte, columnas, filas, desde, hasta, estilo)
     periodo = 'Al día de hoy' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
     registrar_auditoria(request, 'EXPORTACION', 'REPORTE', modulo='NEGOCIO',
                         detalle=f'Exportó "{reporte.titulo}" {periodo} ({filtros.descripcion}).')

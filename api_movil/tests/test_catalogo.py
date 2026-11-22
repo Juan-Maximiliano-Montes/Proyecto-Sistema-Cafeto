@@ -228,8 +228,8 @@ class BeneficiosTest(BaseApi):
     def test_solo_los_vigentes_hoy(self):
         vigente = self.beneficio('Bronze', 'Café con leche gratis', 'CANJEABLE',
                                  'ESPECIE', puntos=400)
-        futuro = self.beneficio('Bronze', 'Medialunas x3', 'CANJEABLE', 'ESPECIE',
-                                puntos=300, vigencia_desde=f.en_dias(5))
+        self.beneficio('Bronze', 'Medialunas x3', 'CANJEABLE', 'ESPECIE',
+                       puntos=300, vigencia_desde=f.en_dias(5))
         vencido = self.beneficio('Silver', 'Torta del mes', 'CANJEABLE', 'ESPECIE',
                                  puntos=500)
         Beneficio.objects.filter(pk=vencido.pk).update(

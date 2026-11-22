@@ -50,7 +50,7 @@ class DatosDemoTest(TestCase):
         from compras.models import Proveedor
         from nucleo.tests import fabrica as f
         f.proveedor()   # crea la geografía y un proveedor cualquiera
-        propio = Proveedor.objects.create(
+        Proveedor.objects.create(
             nombre_proveedor='LACTEOS DEL VALLE', cuit_proveedor='20-12345678-6',
             tipo_proveedor='MERCADERIA', condicion_pago='CONTADO')
         otro = Proveedor.objects.create(

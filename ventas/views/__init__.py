@@ -8,4 +8,6 @@
 
 Se importa ``catalogos`` acá porque registra sus CRUD al cargar la app.
 """
-from . import catalogos  # noqa: F401
+from . import catalogos
+
+__all__ = ['catalogos']

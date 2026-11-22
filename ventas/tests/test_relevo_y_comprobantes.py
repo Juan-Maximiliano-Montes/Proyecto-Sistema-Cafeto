@@ -366,7 +366,7 @@ class ComprobanteZTest(Base):
         self.declarar('6000')
         respuesta = self.confirmar()
         html = self.client.get(respuesta['Location']).content.decode()
-        for texto in ('CIERRE DE TURNO', 'Comercio', 'Caja Cafetería', f'N° de turno',
+        for texto in ('CIERRE DE TURNO', 'Comercio', 'Caja Cafetería', 'N° de turno',
                       'Abrió el turno:', 'Ana Paz @', 'Cerró / arqueó la caja:',
                       'Autorizó / auditó la diferencia:', 'No hubo diferencia',
                       '(+) Fondo inicial', '(+) Ventas en efectivo (1)',
@@ -406,7 +406,7 @@ class TicketDeVentaTest(Base):
         self.assertEqual(cuenta['cargo'], D('3000'))
         self.assertEqual(cuenta['nuevo'], D('5000'))
         html = respuesta.content.decode()
-        for texto in ('TICKET DE VENTA', f'Venta N°', 'Caja Cafetería', 'Ana Paz', 'Elsa Gómez',
+        for texto in ('TICKET DE VENTA', 'Venta N°', 'Caja Cafetería', 'Ana Paz', 'Elsa Gómez',
                       'DNI 20111222', 'Cuenta corriente', 'Saldo anterior', '(+) Cargo de esta compra',
                       '(=) Nuevo saldo total', 'Vence el', f.en_dias(15).strftime('%d/%m/%Y'),
                       'Firma de conformidad del cliente'):

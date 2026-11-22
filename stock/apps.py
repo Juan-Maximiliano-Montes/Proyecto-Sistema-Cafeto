@@ -1,4 +1,6 @@
 """Módulo Stock e Inventario: productos, lotes, movimientos y ajustes de stock."""
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -10,4 +12,5 @@ class StockConfig(AppConfig):
     def ready(self):
         # Registra sus pantallas de CRUD genérico en nucleo.crud.REGISTRO,
         # que el menú y los permisos leen aunque nadie haya pedido una URL.
-        from . import importacion, views  # noqa: F401
+        import_module(f'{self.name}.importacion')
+        import_module(f'{self.name}.views')

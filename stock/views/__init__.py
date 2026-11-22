@@ -7,10 +7,12 @@
 
 Se importa ``catalogos`` acá porque registra sus CRUD al cargar la app.
 """
-from .catalogos import (  # noqa: F401
+from .catalogos import (
     MARCAS,
     POR_PAGINA,
     PRODUCTOS,
     RUBROS,
     buscar_productos,
 )
+
+__all__ = ['MARCAS', 'POR_PAGINA', 'PRODUCTOS', 'RUBROS', 'buscar_productos']
