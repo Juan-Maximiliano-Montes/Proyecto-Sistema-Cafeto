@@ -34,6 +34,15 @@ class ColumnaExportable:
     etiqueta: str
     # 'texto' | 'numero' | 'dinero' | 'si_no' | 'fecha' | 'fecha_hora'
     formato: str = 'texto'
+    conteo: bool = False
+
+    @property
+    def alineacion(self):
+        if self.conteo:
+            return 'centro'
+        if self.formato in ('numero', 'dinero'):
+            return 'derecha'
+        return 'izquierda'
 
 
 def texto_seguro(valor):
@@ -65,6 +74,35 @@ def normalizar(valor, formato, para_planilla=True):
     return texto_seguro(valor) if para_planilla else str(valor)
 
 
+def metadatos():
+    from nucleo import contexto
+    usuario = contexto.usuario_actual()
+    texto = f'Generado el {timezone.localtime():%d/%m/%Y %H:%M}'
+    if usuario is not None:
+        texto += f' por {usuario.apellido}, {usuario.nombre} ({usuario.nombre_usuario})'
+    return texto
+
+
+def _de_la_fila_de_totales(valor, formato):
+    if isinstance(valor, str) and formato in ('numero', 'dinero', 'fecha', 'fecha_hora', 'si_no'):
+        return 'texto'
+    return formato
+
+
+def _ancho_a_la_vista(dato, formato):
+    if dato is None:
+        return 0
+    if isinstance(dato, Decimal) and formato == 'dinero':
+        return len(f'{abs(dato):,.2f}') + 3
+    if isinstance(dato, Decimal):
+        return len(f'{abs(dato):,.3f}'.rstrip('0').rstrip('.')) + 1
+    if formato == 'fecha':
+        return 10
+    if formato == 'fecha_hora':
+        return 16
+    return len(str(dato))
+
+
 def _encabezado_del_comercio():
     from negocio.models import ParametrosNegocio
     try:
@@ -89,27 +127,34 @@ def _respuesta(contenido, tipo, nombre):
 # ---------------------------------------------------------------------------
 #  Excel
 # ---------------------------------------------------------------------------
-def a_excel(titulo, columnas, filas, descripcion='', tope=TOPE_DE_FILAS):
-    """``filas`` es un iterable de listas, en el orden de ``columnas``."""
+def a_excel(titulo, columnas, filas, descripcion='', tope=TOPE_DE_FILAS, totales=None):
+    """``filas`` es un iterable de listas, en el orden de ``columnas``.
+
+    ``totales`` va aparte: no cuenta como registro, no entra en el filtro de
+    la planilla y sale en negrita, con una línea arriba.
+    """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+
+    from nucleo.textos import pluralizar
 
     libro = Workbook()
     hoja = libro.active
     hoja.title = (titulo or 'Listado')[:31]
 
     ambar = PatternFill('solid', fgColor='FAB41F')
+    tenue = PatternFill('solid', fgColor='FDF3D8')
     linea = Side(style='thin', color='E6E2D8')
+    linea_total = Side(style='medium', color='161616')
+    horizontal = {'izquierda': 'left', 'centro': 'center', 'derecha': 'right'}
+    formatos = {'dinero': '"$" #,##0.00', 'numero': '#,##0.###',
+                'fecha': 'DD/MM/YYYY', 'fecha_hora': 'DD/MM/YYYY HH:MM'}
 
     hoja['A1'] = texto_seguro(_encabezado_del_comercio())
     hoja['A1'].font = Font(bold=True, size=14)
     hoja['A2'] = texto_seguro(titulo)
     hoja['A2'].font = Font(bold=True, size=12)
-    hoja['A3'] = texto_seguro(
-        f'Generado el {timezone.localtime():%d/%m/%Y %H:%M}'
-        + (f' · {descripcion}' if descripcion else ''))
-    hoja['A3'].font = Font(italic=True, color='5B6078')
 
     fila_titulos = 5
     for indice, columna in enumerate(columnas, start=1):
@@ -117,30 +162,42 @@ def a_excel(titulo, columnas, filas, descripcion='', tope=TOPE_DE_FILAS):
                           value=texto_seguro(columna.etiqueta))
         celda.font = Font(bold=True, color='161616')
         celda.fill = ambar
-        celda.alignment = Alignment(vertical='center')
+        celda.alignment = Alignment(horizontal=horizontal[columna.alineacion], vertical='center')
         celda.border = Border(bottom=linea)
 
     anchos = [len(c.etiqueta) for c in columnas]
-    cantidad = 0
-    for cantidad, fila in enumerate(filas, start=1):
-        if cantidad > tope:
-            break
-        for indice, (columna, valor) in enumerate(zip(columnas, fila), start=1):
-            dato = normalizar(valor, columna.formato)
-            celda = hoja.cell(row=fila_titulos + cantidad, column=indice, value=dato)
-            if columna.formato == 'dinero':
-                celda.number_format = '"$" #,##0.00'
-            elif columna.formato == 'numero':
-                celda.number_format = '#,##0.###'
-            elif columna.formato == 'fecha':
-                celda.number_format = 'DD/MM/YYYY'
-            elif columna.formato == 'fecha_hora':
-                celda.number_format = 'DD/MM/YYYY HH:MM'
-            largo = len(str(dato)) if dato is not None else 0
-            anchos[indice - 1] = max(anchos[indice - 1], min(largo, 60))
 
-    for indice, ancho in enumerate(anchos, start=1):
-        hoja.column_dimensions[get_column_letter(indice)].width = ancho + 3
+    def escribir(numero_de_fila, fila, es_total=False):
+        for indice, (columna, valor) in enumerate(zip(columnas, fila), start=1):
+            formato = _de_la_fila_de_totales(valor, columna.formato) if es_total else columna.formato
+            dato = normalizar(valor, formato)
+            celda = hoja.cell(row=numero_de_fila, column=indice, value=dato)
+            celda.number_format = ('#,##0' if columna.conteo and formato == 'numero'
+                                   else formatos.get(formato, '@' if es_total else 'General'))
+            alineacion = 'izquierda' if formato == 'texto' and es_total else columna.alineacion
+            celda.alignment = Alignment(horizontal=horizontal[alineacion], vertical='center')
+            if es_total:
+                celda.font = Font(bold=True)
+                celda.fill = tenue
+                celda.border = Border(top=linea_total)
+            anchos[indice - 1] = max(anchos[indice - 1], min(_ancho_a_la_vista(dato, formato), 60))
+
+    cantidad = 0
+    for fila in filas:
+        if cantidad >= tope:
+            break
+        cantidad += 1
+        escribir(fila_titulos + cantidad, fila)
+    if totales and cantidad:
+        escribir(fila_titulos + cantidad + 1, totales, es_total=True)
+
+    hoja['A3'] = texto_seguro(' · '.join(
+        parte for parte in (metadatos(), descripcion, pluralizar(cantidad, 'registro')) if parte))
+    hoja['A3'].font = Font(italic=True, color='5B6078')
+
+    for indice, (columna, ancho) in enumerate(zip(columnas, anchos), start=1):
+        minimo = 16 if columna.formato == 'dinero' else 8
+        hoja.column_dimensions[get_column_letter(indice)].width = max(ancho + 4, minimo)
     if columnas:
         ultima = get_column_letter(len(columnas))
         hoja.auto_filter.ref = f'A{fila_titulos}:{ultima}{fila_titulos + max(cantidad, 1)}'
@@ -162,26 +219,34 @@ def _ruta_estatica(relativa):
     return f'file://{ruta}' if ruta else ''
 
 
+def _renglon_pdf(columnas, fila, es_total=False):
+    renglon = []
+    for columna, valor in zip(columnas, fila):
+        formato = _de_la_fila_de_totales(valor, columna.formato) if es_total else columna.formato
+        alineacion = 'izquierda' if es_total and formato == 'texto' else columna.alineacion
+        renglon.append((formato, alineacion, normalizar(valor, formato, False)))
+    return renglon
+
+
 def a_pdf(titulo, columnas, filas, descripcion='', plantilla='parciales/exportar_pdf.html',
-          grafico=None):
+          grafico=None, totales=None):
     from weasyprint import HTML
 
     renglones = []
-    for cantidad, fila in enumerate(filas, start=1):
-        if cantidad > TOPE_DE_FILAS:
+    for fila in filas:
+        if len(renglones) >= TOPE_DE_FILAS:
             break
-        renglones.append([
-            (columna.formato, normalizar(valor, columna.formato, False))
-            for columna, valor in zip(columnas, fila)])
+        renglones.append(_renglon_pdf(columnas, fila))
 
     html = render_to_string(plantilla, {
         'comercio': _encabezado_del_comercio(),
         'titulo': titulo,
         'descripcion': descripcion,
         'grafico': grafico,               # SVG ya armado (reportes, Hito 5)
-        'generado': timezone.localtime(),
+        'metadatos': metadatos(),
         'columnas': columnas,
         'renglones': renglones,
+        'total': _renglon_pdf(columnas, totales, es_total=True) if totales and renglones else None,
         'apaisado': len(columnas) > 6,
         'fuente_inter': _ruta_estatica('cafeto/fuentes/inter-latin-400-normal.woff2'),
         'fuente_inter_negrita': _ruta_estatica('cafeto/fuentes/inter-latin-600-normal.woff2'),
@@ -209,7 +274,7 @@ def _celda_csv(valor, formato):
     return str(dato)
 
 
-def a_csv(titulo, columnas, filas):
+def a_csv(titulo, columnas, filas, totales=None):
     """CSV separado por punto y coma, con BOM para que Excel respete los
     acentos. Las filas se escriben de a una: sirve para años enteros."""
     import csv
@@ -227,6 +292,12 @@ def a_csv(titulo, columnas, filas):
             buffer.truncate()
             escritor.writerow([_celda_csv(v, c.formato) for c, v in zip(columnas, fila)])
             yield buffer.getvalue()
+        if totales:
+            buffer.seek(0)
+            buffer.truncate()
+            escritor.writerow([_celda_csv(v, _de_la_fila_de_totales(v, c.formato))
+                               for c, v in zip(columnas, totales)])
+            yield buffer.getvalue()
 
     respuesta = StreamingHttpResponse(renglones(), content_type='text/csv; charset=utf-8')
     respuesta['Content-Disposition'] = f'attachment; filename="{_nombre_de_archivo(titulo, "csv")}"'
@@ -234,9 +305,10 @@ def a_csv(titulo, columnas, filas):
     return respuesta
 
 
-def exportar(formato, titulo, columnas, filas, descripcion='', grafico=None, tope=TOPE_DE_FILAS):
+def exportar(formato, titulo, columnas, filas, descripcion='', grafico=None, tope=TOPE_DE_FILAS,
+             totales=None):
     if formato == 'csv':
-        return a_csv(titulo, columnas, filas)
+        return a_csv(titulo, columnas, filas, totales)
     if formato == 'pdf':
-        return a_pdf(titulo, columnas, filas, descripcion, grafico=grafico)
-    return a_excel(titulo, columnas, filas, descripcion, tope=tope)
+        return a_pdf(titulo, columnas, filas, descripcion, grafico=grafico, totales=totales)
+    return a_excel(titulo, columnas, filas, descripcion, tope=tope, totales=totales)

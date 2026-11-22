@@ -10,7 +10,7 @@
     <div>
         <span class="eyebrow"><i class="bi bi-shield-lock me-1"></i>Equipo y permisos</span>
         <h1 class="titulo-pantalla mb-0">Perfiles</h1>
-        <p class="bajada">Qué puede hacer cada puesto. Los permisos de Seguridad son sólo del administrador.</p>
+        <p class="bajada">Qué puede hacer cada puesto. Los permisos de Seguridad son solo del administrador.</p>
     </div>
     {% if puede_crear %}
     <div class="acciones">
@@ -25,10 +25,12 @@
     <input type="hidden" name="pagina" value="1">
     <div class="buscador">
         <i class="bi bi-search"></i>
-        <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
-               placeholder="Nombre o descripción del perfil…" aria-label="Buscar">
+        <label class="visually-hidden" for="busquedaPerfiles">Buscar perfiles</label>
+        <input type="search" name="busqueda" id="busquedaPerfiles" value="{{ busqueda }}" class="form-control"
+               placeholder="Nombre o descripción del perfil…">
     </div>
-    <select name="estado" class="form-select" aria-label="Estado" data-auto-enviar>
+    <label class="visually-hidden" for="estadoPerfiles">Estado</label>
+    <select name="estado" id="estadoPerfiles" class="form-select" data-auto-enviar>
         <option value="vigentes"{% if estado == 'vigentes' %} selected{% endif %}>Vigentes</option>
         <option value="baja"{% if estado == 'baja' %} selected{% endif %}>Dados de baja</option>
         <option value="todos"{% if estado == 'todos' %} selected{% endif %}>Todos</option>
@@ -83,7 +85,7 @@
             {% elif puede_baja and not p.es_sistema %}
                 <form method="post" class="ms-auto" action="{% url 'seguridad:eliminar_perfil' p.id_perfil %}"
                       data-titulo="¿Dar de baja el perfil?" data-aceptar="Sí, dar de baja" data-peligro="1"
-                      data-confirmar="&quot;{{ p.nombre }}&quot; sólo se puede dar de baja si nadie lo tiene asignado.">
+                      data-confirmar="&quot;{{ p.nombre }}&quot; solo se puede dar de baja si nadie lo tiene asignado.">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja el perfil" aria-label="Dar de baja"><i class="bi bi-archive"></i></button>
                 </form>
@@ -128,8 +130,8 @@
                     <div class="form-text">{{ form.tope_descuento_porcentaje.help_text }}</div>
                     {% if form.tope_descuento_porcentaje.errors %}<div class="error-campo">{{ form.tope_descuento_porcentaje.errors|striptags }}</div>{% endif %}
                 </div>
-                <label class="form-label">{{ form.permisos.label }}</label>
-                <div class="card">
+                <p class="form-label" id="permisosCrear">{{ form.permisos.label }}</p>
+                <div class="card" role="group" aria-labelledby="permisosCrear">
                     <div class="card-body py-2" style="max-height: 300px; overflow-y: auto;">
                         {% comment %}
                         El catálogo se muestra agrupado por el campo 'modulo'
@@ -182,12 +184,12 @@
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label">Nombre</label>
+                    <label class="form-label" for="edit_nombre">Nombre</label>
                     <input type="text" name="nombre" id="edit_nombre" class="form-control" maxlength="40" required value="{% if abrir_modal_editar %}{{ form_editar.data.nombre }}{% endif %}">
                     {% if form_editar.nombre.errors %}<div class="error-campo">{{ form_editar.nombre.errors|striptags }}</div>{% endif %}
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Descripción</label>
+                    <label class="form-label" for="edit_descripcion">Descripción</label>
                     <input type="text" name="descripcion" id="edit_descripcion" class="form-control" maxlength="120" value="{% if abrir_modal_editar %}{{ form_editar.data.descripcion }}{% endif %}">
                 </div>
                 <div class="mb-3" id="bloque_tope">
@@ -195,8 +197,8 @@
                     <input type="number" name="tope_descuento_porcentaje" id="edit_tope" class="form-control" min="0" max="100" step="0.5">
                     <div class="form-text">Porcentaje máximo de descuento por renglón sin pedir autorización. 0 = no puede descontar.</div>
                 </div>
-                <label class="form-label">Permisos habilitados para este perfil</label>
-                <div class="card">
+                <p class="form-label" id="permisosEditar">Permisos habilitados para este perfil</p>
+                <div class="card" role="group" aria-labelledby="permisosEditar">
                     <div class="card-body py-2" style="max-height: 300px; overflow-y: auto;">
                         {% comment %}
                         Los permisos de Seguridad son exclusivos del perfil
@@ -207,7 +209,7 @@
                             <div class="{% if permisos_modulo.0.es_exclusivo_del_administrador %}permiso-exclusivo{% endif %}">
                             <p class="text-marca small fw-semibold text-uppercase mb-1 mt-2">
                                 <i class="bi bi-folder2-open me-1"></i>{{ etiqueta }}
-                                {% if permisos_modulo.0.es_exclusivo_del_administrador %}<span class="insignia insignia-marca ms-1">sólo administrador</span>{% endif %}
+                                {% if permisos_modulo.0.es_exclusivo_del_administrador %}<span class="insignia insignia-marca ms-1">solo administrador</span>{% endif %}
                             </p>
                             {% for perm in permisos_modulo %}
                                 <div class="form-check">

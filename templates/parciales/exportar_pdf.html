@@ -1,4 +1,4 @@
-{% load l10n %}<!DOCTYPE html>
+{% load l10n cafeto %}<!DOCTYPE html>
 <html lang="es-AR">
 <head>
 <meta charset="utf-8">
@@ -26,6 +26,8 @@
     tr:nth-child(even) td { background: #FBF8F1; }
     tr { page-break-inside: avoid; }
     .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .centro { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    tr.total td { font-weight: 600; background: #FDF3D8; border-top: 1.2pt solid #161616; border-bottom: 0; }
     .vacio { text-align: center; color: #8A8F9C; padding: 20pt; }
 </style>
 </head>
@@ -34,7 +36,7 @@
     <div>
         <h1>{{ titulo }}</h1>
         <div class="bajada">
-            {{ comercio }} · Generado el {{ generado|date:"d/m/Y H:i" }}{% if descripcion %} · {{ descripcion }}{% endif %}
+            {{ comercio }} · {{ metadatos }}{% if descripcion %} · {{ descripcion }}{% endif %}
             · {{ renglones|length }} registro{{ renglones|length|pluralize }}
         </div>
     </div>
@@ -43,22 +45,17 @@
 {% if grafico %}<div class="grafico" style="margin: 0 0 6mm; color: #333;">{{ grafico|safe }}</div>{% endif %}
 <table>
     <thead>
-        <tr>{% for c in columnas %}<th{% if c.formato == 'numero' or c.formato == 'dinero' %} class="num"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr>
+        <tr>{% for c in columnas %}<th{% if c.alineacion == 'derecha' %} class="num"{% elif c.alineacion == 'centro' %} class="centro"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr>
     </thead>
     <tbody>
     {% for renglon in renglones %}
-        <tr>
-        {% for formato, valor in renglon %}
-            {% if formato == 'dinero' %}<td class="num">{% if valor is not None %}$&nbsp;{{ valor|floatformat:"2g" }}{% endif %}</td>
-            {% elif formato == 'numero' %}<td class="num">{% if valor is not None %}{{ valor|floatformat:"-3g" }}{% endif %}</td>
-            {% elif formato == 'fecha' %}<td>{{ valor|date:"d/m/Y" }}</td>
-            {% elif formato == 'fecha_hora' %}<td>{{ valor|date:"d/m/Y H:i" }}</td>
-            {% else %}<td>{{ valor|default_if_none:"" }}</td>{% endif %}
-        {% endfor %}
-        </tr>
+        <tr>{% for formato, alineacion, valor in renglon %}<td{% if alineacion == 'derecha' %} class="num"{% elif alineacion == 'centro' %} class="centro"{% endif %}>{% if valor is None %}{% elif formato == 'dinero' %}$&nbsp;{{ valor|floatformat:"2g" }}{% elif formato == 'numero' %}{{ valor|cantidad }}{% elif formato == 'fecha' %}{{ valor|date:"d/m/Y" }}{% elif formato == 'fecha_hora' %}{{ valor|date:"d/m/Y H:i" }}{% else %}{{ valor }}{% endif %}</td>{% endfor %}</tr>
     {% empty %}
         <tr><td class="vacio" colspan="{{ columnas|length }}">No hay registros con estos filtros.</td></tr>
     {% endfor %}
+    {% if total %}
+        <tr class="total">{% for formato, alineacion, valor in total %}<td{% if alineacion == 'derecha' %} class="num"{% elif alineacion == 'centro' %} class="centro"{% endif %}>{% if valor is None %}{% elif formato == 'dinero' %}$&nbsp;{{ valor|floatformat:"2g" }}{% elif formato == 'numero' %}{{ valor|cantidad }}{% elif formato == 'fecha' %}{{ valor|date:"d/m/Y" }}{% elif formato == 'fecha_hora' %}{{ valor|date:"d/m/Y H:i" }}{% else %}{{ valor }}{% endif %}</td>{% endfor %}</tr>
+    {% endif %}
     </tbody>
 </table>
 </body>

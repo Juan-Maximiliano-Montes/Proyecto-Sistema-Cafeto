@@ -95,7 +95,7 @@ def ventas_por_dia(desde, hasta, caja=None):
              .values('fecha_venta').order_by('fecha_venta')
              .annotate(tickets=Count('pk'), total=Sum('total_venta'),
                        recargos=Sum('monto_recargo')))
-    columnas = [C('Día', 'fecha'), C('Tickets', 'numero'), C('Vendido', 'dinero'),
+    columnas = [C('Día', 'fecha'), C('Tickets', 'numero', conteo=True), C('Vendido', 'dinero'),
                 C('Ticket promedio', 'dinero'), C('Recargos', 'dinero')]
     datos = [[f['fecha_venta'], f['tickets'], f['total'],
               (f['total'] / f['tickets']).quantize(Decimal('0.01')), f['recargos']]
@@ -140,7 +140,7 @@ def medios(desde, hasta, caja=None):
              .values('id_medio_pago__nombre_medio_pago')
              .annotate(pagos=Count('pk'), cobrado=Sum('monto'), recargos=Sum('monto_recargo'))
              .order_by('-cobrado'))
-    columnas = [C('Medio de pago'), C('Pagos', 'numero'), C('Cobrado', 'dinero'),
+    columnas = [C('Medio de pago'), C('Pagos', 'numero', conteo=True), C('Cobrado', 'dinero'),
                 C('Recargos', 'dinero'), C('Total', 'dinero')]
     datos = [[f['id_medio_pago__nombre_medio_pago'], f['pagos'], f['cobrado'], f['recargos'],
               f['cobrado'] + f['recargos']] for f in filas]
@@ -157,7 +157,7 @@ def vendedores(desde, hasta, caja=None):
              .values('id_usuario__apellido', 'id_usuario__nombre')
              .annotate(tickets=Count('pk'), total=Sum('total_venta'))
              .order_by('-total'))
-    columnas = [C('Vendió'), C('Tickets', 'numero'), C('Vendido', 'dinero'), C('Ticket promedio', 'dinero')]
+    columnas = [C('Vendió'), C('Tickets', 'numero', conteo=True), C('Vendido', 'dinero'), C('Ticket promedio', 'dinero')]
     datos = [[f"{f['id_usuario__apellido']}, {f['id_usuario__nombre']}", f['tickets'], f['total'],
               (f['total'] / f['tickets']).quantize(Decimal('0.01'))] for f in filas]
     return columnas, datos, None
@@ -174,7 +174,7 @@ def descuentos(desde, hasta, caja=None):
              .annotate(renglones=Count('pk'), monto=Sum('monto_descuento_linea'))
              .order_by('-monto'))
     etiquetas = dict(MotivoDescuento.choices)
-    columnas = [C('Motivo'), C('Autorizó'), C('Renglones o tickets', 'numero'), C('Descontado', 'dinero')]
+    columnas = [C('Motivo'), C('Autorizó'), C('Renglones o tickets', 'numero', conteo=True), C('Descontado', 'dinero')]
     datos = [[etiquetas.get(f['motivo_descuento'], f['motivo_descuento']),
               (f"{f['id_usuario_autorizante__apellido']}, {f['id_usuario_autorizante__nombre']}"
                if f['id_usuario_autorizante__apellido'] else 'Dentro del tope'),
@@ -205,7 +205,7 @@ def caja(desde, hasta, caja=None):
                        sobrante=Coalesce(Sum('diferencia_caja', filter=Q(diferencia_caja__gt=0)), CERO, output_field=DINERO),
                        neto=Sum('diferencia_caja'))
              .order_by('neto'))
-    columnas = [C('Cerró'), C('Turnos', 'numero'), C('Con diferencia', 'numero'),
+    columnas = [C('Cerró'), C('Turnos', 'numero', conteo=True), C('Con diferencia', 'numero', conteo=True),
                 C('Faltantes', 'dinero'), C('Sobrantes', 'dinero'), C('Neto', 'dinero')]
     datos = [[f"{f['id_usuario_cierre__apellido']}, {f['id_usuario_cierre__nombre']}", f['turnos'],
               f['con_diferencia'], f['faltante'], f['sobrante'], f['neto']] for f in filas]
@@ -240,7 +240,7 @@ def stock_valorizado(desde=None, hasta=None, rubro=None):
              .values('id_rubro__nombre_rubro')
              .annotate(productos=Count('pk'), al_costo=Sum(valor), a_la_venta=Sum(venta))
              .order_by('-al_costo'))
-    columnas = [C('Rubro'), C('Productos', 'numero'), C('Al costo', 'dinero'),
+    columnas = [C('Rubro'), C('Productos', 'numero', conteo=True), C('Al costo', 'dinero'),
                 C('A precio de venta', 'dinero')]
     datos = [[f['id_rubro__nombre_rubro'], f['productos'], f['al_costo'], f['a_la_venta']]
              for f in filas]
@@ -278,9 +278,9 @@ def ranking(desde, hasta):
     clientes = (Cliente.objects.filter(borrado_logico=False)
                 .select_related('id_categoria')
                 .order_by('-puntos_acumulados', 'apellido_cliente')[:100])
-    columnas = [C('Puesto', 'numero'), C('Cliente'), C('Categoría'),
+    columnas = [C('Puesto', 'numero', conteo=True), C('Cliente'), C('Categoría'),
                 C('Puntos acumulados', 'numero'), C('Puntos disponibles', 'numero'),
-                C('Compras del período', 'numero'), C('Gastado en el período', 'dinero')]
+                C('Compras del período', 'numero', conteo=True), C('Gastado en el período', 'dinero')]
     datos = []
     for puesto, c in enumerate(clientes, start=1):
         f = consumo.get(c.pk, {})
@@ -296,7 +296,7 @@ def consumo(desde, hasta):
     filas = _consumo_por_cliente(desde, hasta)
     nombres = {c.pk: c for c in Cliente.objects.filter(pk__in=filas)
                .select_related('id_categoria')}
-    columnas = [C('Cliente'), C('Categoría'), C('Compras', 'numero'),
+    columnas = [C('Cliente'), C('Categoría'), C('Compras', 'numero', conteo=True),
                 C('Gastado (neto de devoluciones)', 'dinero'),
                 C('Ticket promedio', 'dinero'), C('Días entre compras', 'numero'),
                 C('Última compra', 'fecha')]
@@ -323,9 +323,9 @@ def segmentos(desde, hasta):
     compraron en el período y cuánto gastaron."""
     from fidelizacion.models import CategoriaFidelizacion, Cliente
     consumo_ = _consumo_por_cliente(desde, hasta)
-    columnas = [C('Categoría'), C('Clientes', 'numero'),
-                C('Compraron en el período', 'numero'),
-                C('Sin compras en el período', 'numero'),
+    columnas = [C('Categoría'), C('Clientes', 'numero', conteo=True),
+                C('Compraron en el período', 'numero', conteo=True),
+                C('Sin compras en el período', 'numero', conteo=True),
                 C('Gastado en el período', 'dinero'), C('Ticket promedio', 'dinero')]
     datos = []
     for categoria in CategoriaFidelizacion.objects.filter(

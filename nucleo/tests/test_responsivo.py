@@ -201,3 +201,29 @@ class ResponsivoTest(StaticLiveServerTestCase):
                     self.assertEqual(celda[0], 'sticky')
                     self.assertRegex(celda[1], r'^rgb\(')
             self.con_pagina(tamanio, hacer)
+
+    def test_los_filtros_ocupan_el_ancho_y_perfiles_no_tiene_etiquetas_sueltas(self):
+        def hacer(pagina):
+            pagina.goto(self.live_server_url + reverse('stock:ajustes'))
+            pagina.wait_for_load_state('networkidle')
+            barra = pagina.locator('#herramientas').bounding_box()
+            for selector in pagina.locator('#herramientas select').all():
+                caja = selector.bounding_box()
+                self.assertGreater(caja['width'], barra['width'] * 0.85)
+            pagina.goto(self.live_server_url + reverse('seguridad:perfiles'))
+            pagina.wait_for_load_state('networkidle')
+            sueltas = pagina.eval_on_selector_all(
+                'label', 'es => es.filter(e => !e.control).map(e => e.textContent.trim())')
+            self.assertEqual(sueltas, [])
+            sin_nombre = pagina.eval_on_selector_all(
+                'input:not([type=hidden]), select, textarea',
+                'es => es.filter(e => !e.labels.length && !e.getAttribute("aria-label")).map(e => e.name)')
+            self.assertEqual(sin_nombre, [])
+            self.assertIn('son solo del administrador', pagina.inner_text('.encabezado .bajada'))
+            pagina.goto(self.live_server_url + reverse('negocio:reportes'))
+            pagina.wait_for_load_state('networkidle')
+            etiqueta = pagina.eval_on_selector(
+                '.informe-descarga-etiqueta', 'e => [getComputedStyle(e).fontWeight, parseFloat(getComputedStyle(e).fontSize)]')
+            self.assertEqual(etiqueta[0], '600')
+            self.assertGreaterEqual(etiqueta[1], 14)
+        self.con_pagina(CELULAR, hacer)

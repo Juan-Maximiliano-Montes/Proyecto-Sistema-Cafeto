@@ -10,7 +10,6 @@ from negocio.graficos import estilo_pedido, estilos_de, opciones_de_estilo
 from negocio.graficos import grafico as armar_grafico
 from negocio import tablero as tablero_
 from negocio.reportes import CONSULTAS, ETIQUETAS_DE_FILTRO, REPORTES, opciones_de_filtro
-from nucleo import contexto
 from nucleo.exportar import exportar
 from nucleo.validaciones import id_valido
 from seguridad.decorators import requiere_permiso
@@ -143,23 +142,16 @@ def exportar_reporte(request):
     estilo = estilo_pedido(request, estilos_de(reporte.clave))
     grafico = (_grafico(reporte, columnas, filas, desde, hasta, estilo)
                if formato == 'pdf' else None)
-    if totales:
-        filas = filas + [totales]
     periodo = 'Al día de hoy' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
     registrar_auditoria(request, 'EXPORTACION', 'REPORTE', modulo='NEGOCIO',
                         detalle=f'Exportó "{reporte.titulo}" {periodo} ({filtros.descripcion}).')
     return exportar(formato, reporte.titulo, columnas, filas,
-                    _descripcion(periodo, filtros), grafico=grafico)
+                    _descripcion(periodo, filtros), grafico=grafico, totales=totales)
 
 
 def _descripcion(periodo, filtros):
-    """Lo que dice el PDF (y el Excel) debajo del título: el período, los
-    filtros, quién lo exportó y cuándo."""
-    usuario = contexto.usuario_actual()
-    quien = (f'{usuario.apellido}, {usuario.nombre} ({usuario.nombre_usuario})'
-             if usuario is not None else 'sin usuario')
-    return (f'{periodo} · Filtros: {filtros.descripcion} · '
-            f'Exportó {quien} el {timezone.localtime():%d/%m/%Y a las %H:%M}')
+    """El período y los filtros; quién lo generó y cuándo lo agrega el exportador."""
+    return f'{periodo} · Filtros: {filtros.descripcion}'
 
 
 @requiere_permiso('ver_reportes', redirigir_a='home')

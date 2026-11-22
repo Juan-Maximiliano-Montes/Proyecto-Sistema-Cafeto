@@ -530,4 +530,4 @@ class AsignarPermisosAPerfilesTest(TestCase):
         # Agrupado por módulo, no en una lista plana
         self.assertContains(r, 'Compras y proveedores')
         self.assertContains(r, 'Seguridad y acceso')
-        self.assertContains(r, 'sólo administrador')
+        self.assertContains(r, 'solo administrador')

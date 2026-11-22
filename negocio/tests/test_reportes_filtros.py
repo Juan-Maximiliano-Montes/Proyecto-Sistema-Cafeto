@@ -2,6 +2,7 @@
 del período, en los reportes donde el dato lo permite; el filtro elegido se
 ve en la pantalla y en la descripción del PDF y del Excel exportados."""
 import io
+import re
 from decimal import Decimal as D
 from unittest import mock
 
@@ -90,7 +91,7 @@ class FiltrosDeReportesTest(TestCase):
         self.assertContains(respuesta, 'name="rubro"')
         self.assertNotContains(respuesta, 'type="date"')
 
-    def test_el_pdf_dice_los_filtros_quien_y_cuando(self):
+    def test_el_pdf_recibe_el_periodo_los_filtros_y_los_totales_aparte(self):
         with mock.patch('negocio.views.reportes.exportar') as exportar:
             exportar.return_value = HttpResponse('pdf')
             self.client.get(reverse('negocio:exportar_reporte'), {
@@ -102,10 +103,11 @@ class FiltrosDeReportesTest(TestCase):
         self.assertEqual(formato, 'pdf')
         self.assertIn(f'Del {self.hoy:%d/%m/%Y} al {self.hoy:%d/%m/%Y}', descripcion)
         self.assertIn('Filtros: Rubro: Cafetería · Caja: Caja Cafetería', descripcion)
-        self.assertIn(f'Exportó {self.duenia.apellido}, {self.duenia.nombre} ({self.duenia.nombre_usuario})',
-                      descripcion)
-        self.assertRegex(descripcion, r'el \d{2}/\d{2}/\d{4} a las \d{2}:\d{2}$')
+        self.assertNotIn('Exportó', descripcion)
+        self.assertNotRegex(descripcion, r'\d{2}:\d{2}')
         self.assertEqual([fila[0] for fila in filas][:1], ['Sin marca · Café en lata · 1 UNIDAD'])
+        self.assertNotIn('Total', [fila[0] for fila in filas])
+        self.assertEqual(exportar.call_args.kwargs['totales'][0], 'Total')
 
     def test_el_excel_lleva_la_misma_descripcion(self):
         from openpyxl import load_workbook
@@ -115,5 +117,8 @@ class FiltrosDeReportesTest(TestCase):
         hoja = load_workbook(io.BytesIO(b''.join(respuesta.streaming_content)
                                         if respuesta.streaming else respuesta.content)).active
         self.assertIn('Filtros: Caja: Caja Minisuper', hoja['A3'].value)
-        self.assertIn('Exportó', hoja['A3'].value)
+        self.assertIn(f'por {self.duenia.apellido}, {self.duenia.nombre} ({self.duenia.nombre_usuario})',
+                      hoja['A3'].value)
+        self.assertEqual(hoja['A3'].value.count('Generado el'), 1)
+        self.assertEqual(len(re.findall(r'\d{2}:\d{2}', hoja['A3'].value)), 1)
         self.assertEqual(hoja['A6'].value, 'Efectivo')

@@ -88,12 +88,12 @@
 <div class="tarjeta p-0 overflow-hidden">
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
-        <thead><tr>{% for c in columnas %}<th scope="col"{% if c.formato == 'numero' or c.formato == 'dinero' %} class="table-numero"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
+        <thead><tr>{% for c in columnas %}<th scope="col"{% if c.alineacion == 'derecha' %} class="table-numero"{% elif c.alineacion == 'centro' %} class="col-centro"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
         <tbody>
         {% for fila in filas %}
             <tr>{% for valor in fila %}{% with c=columnas|index:forloop.counter0 %}
                 {% if c.formato == 'dinero' %}<td class="table-numero">{{ valor|pesos }}</td>
-                {% elif c.formato == 'numero' %}<td class="table-numero">{% if valor is None %}—{% else %}{{ valor|cantidad }}{% endif %}</td>
+                {% elif c.formato == 'numero' %}<td class="{% if c.conteo %}col-centro{% else %}table-numero{% endif %}">{% if valor is None %}—{% else %}{{ valor|cantidad }}{% endif %}</td>
                 {% elif c.formato == 'fecha' %}<td>{{ valor|date:"D d/m" }}</td>
                 {% else %}<td>{{ valor|default:"—" }}</td>{% endif %}
             {% endwith %}{% endfor %}</tr>
@@ -104,7 +104,7 @@
         {% if totales and filas %}
         <tfoot><tr class="fw-semibold">{% for valor in totales %}{% with c=columnas|index:forloop.counter0 %}
             {% if c.formato == 'dinero' %}<td class="table-numero monto">{{ valor|pesos }}</td>
-            {% elif c.formato == 'numero' %}<td class="table-numero">{% if valor is not None %}{{ valor|cantidad }}{% endif %}</td>
+            {% elif c.formato == 'numero' %}<td class="{% if c.conteo %}col-centro{% else %}table-numero{% endif %}">{% if valor is not None %}{{ valor|cantidad }}{% endif %}</td>
             {% else %}<td>{{ valor|default:"" }}</td>{% endif %}
         {% endwith %}{% endfor %}</tr></tfoot>
         {% endif %}
