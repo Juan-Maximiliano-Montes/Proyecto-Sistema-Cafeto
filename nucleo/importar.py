@@ -360,7 +360,7 @@ def si_no(texto, etiqueta):
         return True
     if clave in NO:
         return False
-    raise ValidationError(f'{etiqueta}: poné «Sí» o «No» (dice «{texto}»).')
+    raise ValidationError(f'{etiqueta}: poné "Sí" o "No" (dice "{texto}").')
 
 
 def opcion(texto, opciones, etiqueta, por_defecto=None):
@@ -375,7 +375,7 @@ def opcion(texto, opciones, etiqueta, por_defecto=None):
                      clave_normalizada(nombre.split(' (')[0])):
             return valor
     validas = ', '.join(n.split(' (')[0] for _, n in opciones)
-    raise ValidationError(f'{etiqueta} «{texto}» no existe. Puede ser: {validas}.')
+    raise ValidationError(f'{etiqueta} "{texto}" no existe. Puede ser: {validas}.')
 
 
 # ---------------------------------------------------------------------------

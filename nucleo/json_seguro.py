@@ -71,5 +71,6 @@ def campo(datos, clave, tipo, etiqueta=None, defecto=None):
     tipos = tipo if isinstance(tipo, tuple) else (tipo,)
     if (isinstance(valor, bool) and bool not in tipos) or not isinstance(valor, tipos):
         esperado = ' o '.join(NOMBRES.get(t, t.__name__) for t in tipos)
-        raise PedidoMalArmado(f'{etiqueta or f"El campo «{clave}»"} tiene que ser {esperado}.')
+        nombre = etiqueta or f'El campo "{clave}"'
+        raise PedidoMalArmado(f'{nombre} tiene que ser {esperado}.')
     return valor

@@ -28,7 +28,7 @@
 </form>
 {% if busqueda %}
 <div class="tarjeta mb-3">
-    <h2 class="subtitulo h5">Resultado de «{{ busqueda }}»</h2>
+    <h2 class="subtitulo h5">Resultado de "{{ busqueda }}"</h2>
     {% for c in hallados %}<a class="d-block py-2" href="{% url 'fidelizacion:cuenta' c.pk %}">{{ c.apellido_cliente }}, {{ c.nombre_cliente }} <span class="small text-secondary">· {{ c.get_estado_credito_display }}</span></a>
     {% empty %}<p class="text-secondary mb-0">No encontré ningún cliente con eso. Si es nuevo, dalo de alta en Clientes o desde el mostrador.</p>{% endfor %}
 </div>
@@ -41,7 +41,7 @@
     <table class="table align-middle mb-0">
         {% if ver == 'incobrables' %}
         <caption class="visually-hidden">Clientes con deuda dada por perdida</caption>
-        <thead><tr><th>Cliente</th><th>Para reconocerlo</th><th class="table-numero">Dado por perdido</th><th>Cuándo</th><th class="table-numero">Debe hoy</th><th></th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Para reconocerlo</th><th class="table-numero">Dado por perdido</th><th>Cuándo</th><th class="table-numero">Debe hoy</th><th class="col-acciones"><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
         {% for c in filas %}
         <tr>
@@ -50,7 +50,7 @@
             <td class="table-numero text-peligro fw-semibold">{{ c.perdido|pesos }}</td>
             <td class="text-nowrap">{{ c.perdido_el|date:"d/m/Y"|default:"—" }}</td>
             <td class="table-numero">{{ c.debe|pesos }}</td>
-            <td class="text-end"><a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-secundario text-nowrap">Ver cuenta</a></td>
+            <td class="col-acciones"><a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-secundario text-nowrap">Ver cuenta</a></td>
         </tr>
         {% empty %}
         <tr><td colspan="6" class="text-center text-secondary py-5">No hay deudas dadas por perdidas.</td></tr>
@@ -59,7 +59,7 @@
         {% if filas %}<tfoot><tr><th colspan="2">Total dado por perdido</th><th class="table-numero text-peligro">{{ perdido|pesos }}</th><th colspan="3"></th></tr></tfoot>{% endif %}
         {% else %}
         <caption class="visually-hidden">Cuentas corrientes: {% for v in vistas %}{% if v.activa %}{{ v.etiqueta|lower }}{% endif %}{% endfor %}</caption>
-        <thead><tr><th>Cliente</th><th>Para reconocerlo</th><th class="table-numero">Debe</th><th class="table-numero">Vencido</th><th>Atraso</th><th></th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Para reconocerlo</th><th class="table-numero">Debe</th><th class="table-numero">Vencido</th><th>Atraso</th><th class="col-acciones"><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
         {% for c in filas %}
         <tr{% if c.vencido or c.estado_credito == 'SANCIONADO' %} class="fila-destacada"{% endif %}>
@@ -68,7 +68,7 @@
             <td class="table-numero">{{ c.debe|pesos }}</td>
             <td class="table-numero{% if c.vencido %} text-peligro fw-semibold{% endif %}">{{ c.vencido|pesos }}</td>
             <td>{% if c.dias_de_atraso %}{{ c.dias_de_atraso }} día{{ c.dias_de_atraso|pluralize }}{% elif c.debe and c.proximo %}<span class="small text-secondary">vence el {{ c.proximo|date:"d/m" }}</span>{% elif c.perdido %}<span class="small text-peligro text-nowrap">{{ c.perdido|pesos }} perdidos</span>{% else %}—{% endif %}</td>
-            <td class="text-end">{% if c.debe %}<a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-primary">Cobrar</a>{% else %}<a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-secundario text-nowrap">Ver cuenta</a>{% endif %}</td>
+            <td class="col-acciones">{% if c.debe %}<a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-primary">Cobrar</a>{% else %}<a href="{% url 'fidelizacion:cuenta' c.pk %}" class="btn btn-sm btn-secundario text-nowrap">Ver cuenta</a>{% endif %}</td>
         </tr>
         {% empty %}
         <tr><td colspan="6" class="text-center text-secondary py-5">{% if ver == 'deuda' %}Nadie te debe nada. Cuando alguien lleve fiado desde el mostrador, aparece acá.{% elif ver == 'mora' %}Nadie está atrasado ni suspendido.{% else %}Todavía nadie tiene cuenta corriente.{% endif %}</td></tr>

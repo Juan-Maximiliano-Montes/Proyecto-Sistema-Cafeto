@@ -69,18 +69,18 @@
 <div class="tarjeta p-0 overflow-hidden">
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
-        <thead><tr><th>N°</th><th>Fecha</th><th>Caja</th><th>Vendió</th><th class="table-numero">Renglones</th><th class="table-numero">Total</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th class="col-centro">N°</th><th>Fecha</th><th>Caja</th><th>Vendió</th><th class="col-centro">Renglones</th><th class="table-numero">Total</th><th class="col-centro">Estado</th><th class="col-acciones"><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
         {% for v in filas %}
             <tr{% if v.anulada %} class="text-secondary"{% endif %}>
-                <td class="fw-semibold">{{ v.pk }}</td>
+                <td class="col-centro fw-semibold">{{ v.pk }}</td>
                 <td class="text-nowrap">{{ v.fecha_venta|date:"d/m/Y" }} {{ v.hora_venta|time:"H:i" }}</td>
                 <td>{{ v.id_turno_caja.id_caja_registradora }}</td>
                 <td>{{ v.id_usuario.nombre }} {{ v.id_usuario.apellido }}</td>
-                <td class="table-numero">{{ v.renglones }}</td>
+                <td class="col-centro">{{ v.renglones }}</td>
                 <td class="table-numero monto">{% if v.anulada %}<s>{{ v.total_venta|pesos }}</s>{% else %}{{ v.total_venta|pesos }}{% endif %}</td>
-                <td>{% if v.anulada %}<span class="insignia insignia-peligro" title="{{ v.get_motivo_anulacion_display }}">Anulada</span>{% else %}<span class="insignia insignia-exito">Completada</span>{% endif %}</td>
-                <td class="text-end text-nowrap">
+                <td class="col-centro">{% if v.anulada %}<span class="insignia insignia-peligro" title="{{ v.get_motivo_anulacion_display }}">Anulada</span>{% else %}<span class="insignia insignia-exito">Completada</span>{% endif %}</td>
+                <td class="col-acciones">
                     <button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'ventas:ficha_venta' v.pk %}" data-modal="#modalVenta" data-titulo="Venta N° {{ v.pk }}" title="Ver detalle"><i class="bi bi-eye"></i></button>
                     <a class="btn btn-sm btn-secundario" href="{% url 'ventas:ticket' v.pk %}" target="_blank" rel="noopener" title="Reimprimir ticket"><i class="bi bi-printer"></i></a>
                 </td>

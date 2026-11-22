@@ -593,7 +593,7 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
             if otro is not None:
                 raise ValidationError({'email_cliente': (
                     f'El cliente con email {self.email_cliente.strip()} ya existe: '
-                    f'«{otro}». Cada cliente necesita su propio correo: con él '
+                    f'"{otro}". Cada cliente necesita su propio correo: con él '
                     'entra a la app del club y ve sus puntos.')})
 
     def otro_con_el_mismo_correo(self):
@@ -713,7 +713,7 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
         # Reactivarlo no puede dejar dos fichas vigentes con el mismo correo.
         otro = self.otro_con_el_mismo_correo()
         if otro is not None:
-            return [f'su correo ({self.email_cliente}) ya es de «{otro}»: '
+            return [f'su correo ({self.email_cliente}) ya es de "{otro}": '
                     'cambiáselo o unificá las fichas primero']
         return []
 

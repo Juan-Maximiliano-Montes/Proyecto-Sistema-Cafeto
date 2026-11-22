@@ -70,7 +70,7 @@ def asignar_marca(producto, texto):
             return False, ' '.join(error.messages)
         marca.save()
     elif marca.borrado_logico:
-        return False, f'La marca «{marca}» está dada de baja.'
+        return False, f'La marca "{marca}" está dada de baja.'
     nombre = clave_normalizada(producto.nombre_producto)
     gemelos = Producto.objects.filter(
         id_marca=marca, contenido=producto.contenido,

@@ -280,7 +280,7 @@ def precargar_compra(request):
         registrar_auditoria(request, 'ALTA', 'FACTURA RECIBIDA', instancia=factura,
                             nuevo=instantanea(factura), modulo='COMPRAS',
                             detalle=f'Llegó por {factura.get_origen_factura_display()} la factura '
-                                    f'«{factura.resumen_factura}»: queda para revisar y confirmar.')
+                                    f'"{factura.resumen_factura}": queda para revisar y confirmar.')
     ruta = reverse('compras:recepcion') + f'?factura={factura.pk}'
     base = ((getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').strip()
             or request.build_absolute_uri('/')).rstrip('/')

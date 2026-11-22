@@ -32,7 +32,7 @@ class LayoutGlobalTest(TestCase):
         self.assertIn('.barra .chips-cajas { min-width: 0; flex: 0 1 auto; }', CSS)
 
     def test_una_tabla_que_no_entra_deja_fija_la_primera_columna(self):
-        self.assertIn('.table-responsive { margin: 0;', CSS)
+        self.assertIn('.table-responsive { position: relative; margin: 0;', CSS)
         self.assertIn('.table-responsive.desborda > .table > :is(thead, tbody, tfoot) > tr > :first-child', CSS)
         self.assertIn("caja.classList.toggle('desborda', caja.scrollWidth > caja.clientWidth + 1)", JS)
         self.assertNotRegex(CSS, r'\.table[^{]*\{[^}]*margin-left:\s*-')
@@ -74,7 +74,7 @@ class ReportesAncladosTest(TestCase):
         pildoras = re.findall(r'<a href="(\?ver=[^"]+)" class="btn btn-sm', bloque)
         self.assertGreater(len(pildoras), 5)
         self.assertTrue(all(p.endswith('#seccion-reportes') for p in pildoras), pildoras)
-        self.assertRegex(bloque, r'<form method="get" class="herramientas" action="#seccion-reportes"[^>]*>')
+        self.assertRegex(bloque, r'<form method="get" class="informe-filtros" action="#seccion-reportes"[^>]*>')
         estilos = re.findall(r'href="(\?[^"]*grafico=(?:barras|torta)[^"]*)" class="btn', bloque)
         self.assertTrue(estilos and all(e.endswith('#seccion-reportes') for e in estilos), estilos)
         self.assertIn('aria-current="page"', bloque)

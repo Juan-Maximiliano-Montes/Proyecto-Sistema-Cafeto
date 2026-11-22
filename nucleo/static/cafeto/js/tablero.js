@@ -384,7 +384,7 @@
         if (!datos) { return; }
         registro.firmaDatos = textoDe(fuente);
         if (!window.echarts) {
-            mostrarVacio(registro, 'No se pudo cargar el gráfico: los números están en «Ver los datos».');
+            mostrarVacio(registro, 'No se pudo cargar el gráfico: los números están en "Ver los datos".');
             return;
         }
         var c = colores();

@@ -156,9 +156,9 @@ class ProductoForm(FormularioMaestro):
         help_texts = {
             'nombre_producto': 'Como lo vas a buscar en el mostrador: '
                                '"Café molido 500 g".',
-            'id_marca': 'Si no la sabés o no importa, dejá «Genérica».',
+            'id_marca': 'Si no la sabés o no importa, dejá "Genérica".',
             'id_proveedor': 'Si todavía no sabés a quién se lo comprás, queda '
-                            'en «Proveedor General» y se asigna solo al '
+                            'en "Proveedor General" y se asigna solo al '
                             'recibir la primera compra.',
             'contenido': 'Cuánto trae el envase, en la unidad de al lado: '
                          '500 + G es "500 g". Poné 1 si se vende por unidad.',
@@ -255,7 +255,7 @@ class ProductoForm(FormularioMaestro):
             self.add_error('stock_minimo', forms.ValidationError(
                 'Este producto se vende por unidad: el stock mínimo va sin '
                 'decimales (por ejemplo, 6). Si se vende por kilo o por litro, '
-                'marcá «Se vende por peso o volumen».', code='minimo_entero'))
+                'marcá "Se vende por peso o volumen".', code='minimo_entero'))
 
     @property
     def abrir_mas_opciones(self):

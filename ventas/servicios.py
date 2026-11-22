@@ -424,7 +424,7 @@ def _aplicar_fidelizacion(cotizacion, cliente, beneficios, hoy):
             raise ValidationError(
                 f'{cliente.nombre_cliente} ya tiene '
                 f'{automatico.porcentaje_descuento:g} % por ser '
-                f'{cliente.id_categoria}: canjear «{canjeado}» no le suma '
+                f'{cliente.id_categoria}: canjear "{canjeado}" no le suma '
                 'nada.')
         cotizacion.beneficio_cabecera = canjeado
     elif automatico:
@@ -470,7 +470,7 @@ def _descuento_de_cabecera(cotizacion):
     if monto <= 0:
         if beneficio in cotizacion.canjes:
             raise ValidationError(
-                f'«{beneficio}» no tiene sobre qué aplicarse: todos los '
+                f'"{beneficio}" no tiene sobre qué aplicarse: todos los '
                 'productos del ticket ya tienen otro descuento.')
         cotizacion.beneficio_cabecera = None
         return

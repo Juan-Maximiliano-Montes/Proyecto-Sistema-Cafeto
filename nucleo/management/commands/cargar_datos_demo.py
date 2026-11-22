@@ -302,7 +302,7 @@ class Command(BaseCommand):
                 if not opcional:
                     raise
                 self.problemas.append(
-                    f'{configuracion.titulo}: «{objeto}» no se cargó porque ya hay '
+                    f'{configuracion.titulo}: "{objeto}" no se cargó porque ya hay '
                     f'datos que chocan ({"; ".join(error.messages)})')
                 return None
             objeto.save()

@@ -23,7 +23,7 @@ from django.core.management.base import BaseCommand, CommandError
 COMO_BAJAR_LA_CLAVE = (
     'Bajala desde la consola de Firebase: Configuración del proyecto > '
     'Cuentas de servicio > Generar nueva clave privada, y guardala como '
-    'secretos/firebase.json (ver el README, «La app móvil»).')
+    'secretos/firebase.json (ver el README, "La app móvil").')
 
 
 class Command(BaseCommand):

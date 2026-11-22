@@ -6,7 +6,7 @@ Desde la caja te piden autorización.
 {% if solicitud.monto_solicitud %}Total del ticket: {{ solicitud.monto_solicitud|pesos }}{% else %}Es un ajuste de stock: no hay cobro.{% endif %}
 {% for r in renglones %}- {{ r }}
 {% endfor %}
-Para aprobar, abrí este enlace y tocá «Aprobar»:
+Para aprobar, abrí este enlace y tocá "Aprobar":
 {{ enlace }}
 
 O dictale este PIN a la caja: {{ pin }}

@@ -37,8 +37,8 @@
 
 {% if precarga %}
 <div class="aviso aviso-aviso"><i class="bi bi-robot"></i><span><strong>{% if recibida %}Esta factura llegó por {{ recibida.get_origen_factura_display }}{% if recibida.remitente %} ({{ recibida.remitente }}){% endif %} el {{ recibida.fecha_recepcion|date:"d/m/Y H:i" }} y la pre-cargó una automatización.{% else %}Esta compra la pre-cargó una automatización a partir de la factura.{% endif %}</strong> Todavía no se registró nada: revisá proveedor, número, cantidades y costos contra el papel antes de confirmar.
-{% if not precarga.p and not detectado %}<span class="d-block">No se reconoció al proveedor{% if precarga.n %} («{{ precarga.n }}»){% endif %} y la factura no trae un CUIT legible: elegilo de la lista o dalo de alta en Proveedores.</span>{% endif %}
-{% if precarga.s %}<span class="d-block">Renglones de la factura que no se pudieron reconocer y hay que agregar a mano: {% for linea in precarga.s %}«{{ linea }}»{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</span></div>
+{% if not precarga.p and not detectado %}<span class="d-block">No se reconoció al proveedor{% if precarga.n %} ("{{ precarga.n }}"){% endif %} y la factura no trae un CUIT legible: elegilo de la lista o dalo de alta en Proveedores.</span>{% endif %}
+{% if precarga.s %}<span class="d-block">Renglones de la factura que no se pudieron reconocer y hay que agregar a mano: {% for linea in precarga.s %}"{{ linea }}"{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</span></div>
 {% endif %}
 <form method="post" novalidate class="row g-3"
       data-titulo="¿Guardamos la compra?" data-aceptar="Sí, guardar"

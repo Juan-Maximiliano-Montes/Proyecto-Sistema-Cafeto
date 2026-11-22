@@ -41,7 +41,7 @@
                 </tbody>
                 <tfoot>
                     <tr><th>Total que entró</th><th class="table-numero">{{ total_entro|pesos }}</th></tr>
-                    {% if not cuadra %}<tr><td class="text-peligro" colspan="2">Lo cobrado al vender más lo fiado no da lo vendido ({{ bruta.facturado|pesos }}): hay una venta con los pagos mal asentados. Avisá.</td></tr>{% endif %}
+                    {% if not cuadra %}<tr><td class="text-peligro" colspan="2">Lo cobrado al vender más lo fiado no da lo vendido ({{ bruta.facturado|pesos }}): hay una venta con los pagos mal asentados. Avisale a quien mantiene el sistema.</td></tr>{% endif %}
                     {% if recargos %}<tr><td class="small text-secondary">De lo cobrado al vender, recargos por pagar en cuotas</td><td class="table-numero small text-secondary">{{ recargos|pesos }}</td></tr>{% endif %}
                     {% if interes %}<tr><td class="small text-secondary">De lo cobrado de cuentas, recargos por atraso</td><td class="table-numero small text-secondary">{{ interes|pesos }}</td></tr>{% endif %}
                     {% if te_deben %}<tr><td class="small">Hoy te deben en cuentas corrientes <a href="{% url 'fidelizacion:cuentas' %}">ver</a></td><td class="table-numero small">{{ te_deben|pesos }}</td></tr>{% endif %}

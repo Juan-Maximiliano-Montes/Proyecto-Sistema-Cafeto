@@ -209,7 +209,7 @@ class Command(BaseCommand):
                   .fillna(0.0))
         if antes.empty and not ahora.empty:
             self.stdout.write(f'Aviso: no hubo ventas del {desde_anterior:%d/%m/%Y} al {hasta_anterior:%d/%m/%Y}; '
-                              'en las barras comparativas cada rubro figura como «nuevo».')
+                              'en las barras comparativas cada rubro figura como "nuevo".')
         generar('barras', lambda: graficos.comparar_periodos(
             rubros, 'Rubro', 'Vendido ahora', 'Vendido antes',
             f'Vendido por rubro: {periodo} contra los {largo} días anteriores',
@@ -248,7 +248,7 @@ class Command(BaseCommand):
         if faltan:
             self.stderr.write(self.style.WARNING(
                 'No se generó:\n  ' + '\n  '.join(faltan) + '\nProbá con un período más largo '
-                '(--desde / --dias) o cargá datos de prueba con «python manage.py cargar_datos_demo».'))
+                '(--desde / --dias) o cargá datos de prueba con "python manage.py cargar_datos_demo".'))
         if not creados:
             raise CommandError('No hay datos para graficar en ese período.')
         self.stdout.write(f'Listo: {len(creados)} de {len(ARCHIVOS)} gráficos en {salida}')

@@ -123,8 +123,24 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             self.assertEqual(pagina.evaluate("document.querySelector('[data-grafico=evolucion] canvas').dataset.marca"), 'x')
             enlaces = pagina.eval_on_selector_all('#periodosTablero a', 'es => es.map(e => e.getAttribute("href"))')
             self.assertTrue(enlaces and all(f'ver={clave}&' in e for e in enlaces), enlaces)
-            titulo = pagina.inner_text('#titDetalle').strip()
-            self.assertIn(f'Exportar «{titulo}»', pagina.inner_text('.exportar-capsula-boton'))
+            self.assertTrue(pagina.inner_text('#titDetalle').strip())
+            descargas = pagina.eval_on_selector_all(
+                '.informe-descarga a', 'es => es.map(e => [e.textContent.trim(), e.getAttribute("hx-boost"), e.getAttribute("href")])')
+            self.assertEqual([texto for texto, _b, _h in descargas], ['Excel', 'PDF'])
+            for _texto, boost, href in descargas:
+                self.assertEqual(boost, 'false')
+                self.assertIn(f'ver={clave}&', href)
+            selector = pagina.locator('.informe-filtros select').first
+            nombre = selector.get_attribute('name')
+            valor = selector.locator('option').nth(1).get_attribute('value')
+            selector.select_option(valor)
+            pagina.click('.informe-filtros button[type="submit"]')
+            pagina.wait_for_function(f"location.search.includes('{nombre}={valor}')")
+            pagina.wait_for_load_state('networkidle')
+            self.assertTrue(self.sigue_sin_recargar(pagina))
+            for href in pagina.eval_on_selector_all('.informe-descarga a', 'es => es.map(e => e.getAttribute("href"))'):
+                self.assertIn(f'ver={clave}&', href)
+                self.assertIn(f'{nombre}={valor}', href)
             self.assertTrue(any('/negocio/reportes/' in u for u in parciales))
         self.con_pagina(hacer)
 

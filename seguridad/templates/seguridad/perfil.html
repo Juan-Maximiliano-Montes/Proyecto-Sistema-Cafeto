@@ -7,7 +7,11 @@
     <div>
         <span class="eyebrow"><i class="bi bi-person-badge me-1"></i>Mi cuenta</span>
         <h1 class="titulo-pantalla mb-0">Hola, {{ usuario.nombre }}</h1>
+        {% if es_administrador or 'editar_usuario' in permisos_usuario and 'ver_usuarios' in permisos_usuario %}
+        <p class="bajada">Podés cambiar tu correo desde <a href="{% url 'seguridad:lista' %}" class="text-marca">Usuarios</a>, como el de cualquier cuenta. El DNI y el nombre no se modifican.</p>
+        {% else %}
         <p class="bajada">Estos datos solo los puede editar un administrador. Si algo está mal, avisale.</p>
+        {% endif %}
     </div>
     <div class="acciones">
         <a href="{% url 'seguridad:cambiar_clave' %}" class="btn btn-secundario"><i class="bi bi-key me-1"></i>Cambiar mi clave</a>

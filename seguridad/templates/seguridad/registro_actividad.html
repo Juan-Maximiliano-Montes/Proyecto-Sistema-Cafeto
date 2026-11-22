@@ -102,9 +102,9 @@ editar estaría prometiendo algo imposible.
                 <th>Fecha / Hora</th>
                 <th>Usuario</th>
                 <th>Operación</th>
-                <th>Resultado</th>
+                <th class="col-centro">Resultado</th>
                 <th>Módulo afectado</th>
-                <th class="text-center">Acciones</th>
+                <th class="col-acciones">Acciones</th>
             </tr>
         </thead>
         <tbody>
@@ -118,9 +118,9 @@ editar estaría prometiendo algo imposible.
                     {% else %}<span class="text-tenue">Sistema</span>{% endif %}
                 </td>
                 <td>{{ registro.operacion_realizada }}</td>
-                <td>{% if registro.resultado_operacion == 'RECHAZADA' %}<span class="insignia insignia-peligro"><i class="bi bi-x-octagon"></i>Rechazada</span>{% else %}<span class="insignia insignia-exito"><i class="bi bi-check2"></i>Exitosa</span>{% endif %}</td>
+                <td class="col-centro">{% if registro.resultado_operacion == 'RECHAZADA' %}<span class="insignia insignia-peligro"><i class="bi bi-x-octagon"></i>Rechazada</span>{% else %}<span class="insignia insignia-exito"><i class="bi bi-check2"></i>Exitosa</span>{% endif %}</td>
                 <td><span class="insignia insignia-neutra">{{ registro.modulo_afectado }}</span></td>
-                <td class="text-center">
+                <td class="col-acciones">
                     <button type="button" class="btn btn-sm btn-secundario boton-ver-actividad"
                             data-remoto="{% url 'seguridad:actividad' %}{{ registro.pk|stringformat:"d" }}/"
                             data-modal="#modalActividad" data-titulo="{{ registro.operacion_realizada }}"

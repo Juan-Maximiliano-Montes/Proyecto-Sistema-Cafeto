@@ -580,7 +580,7 @@ def _asentar_fidelizacion(request, venta, cotizacion, cliente_antes=None):
             request, 'CANJE', 'BENEFICIO', instancia=canje or beneficio,
             nuevo=instantanea(canje or beneficio),
             modulo='FIDELIZACION',
-            detalle=(f'{cliente} canjeó «{beneficio}» por '
+            detalle=(f'{cliente} canjeó "{beneficio}" por '
                      f'{beneficio.puntos_requeridos} puntos en la venta '
                      f'N° {venta.pk}.'))
     resultado = cotizacion.resultado_puntos

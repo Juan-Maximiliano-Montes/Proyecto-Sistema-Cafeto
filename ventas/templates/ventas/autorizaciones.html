@@ -46,14 +46,14 @@
 {% if ver == 'pendientes' %}<h2 class="subtitulo h6 mt-4">Últimos contestados</h2>{% endif %}
 <div class="table-responsive">
 <table class="table table-sm align-middle">
-    <thead><tr><th>Pedido</th><th>Qué se pidió</th><th class="table-numero">Total</th><th>Resultado</th></tr></thead>
+    <thead><tr><th>Pedido</th><th>Qué se pidió</th><th class="table-numero">Total</th><th class="col-centro">Resultado</th></tr></thead>
     <tbody>
     {% for s in recientes %}
     <tr>
         <td class="text-nowrap">N° {{ s.pk }}<span class="d-block small text-secondary">{{ s.fecha_solicitud|date:"d/m H:i" }}</span></td>
         <td>{{ s.motivo_solicitud|pesos_juntos }}</td>
         <td class="table-numero">{% if s.monto_solicitud %}{{ s.monto_solicitud|pesos }}{% else %}<span class="small text-secondary">Ajuste</span>{% endif %}</td>
-        <td>{% if s.estado_solicitud == 'ANULADA' and s.fecha_resolucion >= s.fecha_vencimiento %}<span class="insignia insignia-neutra">Venció sin respuesta</span>{% elif s.estado_solicitud == 'ANULADA' %}<span class="insignia insignia-neutra">Anulada por la caja</span>{% elif s.estado_solicitud == 'RECHAZADA' %}<span class="insignia insignia-peligro">Rechazada</span>{% elif s.estado_solicitud == 'PENDIENTE' %}<span class="insignia insignia-aviso">Esperando respuesta</span>{% else %}<span class="insignia insignia-exito">{{ s.get_estado_solicitud_display }}</span>{% endif %}{% if s.id_usuario_autorizante %}<span class="d-block small text-secondary">{{ s.id_usuario_autorizante.nombre }} · {{ s.get_via_aprobacion_display|lower }}</span>{% endif %}{% if s.id_venta %}<a class="d-block small" href="{% url 'ventas:ficha_venta' s.id_venta_id %}">Venta N° {{ s.id_venta_id }}</a>{% endif %}</td>
+        <td class="col-centro">{% if s.estado_solicitud == 'ANULADA' and s.fecha_resolucion >= s.fecha_vencimiento %}<span class="insignia insignia-neutra">Venció sin respuesta</span>{% elif s.estado_solicitud == 'ANULADA' %}<span class="insignia insignia-neutra">Anulada por la caja</span>{% elif s.estado_solicitud == 'RECHAZADA' %}<span class="insignia insignia-peligro">Rechazada</span>{% elif s.estado_solicitud == 'PENDIENTE' %}<span class="insignia insignia-aviso">Esperando respuesta</span>{% else %}<span class="insignia insignia-exito">{{ s.get_estado_solicitud_display }}</span>{% endif %}{% if s.id_usuario_autorizante %}<span class="d-block small text-secondary">{{ s.id_usuario_autorizante.nombre }} · {{ s.get_via_aprobacion_display|lower }}</span>{% endif %}{% if s.id_venta %}<a class="d-block small" href="{% url 'ventas:ficha_venta' s.id_venta_id %}">Venta N° {{ s.id_venta_id }}</a>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

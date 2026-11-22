@@ -307,7 +307,7 @@ def _es_quien_opera(identificador, usuario):
 
 
 SIGUE_EL_MISMO = ('En un cambio de turno, quien recibe el cajón tiene que ser el compañero que entra '
-                  '(si seguís vos o cerrás por hoy, elegí «Cerrar la caja»).')
+                  '(si seguís vos o cerrás por hoy, elegí "Cerrar la caja").')
 
 
 def _datos_del_cierre(request, turno, arqueo):

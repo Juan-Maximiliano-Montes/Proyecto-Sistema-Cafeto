@@ -99,9 +99,9 @@ def alta_proveedor(request):
     except ValidationError as error:
         return JsonResponse({'ok': False, 'error': _texto(error)})
     registrar_auditoria(request, 'ALTA', 'PROVEEDOR', instancia=proveedor, nuevo=foto(proveedor),
-                        detalle=f'Alta de {proveedor} desde la factura escaneada en «Recibir mercadería».')
+                        detalle=f'Alta de {proveedor} desde la factura escaneada en "Recibir mercadería".')
     return JsonResponse({'ok': True, 'id': proveedor.pk, 'texto': str(proveedor),
-                         'mensaje': f'Proveedor «{proveedor}» dado de alta. Completale el teléfono cuando puedas.'})
+                         'mensaje': f'Proveedor "{proveedor}" dado de alta. Completale el teléfono cuando puedas.'})
 
 
 def rubro_sugerido(proveedor_id=None):
@@ -155,7 +155,7 @@ def alta_producto(request):
     except ValidationError as error:
         return JsonResponse({'ok': False, 'error': _texto(error)})
     registrar_auditoria(request, 'ALTA', 'PRODUCTO', instancia=producto, nuevo=instantanea(producto),
-                        detalle=f'Alta de {producto} desde la factura escaneada en «Recibir mercadería»: '
+                        detalle=f'Alta de {producto} desde la factura escaneada en "Recibir mercadería": '
                                 f'costo {pesos(producto.precio_costo)}, precio {pesos(producto.precio_venta)}.')
     return JsonResponse({'ok': True, 'producto': producto.pk, 'nombre': str(producto),
                          'controla': producto.controla_vencimiento,

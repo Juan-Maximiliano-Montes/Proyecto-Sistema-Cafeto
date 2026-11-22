@@ -69,7 +69,7 @@
             <input type="hidden" name="token_operacion" value="{{ token }}">
             <input type="hidden" name="accion" value="estado">
             <h2 class="subtitulo h5 mb-0"><i class="bi bi-sliders me-1"></i>Su cuenta</h2>
-            {% if cliente.estado_credito == 'INCOBRABLE' %}<p class="small text-secondary mb-0">Está como incobrable. Guardar el tope o la nota no lo cambia; para volver a fiarle, elegí «Puede llevar fiado».</p>{% endif %}
+            {% if cliente.estado_credito == 'INCOBRABLE' %}<p class="small text-secondary mb-0">Está como incobrable. Guardar el tope o la nota no lo cambia; para volver a fiarle, elegí <strong>Puede llevar fiado</strong>.</p>{% endif %}
             <div><label class="form-label" for="estado">¿Le fiás?</label>
                 <select name="estado" id="estado" class="form-select" aria-describedby="estadoAyuda">{% for v, e in estados %}<option value="{{ v }}"{% if cliente.estado_credito == v %} selected{% endif %}>{{ e }}</option>{% endfor %}</select>
                 <div class="form-text" id="estadoAyuda">Si puede llevar fiado, está al día y no pasa su tope, la caja le fía sin pedirte la clave.</div></div>

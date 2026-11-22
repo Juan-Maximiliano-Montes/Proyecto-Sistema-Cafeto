@@ -17,10 +17,10 @@ POR_RESTRICCION = {
                               'Volvé a confirmar el cierre.'),
     'ck_turnos_caja_justificacion': 'La caja cierra con diferencia: escribí a qué se debe en el motivo.',
     'ck_turnos_caja_supervision': ('Quien aprueba la diferencia tiene que ser otra persona, no quien cierra: '
-                                   'revisá «Usuario o DNI de quien autoriza».'),
+                                   'revisá "Usuario o DNI de quien autoriza".'),
     'ck_turnos_caja_fechas': 'La fecha de cierre no puede ser anterior a la de apertura.',
     'ck_turnos_caja_ausencia': ('Cerrar el turno de otra persona lo hace quien llega, no quien lo abrió: '
-                                'si el turno es tuyo, elegí «Cerrar la caja».'),
+                                'si el turno es tuyo, elegí "Cerrar la caja".'),
     'ck_turnos_caja_revision': ('Sólo queda pendiente de revisión un cierre con diferencia que nadie aprobó, '
                                 'y la revisa otra persona que la que cerró.'),
     'ck_turnos_caja_anterior': 'Un turno no puede relevarse a sí mismo.',
@@ -44,7 +44,7 @@ POR_RESTRICCION = {
     # --- Cuenta corriente -----------------------------------------------
     'ck_movcuenta_tipo': 'El movimiento de la cuenta corriente no es de un tipo válido.',
     'ck_movcuenta_fiado': ('Un fiado necesita la venta, el vencimiento y el saldo: volvé a cobrar el ticket '
-                           'eligiendo «Cuenta corriente».'),
+                           'eligiendo "Cuenta corriente".'),
     'ck_movcuenta_aplicacion': 'Un cobro, una cancelación o un incobrable tienen que aplicarse a un fiado.',
     'ck_movcuenta_medio': ('Un cobro de cuenta corriente necesita el medio de pago (y la caja abierta si es '
                            'en efectivo).'),

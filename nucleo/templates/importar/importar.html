@@ -39,7 +39,7 @@
 {% elif errores %}
 <div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{% if pendiente.importadas %}Ya {{ pendiente.importadas|segun:"se importó,se importaron" }} {{ pendiente.importadas|pluralizar:"fila,filas" }}. {{ errores|segun:"Queda,Quedan" }} {{ errores }} en cuarentena: {{ errores|segun:"bajala, corregila y volvé a subirla|bajalas, corregilas y volvé a subirlas" }}.{% else %}Ninguna fila está en condiciones de importarse. Bajá el Excel con los motivos, corregilo y volvé a subirlo.{% endif %}</span></div>
 {% else %}
-<div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span>La planilla «{{ pendiente.archivo }}» está lista para importar.</span></div>
+<div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span>La planilla <strong>{{ pendiente.archivo }}</strong> está lista para importar.</span></div>
 {% endif %}
 
 <div class="d-flex flex-wrap gap-2 mb-3">

@@ -152,21 +152,46 @@ class PantallasTest(TestCase):
         nav = re.search(r'<nav class="d-flex flex-wrap align-items-center gap-2" aria-label="Reportes"([^>]*)>(.*?)</nav>', html, re.S)
         self.assertIn('hx-target="#seccion-reportes" hx-select="#seccion-reportes" hx-select-oob="#periodosTablero"', nav.group(1))
         self.assertNotIn('exportar', nav.group(2))
-        self.assertLess(html.index('aria-label="Reportes"'), html.index('id="titDetalle"'))
-        self.assertLess(html.index('id="titDetalle"'), html.index('class="dropdown exportar-capsula"'))
-        exportar = html[html.index('class="dropdown exportar-capsula"'):]
-        exportar = exportar[:exportar.index('</ul>')]
-        self.assertIn('aria-label="Exportar el reporte «Medios de pago»"', exportar)
-        self.assertIn('class="btn btn-secundario dropdown-toggle exportar-capsula-boton"', exportar)
-        self.assertIn('<span class="text-truncate">Exportar «Medios de pago»</span></button>', exportar)
-        self.assertIn('<h6 class="dropdown-header">Del ', exportar)
-        self.assertEqual(exportar.count('hx-boost="false"'), 2)
-        self.assertIn('hx-boost="false"', exportar)
-        self.assertIn('ver=medios', exportar)
+        self.assertLess(html.index('aria-label="Reportes"'), html.index('class="tarjeta tarjeta-informe mb-3"'))
+        tarjeta = html[html.index('class="tarjeta tarjeta-informe mb-3"'):html.index('<figure class="tarjeta grafico-reporte')]
+        self.assertLess(tarjeta.index('id="titDetalle"'), tarjeta.index('class="informe-descarga"'))
+        self.assertIn('<p class="informe-alcance">Del ', tarjeta)
+        self.assertNotIn('dropdown', tarjeta)
+        self.assertNotIn('«', tarjeta)
+        descarga = tarjeta[tarjeta.index('class="informe-descarga"'):tarjeta.index('</div>', tarjeta.index('class="informe-descarga"'))]
+        self.assertIn('>Descargar:</span>', descarga)
+        enlaces = re.findall(r'<a ([^>]*)><i class="bi bi-download" aria-hidden="true"></i>(Excel|PDF)</a>', descarga)
+        self.assertEqual([texto for _a, texto in enlaces], ['Excel', 'PDF'])
+        for atributos, texto in enlaces:
+            self.assertIn('class="btn btn-secundario informe-descarga-boton" hx-boost="false"', atributos)
+            self.assertIn('ver=medios&amp;', atributos)
+        self.assertIn('formato=xlsx" title="Descargar en Excel" aria-label="Descargar Medios de pago en Excel"', enlaces[0][0])
+        self.assertIn('formato=pdf" title="Descargar en PDF con el gráfico" aria-label="Descargar Medios de pago en PDF con el gráfico"', enlaces[1][0])
+        filtros = tarjeta[tarjeta.index('<form method="get" class="informe-filtros"'):]
+        self.assertIn('hx-boost="true"', filtros[:filtros.index('>')])
+        self.assertIn('name="desde"', filtros)
         self.assertIn('<nav id="periodosTablero" class="d-flex flex-wrap gap-1" aria-label="Período del tablero" hx-boost="true">', html)
         self.assertRegex(html, r'echarts\.min\.js" data-reinicia></script>\s*<script src="[^"]*tablero\.js" data-reinicia>')
         self.assertIn('data-franja-vista="calor"', html)
         self.assertIn('<caption class="visually-hidden">Tickets por día de la semana y hora</caption>', html)
+
+    def test_el_stock_valorizado_dice_al_dia_de_hoy_y_filtra_solo_por_rubro(self):
+        html = self.html('negocio:reportes', ver='stock')
+        tarjeta = html[html.index('class="tarjeta tarjeta-informe mb-3"'):html.index('<figure class="tarjeta grafico-reporte')]
+        self.assertIn('<p class="informe-alcance">Al día de hoy</p>', tarjeta)
+        filtros = tarjeta[tarjeta.index('class="informe-filtros"'):]
+        self.assertNotIn('type="date"', filtros)
+        self.assertIn('name="rubro"', filtros)
+        self.assertEqual(tarjeta.count('hx-boost="false"'), 2)
+
+    def test_las_descargas_siguen_a_la_capsula_y_los_filtros(self):
+        html = self.html('negocio:reportes', ver='productos', desde='2026-11-01', hasta='2026-11-15')
+        tarjeta = html[html.index('class="tarjeta tarjeta-informe mb-3"'):html.index('<figure class="tarjeta grafico-reporte')]
+        self.assertIn('<p class="informe-alcance">Del 01/11/2026 al 15/11/2026', tarjeta)
+        enlaces = re.findall(r'href="([^"]*exportar[^"]*)"', tarjeta)
+        self.assertEqual(len(enlaces), 2)
+        for enlace in enlaces:
+            self.assertIn('ver=productos&amp;desde=2026-11-01&amp;hasta=2026-11-15', enlace)
 
     def test_el_resumen_del_mes_tambien_carga_echarts(self):
         html = self.html('negocio:resumen_del_mes')

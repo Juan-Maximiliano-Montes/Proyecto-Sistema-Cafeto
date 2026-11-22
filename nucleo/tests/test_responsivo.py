@@ -1,8 +1,9 @@
 """Diseño en celular y tablet, en un navegador real (DD-106).
 
 El ingreso arriba y a la vista, los atajos del Inicio en filas completas,
-el botón «Exportar» de Reportes dentro de la pantalla y ninguna pantalla
-principal con desplazamiento horizontal ni errores en la consola.
+la tarjeta del informe de Reportes con sus descargas directas, Mi perfil sin
+datos cortados, la tabla de Ventas y la barra de cajas limpias, y ninguna
+pantalla principal con desplazamiento horizontal ni errores en la consola.
 
     python manage.py test nucleo.tests.test_responsivo --tag=navegador
 """
@@ -21,6 +22,7 @@ except ImportError:              # pragma: no cover - fuera del entorno de prueb
     sync_playwright = None
 
 CELULAR = {'width': 390, 'height': 844}
+CELULAR_CHICO = {'width': 400, 'height': 554}
 TABLET = {'width': 768, 'height': 1024}
 ESCRITORIO = {'width': 1280, 'height': 900}
 PANTALLAS = ('home', 'negocio:reportes', 'ventas:ventas', 'compras:egresos', 'compras:compras',
@@ -43,7 +45,7 @@ class ResponsivoTest(StaticLiveServerTestCase):
         self.usuarios, self.clave = _armar_datos()
         self.admin = self.usuarios['Administrador']
 
-    def con_pagina(self, tamanio, hacer, entrar=True):
+    def con_pagina(self, tamanio, hacer, entrar=True, usuario=None):
         errores = []
         with sync_playwright() as p:
             navegador = p.chromium.launch()
@@ -56,7 +58,7 @@ class ResponsivoTest(StaticLiveServerTestCase):
                           and errores.append(f'{r.status} en {r.url}'))
                 if entrar:
                     pagina.goto(self.live_server_url + reverse('seguridad:login'))
-                    pagina.fill('[name="identificador"]', self.admin.nombre_usuario)
+                    pagina.fill('[name="identificador"]', (usuario or self.admin).nombre_usuario)
                     pagina.fill('[name="clave"]', self.clave)
                     pagina.click('form button[type="submit"]')
                     pagina.wait_for_load_state('networkidle')
@@ -102,27 +104,100 @@ class ResponsivoTest(StaticLiveServerTestCase):
                     self.assertLessEqual(pagina.evaluate(DESBORDE), 1, f'{nombre} a {tamanio["width"]} px')
             self.con_pagina(tamanio, hacer)
 
-    def test_exportar_dice_que_exporta_y_su_menu_entra_en_la_pantalla(self):
-        for tamanio in (CELULAR, TABLET):
+    def test_la_tarjeta_del_informe_descarga_directo_y_entra_en_la_pantalla(self):
+        for tamanio in (CELULAR, CELULAR_CHICO, ESCRITORIO):
             def hacer(pagina):
                 pagina.goto(self.live_server_url + reverse('negocio:reportes'))
                 pagina.wait_for_load_state('networkidle')
-                boton = pagina.locator('.exportar-capsula-boton')
-                titulo = pagina.inner_text('#titDetalle').strip()
-                self.assertIn(f'Exportar «{titulo}»', boton.inner_text())
-                boton.click()
-                menu = pagina.locator('.exportar-capsula .dropdown-menu')
-                menu.wait_for(state='visible')
-                caja = menu.bounding_box()
-                self.assertGreaterEqual(caja['x'], 0)
-                self.assertLessEqual(caja['x'] + caja['width'], tamanio['width'] + 1)
-                if tamanio is CELULAR:
-                    titulo_caja = pagina.locator('#titDetalle').bounding_box()
-                    boton_caja = boton.bounding_box()
-                    self.assertGreater(boton_caja['y'], titulo_caja['y'])
-                    self.assertGreater(boton_caja['width'], tamanio['width'] * 0.8)
-                for enlace in pagina.eval_on_selector_all('.exportar-capsula .dropdown-item',
-                                                          'es => es.map(e => e.getAttribute("hx-boost"))'):
-                    self.assertEqual(enlace, 'false')
+                tarjeta = pagina.locator('.tarjeta-informe').bounding_box()
+                titulo = pagina.locator('#titDetalle').bounding_box()
+                botones = pagina.locator('.informe-descarga a')
+                self.assertEqual(botones.all_inner_texts(), ['Excel', 'PDF'])
+                cajas = [b.bounding_box() for b in botones.all()]
+                for boton, caja in zip(botones.all(), cajas):
+                    self.assertEqual(boton.get_attribute('hx-boost'), 'false')
+                    self.assertEqual(boton.locator('i').get_attribute('class'), 'bi bi-download')
+                    self.assertLessEqual(caja['x'] + caja['width'], tarjeta['x'] + tarjeta['width'] + 1)
+                    self.assertGreaterEqual(caja['x'], tarjeta['x'] - 1)
+                self.assertEqual(pagina.locator('.tarjeta-informe .dropdown-menu').count(), 0)
+                if tamanio is ESCRITORIO:
+                    self.assertLess(abs(cajas[0]['y'] - titulo['y']), titulo['height'] + 24)
+                    self.assertGreater(cajas[0]['x'], titulo['x'] + titulo['width'])
+                else:
+                    self.assertGreater(cajas[0]['y'], titulo['y'] + titulo['height'] - 1)
+                    self.assertEqual(round(cajas[0]['y']), round(cajas[1]['y']))
+                    self.assertLess(abs(cajas[0]['width'] - cajas[1]['width']), 2)
+                    for caja in cajas:
+                        self.assertGreaterEqual(caja['height'], 44)
+                        self.assertGreater(caja['width'], tarjeta['width'] * 0.4)
+                filtros = pagina.locator('.informe-filtros').bounding_box()
+                self.assertGreater(filtros['y'], cajas[0]['y'] + cajas[0]['height'] - 1)
+                self.assertLessEqual(filtros['x'] + filtros['width'], tarjeta['x'] + tarjeta['width'] + 1)
+                self.assertEqual(pagina.eval_on_selector('.informe-filtros', 'e => getComputedStyle(e).borderTopStyle'), 'solid')
                 self.assertLessEqual(pagina.evaluate(DESBORDE), 1)
+            self.con_pagina(tamanio, hacer)
+
+    def test_mi_perfil_no_corta_ningun_dato_y_le_habla_a_cada_perfil(self):
+        from seguridad.models import Usuario
+        Usuario.objects.filter(pk=self.admin.pk).update(
+            correo='administracion.del.local.cafeto.las.lomitas@correo-del-negocio.com.ar')
+        operador = self.usuarios['Operador']
+        for usuario, ve_usuarios in ((self.admin, True), (operador, False)):
+            for tamanio in (CELULAR, CELULAR_CHICO, ESCRITORIO):
+                def hacer(pagina):
+                    pagina.goto(self.live_server_url + reverse('mi_perfil'))
+                    pagina.wait_for_load_state('networkidle')
+                    tarjeta = pagina.locator('article.tarjeta').bounding_box()
+                    derecha = tarjeta['x'] + tarjeta['width']
+                    for valor in pagina.eval_on_selector_all(
+                            '.ficha dd', 'es => es.map(e => [e.getBoundingClientRect().right, e.scrollWidth - e.clientWidth])'):
+                        self.assertLessEqual(valor[0], derecha + 0.5, tamanio)
+                        self.assertLessEqual(valor[1], 0, tamanio)
+                    if tamanio is not ESCRITORIO:
+                        dt = pagina.locator('.ficha dt').first.bounding_box()
+                        dd = pagina.locator('.ficha dd').first.bounding_box()
+                        self.assertGreaterEqual(dd['y'], dt['y'] + dt['height'] - 1)
+                    bajada = pagina.inner_text('.encabezado .bajada')
+                    if ve_usuarios:
+                        self.assertIn('Podés cambiar tu correo desde Usuarios', bajada)
+                        self.assertEqual(pagina.get_attribute('.encabezado .bajada a', 'href'), reverse('seguridad:lista'))
+                    else:
+                        self.assertEqual(bajada, 'Estos datos solo los puede editar un administrador. Si algo está mal, avisale.')
+                    self.assertLessEqual(pagina.evaluate(DESBORDE), 1)
+                self.con_pagina(tamanio, hacer, usuario=usuario)
+
+    def test_ventas_y_la_barra_de_cajas_quedan_limpias(self):
+        for tamanio in (CELULAR, CELULAR_CHICO, ESCRITORIO):
+            def hacer(pagina):
+                pagina.goto(self.live_server_url + reverse('ventas:ventas') + '?desde=2000-01-01')
+                pagina.wait_for_load_state('networkidle')
+                self.assertLessEqual(pagina.evaluate(DESBORDE), 1)
+                alineacion = pagina.eval_on_selector_all(
+                    '.table thead th', 'es => es.map(e => [e.textContent.trim(), getComputedStyle(e).textAlign])')
+                alineacion = dict(alineacion)
+                self.assertEqual((alineacion['N°'], alineacion['Renglones'], alineacion['Estado']), ('center', 'center', 'center'))
+                self.assertEqual((alineacion['Total'], alineacion['Fecha']), ('right', 'left'))
+                cabeceras = pagina.eval_on_selector_all(
+                    '.table thead th', 'es => es.slice(0, 2).map(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; })')
+                self.assertLessEqual(cabeceras[0][1], cabeceras[1][0] + 0.5)
+                if tamanio is ESCRITORIO:
+                    return
+                chips = pagina.eval_on_selector(
+                    '.chips-cajas', 'e => [getComputedStyle(e).scrollbarWidth, e.offsetHeight - e.clientHeight]')
+                self.assertEqual(chips, ['none', 0])
+                barra = pagina.locator('.barra').bounding_box()
+                for chip in pagina.locator('.chips-cajas .chip-caja').all():
+                    caja = chip.bounding_box()
+                    self.assertGreaterEqual(caja['y'], barra['y'])
+                    self.assertLessEqual(caja['y'] + caja['height'], barra['y'] + barra['height'])
+                tabla = pagina.locator('.table-responsive').first
+                if not tabla.evaluate("e => e.classList.contains('desborda')"):
+                    return
+                tabla.evaluate('e => e.scrollLeft = 160')
+                pagina.wait_for_timeout(100)
+                for celda in pagina.eval_on_selector_all(
+                        '.table-responsive.desborda .table tr > :first-child',
+                        'es => es.map(e => { const s = getComputedStyle(e); return [s.position, s.backgroundColor]; })'):
+                    self.assertEqual(celda[0], 'sticky')
+                    self.assertRegex(celda[1], r'^rgb\(')
             self.con_pagina(tamanio, hacer)

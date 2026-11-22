@@ -333,12 +333,12 @@ def exigir_nombre_unico(instancia, campo, ambito=(), etiqueta='un registro'):
 
     if getattr(duplicado, 'borrado_logico', False):
         raise ValidationError({campo: (
-            f'Ya existe un registro con este nombre («{duplicado}»), pero '
+            f'Ya existe un registro con este nombre ("{duplicado}"), pero '
             'está dado de baja. Buscalo con el filtro "Dados de baja" y '
             'reactivalo, en vez de crear uno nuevo.')})
 
     raise ValidationError({campo: (
-        f'Ya existe {etiqueta} con este nombre («{duplicado}»). No se '
+        f'Ya existe {etiqueta} con este nombre ("{duplicado}"). No se '
         'distinguen mayúsculas, acentos, puntuación ni espacios de más.')})
 
 
@@ -670,10 +670,10 @@ def exigir_que_no_este_dado_de_baja(modelo, instancia, filtros,
     if getattr(duplicado, 'borrado_logico', False):
         mensaje = (
             f'{etiqueta} fue dado de baja. Presione el botón Reactivar en la '
-            f'lista: así se recupera «{duplicado}» con su historial, en vez '
+            f'lista: así se recupera "{duplicado}" con su historial, en vez '
             'de crear un registro nuevo.')
     else:
-        mensaje = f'{etiqueta} ya existe: «{duplicado}».'
+        mensaje = f'{etiqueta} ya existe: "{duplicado}".'
     # Atado al campo: así el formulario no suma, encima, el aviso genérico
     # de Django ("Ya existe un/a Cliente con este/a DNI").
     if len(filtros) == 1:

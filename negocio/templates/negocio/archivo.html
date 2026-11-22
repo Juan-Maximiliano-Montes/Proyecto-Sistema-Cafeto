@@ -22,7 +22,7 @@
         <li><strong>Lo archivado no se puede cambiar.</strong> La base de datos rechaza cualquier modificación o borrado: es la copia fiel que se le muestra al contador, a ARCA o a Rentas de Salta.</li>
         <li><strong>Se conserva al menos {{ conservacion }} años</strong> desde la fecha de cada comprobante (art. 328 del Código Civil y Comercial). Cubre también lo que piden ARCA y el Código Fiscal de Salta, que exigen guardar la documentación mientras el impuesto pueda reclamarse.</li>
     </ul>
-    <p class="small text-tenue mb-0"><i class="bi bi-info-circle me-1"></i>Ante un requerimiento puntual, confirmá con el contador qué período pide y bajalo desde «Consultar un período».</p>
+    <p class="small text-tenue mb-0"><i class="bi bi-info-circle me-1"></i>Ante un requerimiento puntual, confirmá con el contador qué período pide y bajalo desde <strong>Consultar un período</strong>.</p>
 </section>
 
 <section class="tarjeta p-0 overflow-hidden mb-3" aria-labelledby="titAnios">
@@ -32,7 +32,7 @@
         <caption class="visually-hidden">Cantidad de registros por año y libro, en uso y archivados</caption>
         <thead><tr>
             <th scope="col">Año</th>
-            {% for l in libros %}<th scope="col" class="table-numero">{{ l.titulo }}</th>{% endfor %}
+            {% for l in libros %}<th scope="col" class="col-centro">{{ l.titulo }}</th>{% endfor %}
             <th scope="col">Conservar hasta</th>
         </tr></thead>
         <tbody>
@@ -40,7 +40,7 @@
             <tr>
                 <th scope="row"><a href="?libro={{ libro.clave }}&amp;anio={{ a.anio|stringformat:"d" }}#consulta" aria-label="Consultar {{ a.anio|stringformat:"d" }}">{{ a.anio|stringformat:"d" }}</a></th>
                 {% for c in a.libros %}
-                <td class="table-numero">{{ c.vigentes|add:c.archivadas|cantidad }}{% if c.archivadas %}<br><span class="small text-tenue">{{ c.archivadas|cantidad }} archivad{{ c.archivadas|pluralize:"o,os" }}</span>{% endif %}</td>
+                <td class="col-centro">{{ c.vigentes|add:c.archivadas|cantidad }}{% if c.archivadas %}<br><span class="small text-tenue">{{ c.archivadas|cantidad }} archivad{{ c.archivadas|pluralize:"o,os" }}</span>{% endif %}</td>
                 {% endfor %}
                 <td>{{ a.conservar_hasta|date:"d/m/Y" }}</td>
             </tr>
@@ -79,16 +79,16 @@
         <div class="table-responsive">
         <table class="table table-hover tabla-densa align-middle mb-0">
             <caption class="visually-hidden">{{ libro.titulo }} del período elegido</caption>
-            <thead><tr>{% for c in columnas %}<th scope="col"{% if c.formato == 'numero' or c.formato == 'dinero' %} class="table-numero"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
+            <thead><tr>{% for c in columnas %}<th scope="col"{% if c.formato == 'dinero' %} class="table-numero"{% elif c.formato == 'numero' or forloop.last %} class="col-centro"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
             <tbody>
             {% for fila in filas %}
                 <tr>{% for valor in fila %}{% with c=columnas|index:forloop.counter0 %}
                     {% if c.formato == 'dinero' %}<td class="table-numero">{{ valor|pesos }}</td>
-                    {% elif c.formato == 'numero' %}<td class="table-numero">{% if valor is None %}—{% else %}{{ valor }}{% endif %}</td>
+                    {% elif c.formato == 'numero' %}<td class="col-centro">{% if valor is None %}—{% else %}{{ valor }}{% endif %}</td>
                     {% elif c.formato == 'fecha' %}<td>{{ valor|date:"d/m/Y"|default:"—" }}</td>
                     {% elif c.formato == 'fecha_hora' %}<td class="text-nowrap">{{ valor|date:"d/m/Y H:i"|default:"—" }}</td>
                     {% elif c.formato == 'si_no' %}<td>{{ valor|yesno:"Sí,No" }}</td>
-                    {% elif forloop.last %}<td><span class="insignia {% if valor == 'Archivada' %}insignia-neutra{% else %}insignia-exito{% endif %}">{% if valor == 'Archivada' %}<i class="bi bi-lock-fill me-1" aria-hidden="true"></i>Archivada{% else %}En uso{% endif %}</span></td>
+                    {% elif forloop.last %}<td class="col-centro"><span class="insignia {% if valor == 'Archivada' %}insignia-neutra{% else %}insignia-exito{% endif %}">{% if valor == 'Archivada' %}<i class="bi bi-lock-fill me-1" aria-hidden="true"></i>Archivada{% else %}En uso{% endif %}</span></td>
                     {% else %}<td>{{ valor|default:"—" }}</td>{% endif %}
                 {% endwith %}{% endfor %}</tr>
             {% empty %}

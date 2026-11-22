@@ -46,7 +46,7 @@
         <div class="tarjeta-pie"><button type="submit" class="btn btn-primary w-100">Operar en esta caja</button></div>
     </form>
     {% empty %}
-    <div class="vacio tarjeta"><i class="bi bi-shop"></i><p class="mb-0">No hay cajas registradoras cargadas. Pedile al administrador que cree una.</p></div>
+    <div class="vacio tarjeta"><i class="bi bi-shop"></i>{% if es_administrador or 'crear_caja_registradora' in permisos_usuario and 'ver_cajas_registradoras' in permisos_usuario %}<p class="mb-2">No hay cajas registradoras cargadas.</p><a href="{% url 'ventas:cajas_registradoras_lista' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Cargar la primera caja</a>{% else %}<p class="mb-0">No hay cajas registradoras cargadas. Pedile a un administrador que cree una.</p>{% endif %}</div>
     {% endfor %}
 </div>
 
@@ -98,7 +98,7 @@
 {% elif puede_ausencia and puede_cerrar %}
 <div class="aviso aviso-info">
     <i class="bi bi-person-exclamation"></i>
-    <span>Este turno lo abrió <strong>{{ turno.id_usuario_apertura.nombre }} {{ turno.id_usuario_apertura.apellido }}</strong>. Si se fue sin cerrar, contá el cajón y elegí <a href="#cerrar" class="fw-semibold">«Cerrar turno anterior por relevo y abrir mi turno»</a>.</span>
+    <span>Este turno lo abrió <strong>{{ turno.id_usuario_apertura.nombre }} {{ turno.id_usuario_apertura.apellido }}</strong>. Si se fue sin cerrar, contá el cajón y elegí <a href="#cerrar" class="fw-semibold">Cerrar turno anterior por relevo y abrir mi turno</a>.</span>
 </div>
 {% endif %}
 {% if vale %}

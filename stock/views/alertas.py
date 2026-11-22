@@ -97,7 +97,7 @@ def exportar_alertas(request):
     formato = request.GET.get('formato')
     respuesta = exportar(formato, titulo, columnas, filas)
     registrar_auditoria(request, 'EXPORTACION', titulo, modulo='STOCK',
-                        detalle=f'Exportó «{titulo}».')
+                        detalle=f'Exportó "{titulo}".')
     return respuesta
 
 

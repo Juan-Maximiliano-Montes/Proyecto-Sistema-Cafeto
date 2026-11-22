@@ -147,7 +147,7 @@ def exportar_reporte(request):
         filas = filas + [totales]
     periodo = 'Al día de hoy' if reporte.clave == 'stock' else f'Del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}'
     registrar_auditoria(request, 'EXPORTACION', 'REPORTE', modulo='NEGOCIO',
-                        detalle=f'Exportó «{reporte.titulo}» {periodo} ({filtros.descripcion}).')
+                        detalle=f'Exportó "{reporte.titulo}" {periodo} ({filtros.descripcion}).')
     return exportar(formato, reporte.titulo, columnas, filas,
                     _descripcion(periodo, filtros), grafico=grafico)
 

@@ -1,5 +1,8 @@
 """pluralizar y segun: «1 pago venció», «3 pagos vencieron», sin «(s)»."""
+import ast
+import io
 import re
+import tokenize
 from decimal import Decimal
 from pathlib import Path
 
@@ -41,4 +44,48 @@ class PluralizarTest(SimpleTestCase):
                     continue
                 if re.search(r"(?<!\w)[a-záéíóúñ]+\((s|es)\)", linea):
                     quedan.append(f'{archivo.relative_to(raiz)}:{numero}')
+        self.assertEqual(quedan, [])
+
+
+class ComillasTest(SimpleTestCase):
+    """La interfaz nombra opciones en negrita o entre comillas rectas, nunca con « »."""
+
+    RESERVADAS = ('mostrador.html', 'conteo.html')
+
+    @staticmethod
+    def _cadenas_de_python(texto):
+        arbol = ast.parse(texto)
+        documentacion = {nodo.body[0].lineno for nodo in ast.walk(arbol)
+                         if isinstance(nodo, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                         and nodo.body and isinstance(nodo.body[0], ast.Expr)
+                         and isinstance(nodo.body[0].value, ast.Constant) and isinstance(nodo.body[0].value.value, str)}
+        for token in tokenize.generate_tokens(io.StringIO(texto).readline):
+            if token.type == tokenize.STRING and token.start[0] in documentacion:
+                continue
+            if token.type in (tokenize.STRING, getattr(tokenize, 'FSTRING_MIDDLE', -1)):
+                yield token.start[0], token.string
+
+    def test_no_quedan_comillas_angulares_a_la_vista(self):
+        raiz = Path(settings.BASE_DIR)
+        quedan = []
+        for archivo in raiz.glob('*/**/*.py'):
+            ruta = str(archivo)
+            if '/tests/' in ruta or '/migrations/' in ruta or 'node_modules' in ruta:
+                continue
+            for numero, cadena in self._cadenas_de_python(archivo.read_text(encoding='utf-8')):
+                if '«' in cadena or '»' in cadena:
+                    quedan.append(f'{archivo.relative_to(raiz)}:{numero}')
+        comentarios = re.compile(r'\{% comment %\}.*?\{% endcomment %\}|\{#.*?#\}|<!--.*?-->|/\*.*?\*/|(?<![:"\'])//[^\n]*', re.S)
+        for archivo in (list(raiz.glob('*/templates/**/*.html')) + list(raiz.glob('*/templates/**/*.txt'))
+                        + list(raiz.glob('templates/**/*.html')) + list(raiz.glob('*/static/cafeto/js/*.js'))):
+            texto = archivo.read_text(encoding='utf-8')
+            if archivo.name in self.RESERVADAS:
+                texto = re.sub(r'<script\b.*?</script>', '', texto, flags=re.S)
+            if archivo.suffix == '.html':
+                texto = re.sub(r'<script\b.*?</script>', lambda m: comentarios.sub('', m.group(0)), texto, flags=re.S)
+                texto = re.sub(r'\{% comment %\}.*?\{% endcomment %\}|\{#.*?#\}|<!--.*?-->', '', texto, flags=re.S)
+            else:
+                texto = comentarios.sub('', texto)
+            if '«' in texto or '»' in texto:
+                quedan.append(str(archivo.relative_to(raiz)))
         self.assertEqual(quedan, [])

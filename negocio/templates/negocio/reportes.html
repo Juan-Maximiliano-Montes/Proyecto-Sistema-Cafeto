@@ -27,42 +27,43 @@
 </nav>
 </div>
 
-{# 2) El informe elegido y su exportación, en una sola fila. #}
-<div class="cabecera-reporte mb-3">
-    <h2 class="h5 mb-0" id="titDetalle"><i class="bi {{ reporte.icono }} me-1" aria-hidden="true"></i>{{ reporte.titulo }}</h2>
-    <div class="dropdown exportar-capsula">
-        <button type="button" class="btn btn-secundario dropdown-toggle exportar-capsula-boton" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Exportar el reporte «{{ reporte.titulo }}»"><i class="bi bi-download" aria-hidden="true"></i><span class="text-truncate">Exportar «{{ reporte.titulo }}»</span></button>
-        <ul class="dropdown-menu dropdown-menu-end">
-            <li><h6 class="dropdown-header">{% if sin_periodo %}Al día de hoy{% else %}Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}{% endif %}{% if filtros_aplicados %} · {{ filtros_aplicados }}{% endif %}</h6></li>
-            <li><a class="dropdown-item" hx-boost="false" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;formato=xlsx"><i class="bi bi-file-earmark-excel me-2" aria-hidden="true"></i>Excel</a></li>
-            <li><a class="dropdown-item" hx-boost="false" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}&amp;formato=pdf"><i class="bi bi-file-earmark-pdf me-2" aria-hidden="true"></i>PDF con el gráfico</a></li>
-        </ul>
+{# 2) El informe elegido: título, alcance, descarga directa y filtros, en una sola tarjeta. #}
+<div class="tarjeta tarjeta-informe mb-3">
+    <div class="informe-cabeza">
+        <div class="informe-titulo">
+            <h2 class="h5 mb-0" id="titDetalle"><i class="bi {{ reporte.icono }} me-1" aria-hidden="true"></i>{{ reporte.titulo }}</h2>
+            <p class="informe-alcance">{% if sin_periodo %}Al día de hoy{% else %}Del {{ desde|date:"d/m/Y" }} al {{ hasta|date:"d/m/Y" }}{% endif %}{% if filtros_aplicados %} · {{ filtros_aplicados }}{% endif %}</p>
+        </div>
+        <div class="informe-descarga" role="group" aria-labelledby="etiquetaDescarga">
+            <span class="informe-descarga-etiqueta" id="etiquetaDescarga">Descargar:</span>
+            <a class="btn btn-secundario informe-descarga-boton" hx-boost="false" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;formato=xlsx" title="Descargar en Excel" aria-label="Descargar {{ reporte.titulo }} en Excel"><i class="bi bi-download" aria-hidden="true"></i>Excel</a>
+            <a class="btn btn-secundario informe-descarga-boton" hx-boost="false" href="{% url 'negocio:exportar_reporte' %}?ver={{ reporte.clave }}&amp;desde={{ desde|date:'Y-m-d' }}&amp;hasta={{ hasta|date:'Y-m-d' }}{{ con_filtros }}&amp;grafico={{ estilo }}&amp;formato=pdf" title="Descargar en PDF con el gráfico" aria-label="Descargar {{ reporte.titulo }} en PDF con el gráfico"><i class="bi bi-download" aria-hidden="true"></i>PDF</a>
+        </div>
     </div>
+    {% if not sin_periodo or filtros %}
+    <form method="get" class="informe-filtros" action="#seccion-reportes" hx-boost="true">
+        <input type="hidden" name="ver" value="{{ reporte.clave }}">
+        <input type="hidden" name="grafico" value="{{ estilo }}">
+        {% if sin_periodo %}
+        <input type="hidden" name="desde" value="{{ desde|date:'Y-m-d' }}"><input type="hidden" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
+        {% else %}
+        <label class="informe-filtro">Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}" class="form-control"></label>
+        <label class="informe-filtro">Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}" class="form-control"></label>
+        {% endif %}
+        {% for filtro in filtros %}
+        <label class="informe-filtro">{{ filtro.etiqueta }}
+            <select name="{{ filtro.clave }}" class="form-select">
+                <option value="">{% if filtro.clave == 'rubro' %}Todos los rubros{% else %}Todas las cajas{% endif %}</option>
+                {% for pk, nombre in filtro.opciones %}<option value="{{ pk|stringformat:'d' }}"{% if pk == filtro.elegido %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
+            </select>
+        </label>
+        {% endfor %}
+        <button type="submit" class="btn btn-secundario"><i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i>Ver</button>
+    </form>
+    {% endif %}
 </div>
 
-{# 3) Filtros, gráfico y tabla del informe elegido. #}
-{% if not sin_periodo or filtros %}
-<form method="get" class="herramientas" action="#seccion-reportes" hx-boost="true">
-    <input type="hidden" name="ver" value="{{ reporte.clave }}">
-    <input type="hidden" name="grafico" value="{{ estilo }}">
-    {% if sin_periodo %}
-    <input type="hidden" name="desde" value="{{ desde|date:'Y-m-d' }}"><input type="hidden" name="hasta" value="{{ hasta|date:'Y-m-d' }}">
-    {% else %}
-    <label class="d-flex align-items-center gap-2 small text-secondary">Desde <input type="date" name="desde" value="{{ desde|date:'Y-m-d' }}" class="form-control"></label>
-    <label class="d-flex align-items-center gap-2 small text-secondary">Hasta <input type="date" name="hasta" value="{{ hasta|date:'Y-m-d' }}" class="form-control"></label>
-    {% endif %}
-    {% for filtro in filtros %}
-    <label class="d-flex align-items-center gap-2 small text-secondary">{{ filtro.etiqueta }}
-        <select name="{{ filtro.clave }}" class="form-select">
-            <option value="">{% if filtro.clave == 'rubro' %}Todos los rubros{% else %}Todas las cajas{% endif %}</option>
-            {% for pk, nombre in filtro.opciones %}<option value="{{ pk|stringformat:'d' }}"{% if pk == filtro.elegido %} selected{% endif %}>{{ nombre }}</option>{% endfor %}
-        </select>
-    </label>
-    {% endfor %}
-    <button type="submit" class="btn btn-secundario"><i class="bi bi-arrow-repeat me-1"></i>Ver</button>
-</form>
-{% endif %}
-
+{# 3) Gráfico y tabla del informe elegido. #}
 <figure class="tarjeta grafico-reporte mb-3">
     <div class="grafico-cabecera">
         <figcaption class="small text-secondary"><i class="bi {% if estilo == 'torta' and not torta_no_aplica and grafico %}bi-pie-chart{% else %}bi-bar-chart-line{% endif %} me-1"></i>{% if sin_periodo %}Al día de hoy{% else %}Del {{ desde|date:"d/m" }} al {{ hasta|date:"d/m/Y" }}{% endif %}{% if filtros_aplicados %} · {{ filtros_aplicados }}{% endif %} · el mismo dato de la tabla de abajo</figcaption>
@@ -87,7 +88,7 @@
 <div class="tarjeta p-0 overflow-hidden">
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
-        <thead><tr>{% for c in columnas %}<th{% if c.formato == 'numero' or c.formato == 'dinero' %} class="table-numero"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
+        <thead><tr>{% for c in columnas %}<th scope="col"{% if c.formato == 'numero' or c.formato == 'dinero' %} class="table-numero"{% endif %}>{{ c.etiqueta }}</th>{% endfor %}</tr></thead>
         <tbody>
         {% for fila in filas %}
             <tr>{% for valor in fila %}{% with c=columnas|index:forloop.counter0 %}

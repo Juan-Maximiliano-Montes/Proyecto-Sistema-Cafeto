@@ -105,7 +105,7 @@ def confirmar(request, clave):
     con_foto = aplicadas if len(aplicadas) <= FOTOS_EN_AUDITORIA else [
         r for r in aplicadas if r.foto_anterior][:FOTOS_EN_AUDITORIA]
     resumen = f"{pluralizar(altas, 'alta')} y {pluralizar(cambios, 'cambio')}"
-    detalle = f'Importó «{pendiente["archivo"]}»: {resumen}.'
+    detalle = f'Importó "{pendiente["archivo"]}": {resumen}.'
     if afuera:
         detalle += (f" {pluralizar(len(afuera), 'fila')} {segun(len(afuera), 'quedó', 'quedaron')} en cuarentena "
                     f"y no {segun(len(afuera), 'se importó', 'se importaron')}.")

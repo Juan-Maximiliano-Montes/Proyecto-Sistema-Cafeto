@@ -227,7 +227,7 @@ class Marca(Maestra):
         if self.pk and self.nombre_marca != MARCA_GENERICA and type(self).objects.filter(
                 pk=self.pk, nombre_marca=MARCA_GENERICA).exists():
             raise ValidationError({'nombre_marca': (
-                f'«{MARCA_GENERICA}» es la marca reservada para los productos '
+                f'"{MARCA_GENERICA}" es la marca reservada para los productos '
                 'que todavía no tienen la suya: no se le cambia el nombre.')})
         self.descripcion_marca = texto_de_catalogo(
             self.descripcion_marca, 1, 120, 'La descripción', obligatorio=False)

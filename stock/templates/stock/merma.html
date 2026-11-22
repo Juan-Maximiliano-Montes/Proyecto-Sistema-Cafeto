@@ -25,7 +25,7 @@
         </div>
         <div class="col-md-7">
             <label class="form-label" for="detalle">Detalle</label>
-            <input type="text" name="detalle" id="detalle" value="{{ datos.detalle|default:'' }}" class="form-control" maxlength="120" placeholder="Obligatorio si el motivo es «Otro»">
+            <input type="text" name="detalle" id="detalle" value="{{ datos.detalle|default:'' }}" class="form-control" maxlength="120" placeholder="Obligatorio si el motivo es &quot;Otro&quot;">
         </div>
     </div>
     {% for fila in elegidos %}{% include 'stock/_renglon_salida.html' %}{% endfor %}

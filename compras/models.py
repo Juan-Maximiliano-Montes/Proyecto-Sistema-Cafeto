@@ -189,7 +189,7 @@ class Proveedor(ConSelloDeModificacion,
                 or self.nombre_proveedor != NOMBRE_PROVEEDOR_GENERAL
                 or self.tipo_proveedor != TipoProveedor.MIXTO):
             raise ValidationError(
-                f'«{NOMBRE_PROVEEDOR_GENERAL}» es el proveedor reservado para '
+                f'"{NOMBRE_PROVEEDOR_GENERAL}" es el proveedor reservado para '
                 'lo que todavía no tiene el suyo: no se le cambian el nombre, '
                 'el CUIT ni el tipo.')
         self.telefono_proveedor = validar_telefono(self.telefono_proveedor)

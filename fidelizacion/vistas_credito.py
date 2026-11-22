@@ -138,7 +138,7 @@ def cuenta(request, pk):
                     plazo=request.POST.get('plazo') or None)
                 estado_antes = cliente.get_estado_credito_display()
                 cliente.refresh_from_db()
-                cambio = (f' Pasó de «{estado_antes}» a «{cliente.get_estado_credito_display()}».'
+                cambio = (f' Pasó de "{estado_antes}" a "{cliente.get_estado_credito_display()}".'
                           if cliente.estado_credito != antes['estado_credito'] else '')
                 detalle, operacion = f'Cambió la cuenta corriente de {cliente}.{cambio}', 'MODIFICACION'
                 aviso = 'Guardado.' + (f' Ahora: {cliente.get_estado_credito_display().lower()}.' if cambio else '')

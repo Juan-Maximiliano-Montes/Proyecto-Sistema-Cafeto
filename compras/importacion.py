@@ -50,9 +50,9 @@ class ImportadorProveedores(Importador):
             candidatas = [l for l in candidatas
                           if clave_normalizada(l.id_provincia.nombre_provincia) == clave_normalizada(provincia)]
         if not candidatas:
-            raise ValidationError(f'La localidad «{nombre}» no existe: cargala primero en Localidades.')
+            raise ValidationError(f'La localidad "{nombre}" no existe: cargala primero en Localidades.')
         if len(candidatas) > 1:
-            raise ValidationError(f'Hay varias «{nombre}»: agregá la provincia en la planilla.')
+            raise ValidationError(f'Hay varias "{nombre}": agregá la provincia en la planilla.')
         return candidatas[0]
 
     def validar(self, resultado, vistos):
@@ -62,7 +62,7 @@ class ImportadorProveedores(Importador):
         except (ValidationError, ValueError, TypeError):
             cuit = None
         if not cuit:
-            resultado.errores.append(f'El CUIT «{d.get("cuit")}» no es válido.')
+            resultado.errores.append(f'El CUIT "{d.get("cuit")}" no es válido.')
             return
         if cuit in vistos:
             resultado.errores.append(f'El CUIT {cuit} está repetido (fila {vistos[cuit]}).')

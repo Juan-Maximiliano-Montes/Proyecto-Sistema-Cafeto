@@ -45,7 +45,7 @@ class ImportadorProductos(Importador):
                 ('producto', 'nombre del producto', 'descripcion', 'articulo', 'detalle')),
         Columna('rubro', 'Rubro', True, 'Si no existe, se crea.', 'Minisuper',
                 ('categoria', 'familia')),
-        Columna('marca', 'Marca', False, 'Vacía = «Genérica». Si no existe, se crea.', 'Havanna'),
+        Columna('marca', 'Marca', False, 'Vacía = "Genérica". Si no existe, se crea.', 'Havanna'),
         Columna('tipo', 'Tipo', False, 'Reventa, Insumo, Elaborado, Producido o Combo. Vacío = Reventa.',
                 'Reventa', ('tipo de producto',)),
         Columna('contenido', 'Contenido', False, 'Número. Vacío = 1.', '1'),
@@ -58,7 +58,7 @@ class ImportadorProductos(Importador):
         Columna('iva', '% IVA', False, '0, 10,5 o 21. Vacío = 0.', '21', ('iva', 'alicuota', 'alicuota iva')),
         Columna('minimo', 'Stock mínimo', False, 'Para el aviso de faltantes.', '5', ('minimo',)),
         Columna('proveedor', 'Proveedor', False,
-                'CUIT o nombre. Vacío = «Proveedor General (Por asignar)».', '30-71234567-1'),
+                'CUIT o nombre. Vacío = "Proveedor General (Por asignar)".', '30-71234567-1'),
         Columna('codigo', 'Código de barras', False,
                 'El del envase o uno propio: de 3 a 30 dígitos.', '7790000000003',
                 ('codigo', 'ean', 'codigo de barra', 'cod barras', 'codigo interno')),
@@ -117,7 +117,7 @@ class ImportadorProductos(Importador):
             proveedor = None
         proveedor = proveedor or self.proveedores_por_nombre.get(clave_normalizada(texto))
         if proveedor is None:
-            raise ValidationError(f'No hay ningún proveedor vigente «{texto}».')
+            raise ValidationError(f'No hay ningún proveedor vigente "{texto}".')
         return proveedor
 
     def _rubro(self, texto, resultado):
@@ -130,12 +130,12 @@ class ImportadorProductos(Importador):
             return self.rubros[clave], None
         if clave in self.rubros_de_baja:
             raise ValidationError(
-                f'El rubro «{texto}» está dado de baja: reactivalo en Rubros o cambialo en la planilla.')
+                f'El rubro "{texto}" está dado de baja: reactivalo en Rubros o cambialo en la planilla.')
         if clave not in self.rubros_nuevos:
             nuevo = Rubro(nombre_rubro=texto)
             nuevo.full_clean(validate_unique=False, validate_constraints=False)
             self.rubros_nuevos[clave] = nuevo.nombre_rubro
-            resultado.avisos.append(f'El rubro «{nuevo.nombre_rubro}» no existía: se crea.')
+            resultado.avisos.append(f'El rubro "{nuevo.nombre_rubro}" no existía: se crea.')
         return None, self.rubros_nuevos[clave]
 
     opciones = (Opcion(
@@ -168,7 +168,7 @@ class ImportadorProductos(Importador):
                          and r.preparado[0].tipo_producto == TipoProducto.ELABORADO)
         frases = ([f"{pluralizar(elaborados, 'producto')} {segun(elaborados, 'entra como elaborado', 'entran como elaborados')} "
                    '(por el rubro o porque el nombre empieza con '
-                   '«CAFETERIA» o «PROMO»): se venden sin llevar stock. Si alguno en realidad se compra hecho, '
+                   '"CAFETERIA" o "PROMO"): se venden sin llevar stock. Si alguno en realidad se compra hecho, '
                    'cambiale el tipo antes de importarlo.'] if elaborados else [])
         if not (cargables or negativos or raros):
             return frases
@@ -226,7 +226,7 @@ class ImportadorProductos(Importador):
         for valor, _ in ALICUOTAS_IVA:
             if numero is not None and numero == valor:
                 return valor
-        raise ValidationError(f'El IVA «{texto}» no es una alícuota válida: va 0, 10,5 o 21.')
+        raise ValidationError(f'El IVA "{texto}" no es una alícuota válida: va 0, 10,5 o 21.')
 
     def validar(self, resultado, vistos):
         d = resultado.datos
@@ -241,7 +241,7 @@ class ImportadorProductos(Importador):
             unidad = opcion(d.get('unidad'), UnidadMedida.choices, 'La unidad', UnidadMedida.UNIDAD)
             contenido = leer_numero(d.get('contenido') or '1', 3)
             if contenido is None:
-                raise ValidationError(f'El contenido «{d.get("contenido")}» no es un número.')
+                raise ValidationError(f'El contenido "{d.get("contenido")}" no es un número.')
             proveedor = self._proveedor(d.get('proveedor'))
             iva = self._iva(d.get('iva'))
             fraccionable = si_no(d.get('fraccionable'), 'Fraccionable')
@@ -256,14 +256,14 @@ class ImportadorProductos(Importador):
             if texto:
                 numeros[clave] = leer_numero(texto, decimales)
                 if numeros[clave] is None:
-                    errores.append(f'{etiqueta} «{texto}» no es un número.')
+                    errores.append(f'{etiqueta} "{texto}" no es un número.')
         if errores:
             return
 
         codigo_crudo = (d.get('codigo') or '').strip()
         codigo = sanear_codigo(codigo_crudo)
         if codigo and codigo != codigo_crudo:
-            resultado.avisos.append(f'El código «{codigo_crudo}» se limpió: queda «{codigo}».')
+            resultado.avisos.append(f'El código "{codigo_crudo}" se limpió: queda "{codigo}".')
         if codigo:
             if ('codigo', codigo) in vistos:
                 errores.append(

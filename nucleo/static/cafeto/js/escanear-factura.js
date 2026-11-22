@@ -67,7 +67,7 @@
 
     function proveedorNuevo(proveedor, cuerpo) {
         if (!proveedor.nombre) { return; }
-        var texto = ' El proveedor «' + proveedor.nombre + '»' + (proveedor.cuit ? ' (CUIT ' + proveedor.cuit + ')' : '') + ' no está cargado.';
+        var texto = ' El proveedor "' + proveedor.nombre + '"' + (proveedor.cuit ? ' (CUIT ' + proveedor.cuit + ')' : '') + ' no está cargado.';
         cuerpo.appendChild(document.createTextNode(texto));
         if (raiz.dataset.puedeProveedor !== '1') {
             cuerpo.appendChild(document.createTextNode(' Pedile a quien administra que lo dé de alta, o elegilo de la lista si ya está con otro nombre.'));
@@ -186,7 +186,7 @@
         evento.stopImmediatePropagation();
         aviso('error', (pendientes === 1 ? 'Queda 1 producto' : 'Quedan ' + pendientes + ' productos') +
               ' de la factura sin dar de alta. ' + (pendientes === 1 ? 'Dalo de alta ' : 'Dalos de alta ') +
-              '(«Dar de alta y sumar») o sacalos de la factura antes de guardar la compra.', 'bi-exclamation-octagon-fill');
+              '("Dar de alta y sumar") o sacalos de la factura antes de guardar la compra.', 'bi-exclamation-octagon-fill');
         nuevos.scrollIntoView({behavior: 'smooth', block: 'center'});
         var primero = listaNuevos.querySelector('button.js-dar-alta:not([disabled])');
         if (primero) { primero.focus({preventScroll: true}); }

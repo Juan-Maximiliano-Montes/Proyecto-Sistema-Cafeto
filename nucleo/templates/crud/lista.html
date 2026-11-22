@@ -141,7 +141,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                 {% if cfg.tiene_baja and puede_baja and not fila.no_se_da_de_baja %}
                 <form method="post" action="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_eliminar' fila.pk %}"
                       class="ms-auto form-confirmar" data-titulo="Dar de baja"
-                      data-confirmar="¿Dar de baja «{{ fila }}»? Queda guardado y se puede reactivar cuando quieras."
+                      data-confirmar="¿Dar de baja &quot;{{ fila }}&quot;? Queda guardado y se puede reactivar cuando quieras."
                       data-aceptar="Sí, dar de baja" data-peligro="1">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja" aria-label="Dar de baja">
@@ -152,7 +152,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
             {% elif puede_reactivar %}
                 <form method="post" action="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_reactivar' fila.pk %}"
                       class="ms-auto form-confirmar" data-titulo="Reactivar"
-                      data-confirmar="¿Reactivar «{{ fila }}»?" data-aceptar="Sí, reactivar">
+                      data-confirmar="¿Reactivar &quot;{{ fila }}&quot;?" data-aceptar="Sí, reactivar">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-success">
                         <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivar

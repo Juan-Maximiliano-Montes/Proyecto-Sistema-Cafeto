@@ -75,7 +75,7 @@
             {% if p.borrado_logico %}
                 {% if puede_reactivar %}
                 <form method="post" class="ms-auto" action="{% url 'seguridad:reactivar_perfil' p.id_perfil %}"
-                      data-titulo="¿Reactivar el perfil?" data-aceptar="Sí, reactivar" data-confirmar="«{{ p.nombre }}» vuelve a poder asignarse.">
+                      data-titulo="¿Reactivar el perfil?" data-aceptar="Sí, reactivar" data-confirmar="&quot;{{ p.nombre }}&quot; vuelve a poder asignarse.">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise me-1"></i>Reactivar</button>
                 </form>
@@ -83,7 +83,7 @@
             {% elif puede_baja and not p.es_sistema %}
                 <form method="post" class="ms-auto" action="{% url 'seguridad:eliminar_perfil' p.id_perfil %}"
                       data-titulo="¿Dar de baja el perfil?" data-aceptar="Sí, dar de baja" data-peligro="1"
-                      data-confirmar="«{{ p.nombre }}» sólo se puede dar de baja si nadie lo tiene asignado.">
+                      data-confirmar="&quot;{{ p.nombre }}&quot; sólo se puede dar de baja si nadie lo tiene asignado.">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja el perfil" aria-label="Dar de baja"><i class="bi bi-archive"></i></button>
                 </form>

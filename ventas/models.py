@@ -185,7 +185,7 @@ class MedioPago(Maestra):
                 not self.es_cuenta_corriente or self.afecta_caja or self.recargo_porcentaje
                 or self.es_tarjeta_credito):
             raise ValidationError(
-                f'«{self.NOMBRE_CUENTA_CORRIENTE}» es el medio reservado para el fiado: '
+                f'"{self.NOMBRE_CUENTA_CORRIENTE}" es el medio reservado para el fiado: '
                 'no se le cambia el nombre, no entra al cajón y no lleva recargo.')
         # Mínimo 2: "QR" es un nombre de medio de pago legítimo (y es uno
         # de los datos iniciales; con 3 no se lo podía ni editar).
@@ -204,8 +204,8 @@ class MedioPago(Maestra):
                 'de caja se calculan sobre el importe cobrado.')})
         if self.afecta_caja and self.es_tarjeta_credito:
             raise ValidationError({'es_tarjeta_credito': (
-                'Una tarjeta de crédito no entra al cajón: desmarcá «Entra '
-                'al cajón».')})
+                'Una tarjeta de crédito no entra al cajón: desmarcá "Entra '
+                'al cajón".')})
         if not self.es_tarjeta_credito:
             self.cantidad_cuotas = 1
         if not self.cantidad_cuotas or not 1 <= self.cantidad_cuotas <= 36:

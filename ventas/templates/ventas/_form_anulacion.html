@@ -13,7 +13,7 @@
             </select>
         </div>
         <div class="col-md-6">
-            <label class="form-label small" for="detalle-anulacion-{{ venta.pk|stringformat:"d" }}">Detalle <span class="text-secondary">(obligatorio si es «Otro»)</span></label>
+            <label class="form-label small" for="detalle-anulacion-{{ venta.pk|stringformat:"d" }}">Detalle <span class="text-secondary">(obligatorio si es "Otro")</span></label>
             <input type="text" name="detalle" id="detalle-anulacion-{{ venta.pk|stringformat:"d" }}" class="form-control" maxlength="120">
         </div>
         {% if pide_clave %}

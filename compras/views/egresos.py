@@ -180,7 +180,7 @@ def registrar(request):
                         nuevo=instantanea(egreso),
                         detalle=f'{egreso.get_estado_pago_display()}: {pesos(egreso.monto)} · {egreso.concepto}.')
     messages.success(request, {
-        'anotar': 'Anotado: aparece en «A pagar» hasta que se pague.',
+        'anotar': 'Anotado: aparece en "A pagar" hasta que se pague.',
         'caja': f'Gasto registrado: salieron {pesos(egreso.monto)} del cajón.',
     }.get(modo, f'Pago registrado ({egreso.get_estado_pago_display().lower()}).'))
     return _con_vale(egreso)
@@ -245,7 +245,7 @@ def exportar_egresos(request):
     titulo = 'Pagos y gastos · ' + dict((c, e) for c, e, _i in PESTANIAS)[pestania]
     busqueda = request.GET.get('q', '').strip() if pestania == 'historial' else ''
     if busqueda:
-        titulo += f' · «{busqueda}»'
+        titulo += f' · "{busqueda}"'
     columnas = [ColumnaExportable('N°', 'numero'), ColumnaExportable('Tipo'),
                 ColumnaExportable('Concepto'), ColumnaExportable('A quién'),
                 ColumnaExportable('Monto', 'dinero'), ColumnaExportable('Medio'),

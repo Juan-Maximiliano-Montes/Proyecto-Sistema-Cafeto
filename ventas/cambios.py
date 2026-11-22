@@ -254,7 +254,7 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
         if credito.lo_que_falta_de(venta) > 0 and not medio_pago.es_cuenta_corriente:
             raise ValidationError(
                 f'La venta N° {venta.pk} fue fiada y todavía debe {pesos(credito.lo_que_falta_de(venta))}: '
-                'lo devuelto se descuenta de esa deuda. Elegí «Cuenta corriente»; del cajón no sale plata '
+                'lo devuelto se descuenta de esa deuda. Elegí "Cuenta corriente"; del cajón no sale plata '
                 'por mercadería que no se pagó.')
         # Por el mismo medio y por todo lo cobrado, recargo incluido (DD-66).
         importe_devuelto = reintegro(venta, medio_pago, importe_devuelto)
