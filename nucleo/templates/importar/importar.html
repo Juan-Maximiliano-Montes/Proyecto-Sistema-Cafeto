@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load cafeto %}
 {% block titulo %}Cafeto · Importar {{ importador.titulo|lower }}{% endblock %}
 
 {% block contenido %}
@@ -34,9 +35,9 @@
 </div>
 
 {% if errores and listas_total %}
-<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ listas_total }} fila(s) listas y {{ errores }} en cuarentena. Podés importar ya las que están bien: las otras no se tocan y te las llevás en un Excel con el motivo al lado.</span></div>
+<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ listas_total|pluralizar:"fila lista,filas listas" }} y {{ errores }} en cuarentena. Podés importar ya las que están bien: las otras no se tocan y te las llevás en un Excel con el motivo al lado.</span></div>
 {% elif errores %}
-<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{% if pendiente.importadas %}Ya se importaron {{ pendiente.importadas }} fila(s). Quedan {{ errores }} en cuarentena: bajalas, corregilas y volvé a subirlas.{% else %}Ninguna fila está en condiciones de importarse. Bajá el Excel con los motivos, corregilo y volvé a subirlo.{% endif %}</span></div>
+<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{% if pendiente.importadas %}Ya {{ pendiente.importadas|segun:"se importó,se importaron" }} {{ pendiente.importadas|pluralizar:"fila,filas" }}. {{ errores|segun:"Queda,Quedan" }} {{ errores }} en cuarentena: {{ errores|segun:"bajala, corregila y volvé a subirla|bajalas, corregilas y volvé a subirlas" }}.{% else %}Ninguna fila está en condiciones de importarse. Bajá el Excel con los motivos, corregilo y volvé a subirlo.{% endif %}</span></div>
 {% else %}
 <div class="aviso aviso-exito"><i class="bi bi-check-circle-fill"></i><span>La planilla «{{ pendiente.archivo }}» está lista para importar.</span></div>
 {% endif %}
@@ -44,11 +45,11 @@
 <div class="d-flex flex-wrap gap-2 mb-3">
     <form method="post" action="{% url 'importar_descartar' importador.clave %}" data-titulo="¿Descartamos el archivo?" data-aceptar="Sí, descartar" data-confirmar="{% if pendiente.importadas %}Lo que ya se importó queda. Se descartan las filas en cuarentena: si no bajaste el Excel, hacelo antes.{% else %}No se importa nada y vas a tener que subir el archivo de nuevo.{% endif %}">{% csrf_token %}<button type="submit" class="btn btn-secundario"><i class="bi bi-x-lg me-1"></i>Descartar y subir otra</button></form>
     {% if errores %}
-    <a href="{% url 'importar_errores' importador.clave %}" class="btn btn-secundario"><i class="bi bi-file-earmark-arrow-down me-1"></i>Descargar las {{ errores }} fila(s) con error en Excel</a>
+    <a href="{% url 'importar_errores' importador.clave %}" class="btn btn-secundario"><i class="bi bi-file-earmark-arrow-down me-1"></i>Descargar {{ errores|segun:"la fila,las filas" }} con error en Excel</a>
     {% endif %}
     {% if listas_total and por_aplicar %}
     <form method="post" action="{% url 'importar_confirmar' importador.clave %}" data-titulo="¿Importar?" data-aceptar="Sí, importar"
-          data-confirmar="Se aplican {{ altas }} alta(s) y {{ cambios }} cambio(s), todo junto.{% if errores %} Las {{ errores }} fila(s) en cuarentena NO se importan: quedan acá para que las bajes y las corrijas.{% endif %}">
+          data-confirmar="Se aplican {{ altas|pluralizar:"alta,altas" }} y {{ cambios|pluralizar:"cambio,cambios" }}, todo junto.{% if errores %} {{ errores|pluralizar:"fila,filas" }} en cuarentena NO {{ errores|segun:"se importa: queda acá para que la bajes y la corrijas|se importan: quedan acá para que las bajes y las corrijas" }}.{% endif %}">
         {% csrf_token %}{% if errores %}<input type="hidden" name="solo_validas" value="1">{% endif %}
         {% for o in importador.opciones %}<input type="hidden" name="{{ o.clave }}" value="{% if o.tildada %}1{% endif %}" data-opcion="{{ o.clave }}">{% endfor %}
         <button type="submit" class="btn btn-primary" data-requiere-red><i class="bi bi-check2-all me-1"></i>{% if errores %}Importar la{{ por_aplicar|pluralize }} {{ por_aplicar }} fila{{ por_aplicar|pluralize }} válida{{ por_aplicar|pluralize }} ahora{% else %}Confirmar la importación{% endif %}</button>

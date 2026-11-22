@@ -17,6 +17,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import urlencode
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -67,12 +68,12 @@ def _contexto_formularios(request):
     }
 
 
-@requiere_alguno(*PERMISOS)
-def egresos(request):
-    hoy = timezone.localdate()
+def _pestania(request):
+    """La pestaña pedida, su consulta y los parámetros que la repiten
+    (la lista y la exportación muestran lo mismo)."""
     pestania = request.GET.get('ver', 'a_pagar')
-    contexto = _contexto_formularios(request)
     base = Egreso.objects.select_related('id_tipo_egreso', 'id_proveedor', 'id_medio_pago', 'id_compra')
+    parametros = {}
     if pestania == 'por_acreditar':
         consulta = base.filter(estado_pago='PENDIENTE_ACREDITACION').order_by('fecha_egreso', 'pk')
     elif pestania == 'historial':
@@ -80,16 +81,27 @@ def egresos(request):
         consulta = base.filter(estado_pago__in=RESUELTOS).order_by('-fecha_egreso', '-pk')
         busqueda = request.GET.get('q', '').strip()
         if busqueda:
+            parametros['q'] = busqueda
             consulta = consulta.filter(Q(concepto__icontains=busqueda)
                                        | Q(destinatario__icontains=busqueda)
                                        | Q(id_proveedor__nombre_proveedor__icontains=busqueda))
     else:
         pestania = 'a_pagar'
         consulta = base.filter(estado_pago='PENDIENTE_PAGO').order_by('fecha_vencimiento', 'pk')
+    return pestania, consulta, urlencode({'ver': pestania, **parametros})
+
+
+@requiere_alguno(*PERMISOS)
+def egresos(request):
+    hoy = timezone.localdate()
+    contexto = _contexto_formularios(request)
+    base = Egreso.objects.all()
+    pestania, consulta, parametros = _pestania(request)
+    if pestania == 'a_pagar':
         contexto['compras_impagas'] = servicio.compras_por_pagar()[:50]
     contexto.update(paginar(request, consulta, TAMANIOS_TABLA, por_defecto=25))
     contexto.update({
-        'pestania': pestania, 'filtro': request.GET,
+        'pestania': pestania, 'filtro': request.GET, 'parametros': parametros,
         'vistas': [{'clave': clave, 'etiqueta': etiqueta, 'activa': clave == pestania, 'url': f'?ver={clave}',
                     'cantidad': cantidad} for (clave, etiqueta, _icono), cantidad in zip(PESTANIAS, (
                         base.filter(estado_pago='PENDIENTE_PAGO').count()
@@ -229,8 +241,11 @@ def conciliar(request, pk):
 
 @requiere_alguno(*PERMISOS)
 def exportar_egresos(request):
-    consulta = (Egreso.objects.select_related('id_tipo_egreso', 'id_proveedor', 'id_medio_pago')
-                .order_by('-fecha_egreso', '-pk'))
+    pestania, consulta, _parametros = _pestania(request)
+    titulo = 'Pagos y gastos · ' + dict((c, e) for c, e, _i in PESTANIAS)[pestania]
+    busqueda = request.GET.get('q', '').strip() if pestania == 'historial' else ''
+    if busqueda:
+        titulo += f' · «{busqueda}»'
     columnas = [ColumnaExportable('N°', 'numero'), ColumnaExportable('Tipo'),
                 ColumnaExportable('Concepto'), ColumnaExportable('A quién'),
                 ColumnaExportable('Monto', 'dinero'), ColumnaExportable('Medio'),
@@ -242,7 +257,7 @@ def exportar_egresos(request):
               e.get_estado_pago_display(), e.comprobante or '']
              for e in consulta.iterator(chunk_size=500))
     formato = request.GET.get('formato')
-    respuesta = exportar(formato, 'Pagos y gastos', columnas, filas)
+    respuesta = exportar(formato, titulo, columnas, filas)
     registrar_auditoria(request, 'EXPORTACION', 'EGRESOS', modulo='COMPRAS',
-                        detalle='Exportó los pagos y gastos.')
+                        detalle=f'Exportó {titulo}.')
     return respuesta

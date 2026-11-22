@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 
 from nucleo.importar import CLAVE_SESION, IMPORTADORES
 from seguridad.servicios import registrar_acceso_denegado, registrar_auditoria
+from nucleo.textos import pluralizar, segun
 
 
 #  Cuántas filas listas se dibujan: con miles, la tabla entera tarda más en
@@ -103,9 +104,11 @@ def confirmar(request, clave):
     aplicadas = [r for r in resultados if r.ok and r.foto_nueva]
     con_foto = aplicadas if len(aplicadas) <= FOTOS_EN_AUDITORIA else [
         r for r in aplicadas if r.foto_anterior][:FOTOS_EN_AUDITORIA]
-    detalle = f'Importó «{pendiente["archivo"]}»: {altas} alta(s) y {cambios} cambio(s).'
+    resumen = f"{pluralizar(altas, 'alta')} y {pluralizar(cambios, 'cambio')}"
+    detalle = f'Importó «{pendiente["archivo"]}»: {resumen}.'
     if afuera:
-        detalle += f' {len(afuera)} fila(s) quedaron en cuarentena y no se importaron.'
+        detalle += (f" {pluralizar(len(afuera), 'fila')} {segun(len(afuera), 'quedó', 'quedaron')} en cuarentena "
+                    f"y no {segun(len(afuera), 'se importó', 'se importaron')}.")
     if len(con_foto) < len(aplicadas):
         detalle += ' Por el tamaño, el registro guarda el detalle de los cambios y no el de cada alta.'
     for nota in getattr(importador, 'notas', None) or []:
@@ -124,11 +127,12 @@ def confirmar(request, clave):
             'filas': [f for f in pendiente['filas'] if f.get('_fila') in numeros],
             'importadas': altas + cambios}
         messages.success(
-            request, f'Listo: {altas} alta(s) y {cambios} cambio(s). '
-                     f'Quedaron {len(afuera)} fila(s) en cuarentena: bajalas, corregilas y volvé a subirlas.')
+            request, f'Listo: {resumen}. '
+                     f"{segun(len(afuera), 'Quedó', 'Quedaron')} {pluralizar(len(afuera), 'fila')} en cuarentena: "
+                     f"{segun(len(afuera), 'bajala, corregila', 'bajalas, corregilas')} y volvé a subirlas.")
     else:
         request.session.pop(clave_sesion, None)
-        messages.success(request, f'Listo: {altas} alta(s) y {cambios} cambio(s).')
+        messages.success(request, f'Listo: {resumen}.')
     return redirect('importar', clave=clave)
 
 

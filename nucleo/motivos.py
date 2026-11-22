@@ -3,8 +3,8 @@
 Los modelos con baja lógica contestan ``motivos_que_impiden_la_baja()`` con
 una lista de textos, y el CRUD los engarza en una sola frase::
 
-    No se puede dar de baja "Cafetería" porque tiene 3 producto(s)
-    vigente(s); dalos de baja primero.
+    No se puede dar de baja "Cafetería" porque tiene 3 productos
+    vigentes; dalos de baja primero.
 
 Para que eso se lea bien, cada motivo es un FRAGMENTO que continúa el
 "porque": empieza en minúscula y no lleva punto final.

@@ -163,7 +163,7 @@ class ExportacionDeFacilVirtualTest(TestCase):
         self.assertFalse(Producto.objects.exists())
         despues = self.confirmar()
         self.assertEqual(Producto.objects.count(), 2)
-        self.assertContains(despues, 'Quedaron 2 fila(s) en cuarentena')
+        self.assertContains(despues, 'Quedaron 2 filas en cuarentena')
         self.assertEqual(despues.context['errores'], 2)
         self.assertEqual(despues.context['listas_total'], 0)
         excel = self.client.get(reverse('importar_errores', args=['productos']))
@@ -294,7 +294,7 @@ class StockInicialAlImportarTest(TestCase):
     def importar(self, usuario, **extra):
         fabrica.entrar(self.client, usuario)
         pantalla = self.client.post(self.url, {'archivo': xlsx(self.filas)}, follow=True)
-        self.assertContains(pantalla, '1 producto(s) nuevos traen un stock')
+        self.assertContains(pantalla, '1 producto nuevo trae un stock')
         self.assertContains(pantalla, '1 con stock negativo y 1')
         return self.client.post(reverse('importar_confirmar', args=['productos']), extra, follow=True)
 
@@ -336,7 +336,7 @@ class ElaboradosYConteoAgilTest(TestCase):
                  ['502', 'PROMO CAFE + MEDIALUNA', 'Kiosco', 0, 0, 0, 2500, '', 0, 0, 0, 'N', 'S'],
                  ['503', 'CARAMELOS', 'Kiosco', 100, 0, 40, 200, '', 5, 0, 0, 'S', 'S']]
         pantalla = self.client.post(reverse('importar', args=['productos']), {'archivo': xlsx(filas)}, follow=True)
-        self.assertContains(pantalla, '2 producto(s) entran como elaborados')
+        self.assertContains(pantalla, '2 productos entran como elaborados')
         self.client.post(reverse('importar_confirmar', args=['productos']), follow=True)
         tipos = {p.codigo_barras: (p.tipo_producto, p.id_proveedor_id is None) for p in Producto.objects.all()}
         self.assertEqual(tipos['501'], ('ELABORADO', True))

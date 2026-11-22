@@ -42,6 +42,7 @@ from nucleo.validaciones import (
     validar_entero,
     validar_orden_de_fechas,
 )
+from nucleo.textos import pluralizar
 
 
 # ===========================================================================
@@ -146,11 +147,11 @@ class CategoriaFidelizacion(Maestra):
         clientes = Cliente.objects.filter(
             id_categoria=self, borrado_logico=False).count()
         if clientes:
-            motivos.append(f'tiene {clientes} cliente(s) vigente(s)')
+            motivos.append(f"tiene {pluralizar(clientes, 'cliente vigente', 'clientes vigentes')}")
         beneficios = Beneficio.objects.filter(
             id_categoria=self, borrado_logico=False).count()
         if beneficios:
-            motivos.append(f'tiene {beneficios} beneficio(s) vigente(s)')
+            motivos.append(f"tiene {pluralizar(beneficios, 'beneficio vigente', 'beneficios vigentes')}")
         return motivos
 
 

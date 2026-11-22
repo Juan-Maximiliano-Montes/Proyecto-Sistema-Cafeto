@@ -119,13 +119,13 @@ class AlertasTest(BaseCatalogo):
         self.assertEqual(vencido['lote'], {'id': lote.pk, 'numero': 'L1', 'cantidad': 2.5})
         self.assertEqual(vencido['id'], f'VENCIDO-{self.queso.pk}-{lote.pk}')
         self.assertIn('El lote L1 venció con 2,5 KG en góndola', vencido['detalle'])
-        self.assertEqual(sin_stock['detalle'], 'No queda stock. El mínimo es 5 unidad(es).')
+        self.assertEqual(sin_stock['detalle'], 'No queda stock. El mínimo es 5 unidades.')
         self.assertIsNone(sin_stock['dias'])
         self.assertIsNone(sin_stock['lote'])
         self.assertEqual(por_vencer['dias'], 3)
         self.assertIn('vence en 3 días', por_vencer['detalle'])
         self.assertIn('20% de rebaja', por_vencer['detalle'])
-        self.assertEqual(bajo['detalle'], 'Quedan 10 unidad(es); el mínimo es 15 unidad(es).')
+        self.assertEqual(bajo['detalle'], 'Quedan 10 unidades; el mínimo es 15 unidades.')
 
     def test_un_insumo_por_debajo_de_cero_queda_a_revisar(self):
         # La receta descontó café antes de que se cargara la compra. En el

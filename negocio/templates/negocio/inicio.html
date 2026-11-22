@@ -18,7 +18,7 @@
 {% endfor %}
 
 {% if acciones %}
-<div class="grilla grilla-compacta mb-4">
+<div class="grilla grilla-atajos atajos-{{ acciones|length }} mb-4">
     {% for titulo, icono, url, detalle in acciones %}
     <a href="{{ url }}" class="tarjeta tarjeta-accion">
         <i class="bi {{ icono }}"></i>
@@ -30,7 +30,7 @@
 {% endif %}
 
 {% if indicadores %}
-<div class="grilla">
+<div class="grilla grilla-resumen resumen-{{ indicadores|length }}">
     {% for i in indicadores %}
     <a href="{{ i.url }}" class="tarjeta kpi text-reset{% if i.destacado %} tarjeta-destacada{% endif %}">
         <span class="eyebrow">{{ i.titulo }}</span>

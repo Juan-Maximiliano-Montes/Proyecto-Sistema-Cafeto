@@ -124,7 +124,7 @@ class NavegacionFluidaTest(StaticLiveServerTestCase):
             enlaces = pagina.eval_on_selector_all('#periodosTablero a', 'es => es.map(e => e.getAttribute("href"))')
             self.assertTrue(enlaces and all(f'ver={clave}&' in e for e in enlaces), enlaces)
             titulo = pagina.inner_text('#titDetalle').strip()
-            self.assertIn(titulo, pagina.inner_text('.exportar-capsula .dropdown-header'))
+            self.assertIn(f'Exportar «{titulo}»', pagina.inner_text('.exportar-capsula-boton'))
             self.assertTrue(any('/negocio/reportes/' in u for u in parciales))
         self.con_pagina(hacer)
 

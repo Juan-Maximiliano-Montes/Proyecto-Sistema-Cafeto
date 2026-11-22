@@ -17,6 +17,7 @@ from django.utils import timezone
 from compras import precarga
 from compras.models import EstadoFacturaRecibida, FacturaRecibida, OrigenFactura, Proveedor
 from nucleo.templatetags.cafeto import pesos
+from nucleo.textos import pluralizar, segun
 
 
 def huella(datos):
@@ -34,7 +35,7 @@ def _resumen(borrador):
     numero = (f" {borrador['v'].zfill(4)}-{borrador['u'].zfill(8)}"
               if borrador.get('v') and borrador.get('u') else '')
     cantidad = len(borrador['r']) + len(borrador.get('x') or [])
-    return f'{quien}{numero} · {cantidad} renglón(es)'[:200]
+    return f"{quien}{numero} · {pluralizar(cantidad, 'renglón', 'renglones')}"[:200]
 
 
 def recibir(datos, origen=None, remitente=None):
@@ -96,9 +97,8 @@ def descartar(pk, usuario):
 def aviso(cantidad):
     if not cantidad:
         return ''
-    return (f'Tenés {cantidad} factura(s) recibidas por WhatsApp/Correo listas para revisar y confirmar.'
-            if cantidad != 1 else
-            'Tenés 1 factura recibida por WhatsApp/Correo lista para revisar y confirmar.')
+    return (f"Tenés {pluralizar(cantidad, 'factura recibida', 'facturas recibidas')} por WhatsApp/Correo "
+            f"{segun(cantidad, 'lista', 'listas')} para revisar y confirmar.")
 
 
 # ---------------------------------------------------------------------------

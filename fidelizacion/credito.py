@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from fidelizacion.models import Cliente, EstadoCredito, MovimientoCuenta, MovimientoPuntos
 from nucleo.templatetags.cafeto import pesos
+from nucleo.textos import pluralizar
 
 CERO = Decimal('0')
 CENTAVO = Decimal('0.01')
@@ -422,7 +423,7 @@ def quitar_puntos(cliente, puntos, usuario):
     if puntos <= 0:
         raise ValidationError('Escribí cuántos puntos se le quitan.')
     if puntos > cliente.puntos_disponibles:
-        raise ValidationError(f'{cliente} tiene {cliente.puntos_disponibles} punto(s): no se le pueden quitar {puntos}.')
+        raise ValidationError(f"{cliente} tiene {pluralizar(cliente.puntos_disponibles, 'punto')}: no se le pueden quitar {puntos}.")
     MovimientoPuntos.objects.create(id_cliente=cliente, tipo_movimiento='AJUSTE', puntos=-puntos)
     cliente.refresh_from_db()
     return cliente

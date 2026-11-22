@@ -27,6 +27,7 @@ from nucleo.validaciones import clave_normalizada, es_gtin, normalizar_cuit, san
 from stock.models import (
     ALICUOTAS_IVA, TIPOS_CON_PROVEEDOR, Marca, Producto, Rubro, TipoProducto, UnidadMedida)
 from nucleo.templatetags.cafeto import pesos
+from nucleo.textos import pluralizar, segun
 
 CAMPOS_QUE_SE_ACTUALIZAN = ('precio_venta', 'precio_costo', 'alicuota_iva',
                             'stock_minimo', 'id_proveedor_id', 'codigo_barras')
@@ -165,12 +166,14 @@ class ImportadorProductos(Importador):
         negativos, raros = nuevos.count('NEGATIVO'), nuevos.count('DECIMALES')
         elaborados = sum(1 for r in resultados if r.ok and r.accion == 'ALTA'
                          and r.preparado[0].tipo_producto == TipoProducto.ELABORADO)
-        frases = ([f'{elaborados} producto(s) entran como elaborados (por el rubro o porque el nombre empieza con '
+        frases = ([f"{pluralizar(elaborados, 'producto')} {segun(elaborados, 'entra como elaborado', 'entran como elaborados')} "
+                   '(por el rubro o porque el nombre empieza con '
                    '«CAFETERIA» o «PROMO»): se venden sin llevar stock. Si alguno en realidad se compra hecho, '
                    'cambiale el tipo antes de importarlo.'] if elaborados else [])
         if not (cargables or negativos or raros):
             return frases
-        frases.append(f'{cargables} producto(s) nuevos traen un stock que se puede cargar como inventario inicial.')
+        frases.append(f"{pluralizar(cargables, 'producto nuevo', 'productos nuevos')} {segun(cargables, 'trae', 'traen')} "
+                      'un stock que se puede cargar como inventario inicial.')
         if negativos or raros:
             frases.append(
                 f'{negativos + raros} quedan en 0 pase lo que pase: {negativos} con stock negativo y {raros} '
@@ -196,8 +199,8 @@ class ImportadorProductos(Importador):
         servicios.enviar_conteo(conteo)
         if servicios.puede_aprobar_lo_propio(usuario):
             servicios.aprobar(conteo, usuario, 'Stock inicial de la importación')
-            return [f'Se cargó el stock inicial de {len(pares)} producto(s).']
-        return [f'El stock inicial de {len(pares)} producto(s) quedó como un conteo pendiente de aprobación '
+            return [f"Se cargó el stock inicial de {pluralizar(len(pares), 'producto')}."]
+        return [f"El stock inicial de {pluralizar(len(pares), 'producto')} quedó como un conteo pendiente de aprobación "
                 f'({conteo}): aparece en el mostrador cuando la titular lo apruebe.']
 
     #  Lo que se prepara en el local no se compra ni se cuenta: si la planilla

@@ -14,8 +14,8 @@
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'ventas:exportar_turnos' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
-                <li><a class="dropdown-item" href="{% url 'ventas:exportar_turnos' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+                <li><a hx-boost="false" class="dropdown-item" href="{% url 'ventas:exportar_turnos' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a hx-boost="false" class="dropdown-item" href="{% url 'ventas:exportar_turnos' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
             </ul>
         </div>
     </div>

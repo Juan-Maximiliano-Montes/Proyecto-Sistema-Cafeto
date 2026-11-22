@@ -65,6 +65,8 @@
     --c-aviso-fondo: #2A2410;
     --c-aviso-borde: #6B5A2A;
     --c-info: #8AB4FF;
+    --c-info-fondo: #18223F;
+    --c-info-borde: #34508A;
     --c-sombra: 0 10px 30px rgba(0, 0, 0, .35);
     --logo-claro: none;
     --logo-oscuro: block;
@@ -96,6 +98,8 @@
     --c-aviso-fondo: #FFF3D6;
     --c-aviso-borde: #F2D38A;
     --c-info: #2F5FB3;
+    --c-info-fondo: #EAF1FD;
+    --c-info-borde: #A9C1EC;
     --c-sombra: 0 8px 24px rgba(22, 22, 22, .08);
     --logo-claro: block;
     --logo-oscuro: none;
@@ -307,9 +311,10 @@ code, .codigo { color: var(--c-marca); background: transparent; }
 .aviso i { font-size: 1.15rem; line-height: 1.2; }
 .aviso-error, .alert-danger { color: var(--c-peligro); background: var(--c-peligro-fondo); border-color: var(--c-peligro-borde); }
 .aviso-exito, .alert-success { color: var(--c-exito); background: var(--c-exito-fondo); border-color: var(--c-exito-borde); }
-.aviso-aviso, .alert-warning, .alert-info, .alert-secondary {
+.aviso-aviso, .alert-warning, .alert-secondary {
     color: var(--c-aviso); background: var(--c-aviso-fondo); border-color: var(--c-aviso-borde);
 }
+.aviso-info, .alert-info { color: var(--c-info); background: var(--c-info-fondo); border-color: var(--c-info-borde); }
 .aviso .btn-close { margin-left: auto; }
 /* El aviso que se puede cerrar (mensajes de Django): usa la clase .alert de
    Bootstrap para que la X funcione (data-bs-dismiss="alert"), pero con la
@@ -318,6 +323,7 @@ code, .codigo { color: var(--c-marca); background: transparent; }
 .aviso.aviso-error.alert { color: var(--c-peligro); }
 .aviso.aviso-exito.alert { color: var(--c-exito); }
 .aviso.aviso-aviso.alert { color: var(--c-aviso); }
+.aviso.aviso-info.alert { color: var(--c-info); }
 .aviso.alert-dismissible { position: relative; padding-right: 2.75rem; }
 .aviso.alert-dismissible .btn-close {
     position: absolute; top: 50%; right: .6rem; transform: translateY(-50%);
@@ -429,7 +435,9 @@ html { scroll-padding-top: calc(var(--alto-barra, 4rem) + 1rem); }
 .herramientas .buscador { flex: 1 1 260px; position: relative; }
 .herramientas .buscador i { position: absolute; left: .85rem; top: 50%; transform: translateY(-50%); color: var(--c-texto-3); }
 .herramientas .buscador input { padding-left: 2.4rem; }
-.herramientas .form-select { width: auto; }
+.herramientas .form-select { width: auto; max-width: 100%; }
+.herramientas > *, .encabezado > *, .acciones > * { min-width: 0; max-width: 100%; }
+.select2-container { max-width: 100%; }
 
 /* Grilla de tarjetas: el listado de todo el sistema */
 .grilla { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
@@ -490,7 +498,7 @@ html { scroll-padding-top: calc(var(--alto-barra, 4rem) + 1rem); }
 .sin-conexion.visible { display: inline-flex; }
 
 /* Pantalla de acceso */
-.acceso { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem;
+.acceso { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem;
           background: radial-gradient(1200px 600px at 10% -10%, rgba(250, 180, 31, .10), transparent 60%), var(--c-fondo); }
 .acceso-caja { width: 100%; max-width: 420px; position: relative; z-index: 1; }
 /* Marca de agua del login: el logo centrado de fondo, apenas visible y sin
@@ -637,10 +645,20 @@ kbd { font-size: .7em; opacity: .75; }
 /* Reportes: las cápsulas y, pegado a ellas, lo que exporta la elegida. */
 .capsulas-reportes { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .capsulas-reportes > nav { flex: 1 1 auto; min-width: 0; }
-.exportar-capsula { margin-left: auto; }
-.exportar-capsula-nombre { display: inline-block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.cabecera-reporte { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+.cabecera-reporte > h2 { min-width: 0; }
+.exportar-capsula { margin-left: auto; min-width: 0; max-width: 100%; }
+.exportar-capsula-boton { display: inline-flex; align-items: center; gap: .4rem; max-width: min(24rem, 100%); }
+.exportar-capsula-boton > .text-truncate { min-width: 0; }
+.exportar-capsula .dropdown-menu { max-width: calc(100vw - 2rem); }
 .exportar-capsula .dropdown-header { white-space: normal; max-width: 20rem; }
-@media (max-width: 575.98px) { .exportar-capsula-nombre { max-width: 8rem; } }
+@media (max-width: 575.98px) {
+    .cabecera-reporte { flex-direction: column; align-items: stretch; }
+    .exportar-capsula { margin-left: 0; width: 100%; }
+    .exportar-capsula-boton { width: 100%; max-width: 100%; justify-content: center; min-height: 44px; }
+    .exportar-capsula .dropdown-menu { width: 100%; }
+    .exportar-capsula .dropdown-header { max-width: none; }
+}
 
 /* Panel lateral por áreas desplegables (<details>). */
 .lateral-desplegable > summary {
@@ -758,4 +776,40 @@ html.cargando-parcial #contenido { opacity: .55; transition: opacity .2s ease .1
     @view-transition { navigation: auto; }
     .lateral { view-transition-name: lateral; }
     .barra { view-transition-name: barra; }
+}
+
+/* ==========================================================================
+   CELULAR Y TABLET (DD-106)
+   ========================================================================== */
+/* Inicio: los atajos en filas completas, alineados con el resumen de abajo. */
+.grilla-atajos, .grilla-resumen { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grilla-atajos.atajos-1, .grilla-resumen.resumen-1 { grid-template-columns: minmax(0, 1fr); }
+.grilla-atajos.atajos-2, .grilla-atajos.atajos-4, .grilla-resumen.resumen-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grilla-atajos.atajos-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.grilla-atajos.atajos-5 > * { grid-column: span 2; }
+.grilla-atajos.atajos-5 > :nth-child(n+4) { grid-column: span 3; }
+.grilla-atajos > *, .grilla-resumen > * { min-width: 0; }
+@media (max-width: 991.98px) {
+    .grilla-atajos:not(.atajos-1), .grilla-resumen:not(.resumen-1) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grilla-atajos.atajos-5 > * { grid-column: auto; }
+    .grilla-atajos > :last-child:nth-child(odd):not(:first-child),
+    .grilla-resumen > :last-child:nth-child(odd):not(:first-child) { grid-column: 1 / -1; }
+}
+@media (max-width: 575.98px) {
+    .grilla-atajos { gap: .6rem; }
+    .grilla-atajos .tarjeta-accion { padding: .9rem; gap: .25rem; }
+    .grilla-atajos .tarjeta-accion i { font-size: 1.35rem; }
+    .grilla-atajos .tarjeta-accion strong { font-size: 1rem; }
+    .grilla-resumen:not(.resumen-1) { grid-template-columns: minmax(0, 1fr); }
+    .grilla-resumen > :last-child:nth-child(odd):not(:first-child) { grid-column: auto; }
+}
+
+/* Ingreso, clave y autorización a distancia: arriba y a mano en el celular. */
+.acceso .btn { min-height: 44px; }
+.acceso-caja .tarjeta-datos dd, .acceso-caja p { overflow-wrap: anywhere; }
+@media (max-width: 575.98px) {
+    .acceso { place-items: start center; padding: 1rem 1rem 1.5rem; }
+    .acceso-logo { height: 72px; margin-bottom: .75rem; }
+    .acceso-caja .card { padding: 1.25rem; }
+    .acceso-caja .card .mb-4 { margin-bottom: 1rem !important; }
 }

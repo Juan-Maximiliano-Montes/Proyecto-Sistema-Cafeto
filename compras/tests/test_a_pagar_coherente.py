@@ -81,10 +81,10 @@ class APagarCoherenteTest(TestCase):
         _numeros, avisos = panel.del_dia(self.admin, self.hoy)
         por_clave = {a['clave']: a for a in avisos}
         self.assertEqual(por_clave['PAGOS_VENCIDOS']['tipo'], 'error')
-        self.assertIn('1 pago(s) a proveedores o servicios ya vencieron (por $\u00a06.000,00)',
+        self.assertIn('1 pago a proveedores o servicios ya venció (por $\u00a06.000,00)',
                       por_clave['PAGOS_VENCIDOS']['texto'])
         self.assertEqual(avisos[0]['clave'], 'PAGOS_VENCIDOS')
-        self.assertIn('1 pago(s) enviados hace más de 3 días', por_clave['SIN_ACREDITAR']['texto'])
+        self.assertIn('1 pago enviado hace más de 3 días', por_clave['SIN_ACREDITAR']['texto'])
         inicio = self.client.get(reverse('home'))
         self.assertContains(inicio, '?ver=a_pagar')
         self.assertContains(inicio, '?ver=por_acreditar')
@@ -97,3 +97,37 @@ class APagarCoherenteTest(TestCase):
             egresos.registrar_egreso(self.tipo, cc, D('100'), 'Algo', destinatario='Alguien')
         pantalla = self.client.get(reverse('compras:egresos'))
         self.assertNotIn(cc, list(pantalla.context['medios']))
+
+
+class EgresosPantallaYExportacionTest(TestCase):
+    """DD-106: el monto sugerido es lo que falta, la exportación respeta la
+    pestaña y la búsqueda, y cada formulario lleva su propio token."""
+
+    setUp = APagarCoherenteTest.setUp
+
+    def csv(self, **params):
+        respuesta = self.client.get(reverse('compras:exportar_egresos'), {'formato': 'csv', **params})
+        return b''.join(respuesta.streaming_content).decode('utf-8-sig')
+
+    def test_el_monto_sugerido_es_lo_que_falta_y_no_el_saldo(self):
+        pantalla = self.client.get(reverse('compras:egresos'), {'ver': 'a_pagar', 'compra': self.mitad.pk})
+        self.assertContains(pantalla, 'id="eMonto" class="form-control" value="6000"')
+
+    def test_exportar_respeta_la_pestania_y_la_busqueda(self):
+        egresos.conciliar(self.transferida, True, self.hoy)
+        pantalla = self.client.get(reverse('compras:egresos'), {'ver': 'historial', 'q': 'entero'}).content.decode()
+        self.assertIn('?formato=xlsx&amp;ver=historial&amp;q=entero', pantalla)
+        self.assertIn('hx-boost="false" href="/compras/egresos/exportar/?formato=pdf&amp;ver=historial', pantalla)
+        csv = self.csv(ver='historial', q='entero')
+        self.assertIn('Pago entero', csv)
+        self.assertNotIn('Pago parcial', csv)
+        acreditar = self.csv(ver='por_acreditar')
+        self.assertIn('Pago parcial', acreditar)
+        self.assertNotIn('Pago entero', acreditar)
+
+    def test_cada_formulario_con_su_token(self):
+        import re
+        pantalla = self.client.get(reverse('compras:egresos'), {'ver': 'a_pagar'}).content.decode()
+        tokens = re.findall(r'name="token_operacion" value="([0-9a-f]{32})"', pantalla)
+        self.assertGreater(len(tokens), 1)
+        self.assertEqual(len(tokens), len(set(tokens)))

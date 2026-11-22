@@ -10,6 +10,7 @@ from nucleo.exportar import exportar
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
 from nucleo.validaciones import id_valido
+from nucleo.textos import pluralizar
 
 TOPE_EXCEL = 50000
 PRIMER_ANIO = 2000
@@ -69,5 +70,5 @@ def exportar_archivo(request):
         descripcion += f' · primeras {TOPE_EXCEL:,} filas: para el período completo bajá el CSV'.replace(',', '.')
     registrar_auditoria(request, 'EXPORTACION', 'ARCHIVO HISTORICO', modulo='NEGOCIO',
                         detalle=f'Exportó «{libro.titulo}» del archivo histórico ({formato.upper()}), '
-                                f'{periodo.lower()}: {len(filas)} fila(s).')
+                                f"{periodo.lower()}: {pluralizar(len(filas), 'fila')}.")
     return exportar(formato, f'Archivo {libro.titulo}', columnas, filas, descripcion, tope=TOPE_EXCEL)

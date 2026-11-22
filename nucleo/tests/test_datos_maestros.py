@@ -555,7 +555,7 @@ class BajasYReactivacionTest(BaseMaestros):
             self.url('rubros', 'eliminar', self.rubro.pk), follow=True)
         self.rubro.refresh_from_db()
         self.assertFalse(self.rubro.borrado_logico)
-        self.assertIn('producto(s) vigente(s)', ' '.join(self.mensajes(respuesta)))
+        self.assertIn('1 producto vigente', ' '.join(self.mensajes(respuesta)))
 
     def test_producto_con_stock_no_se_da_de_baja(self):
         producto = self.dar_stock(self.producto_de_prueba(), 7)
@@ -563,7 +563,7 @@ class BajasYReactivacionTest(BaseMaestros):
             self.url('productos', 'eliminar', producto.pk), follow=True)
         producto.refresh_from_db()
         self.assertFalse(producto.borrado_logico)
-        self.assertIn('7 unidad(es) en stock',
+        self.assertIn('7 unidades en stock',
                       ' '.join(self.mensajes(respuesta)))
 
     def test_el_efectivo_no_se_da_de_baja(self):
@@ -627,7 +627,7 @@ class BajasYReactivacionTest(BaseMaestros):
             self.url('categorias', 'eliminar', gold.pk), follow=True)
         gold.refresh_from_db()
         self.assertFalse(gold.borrado_logico)
-        self.assertIn('cliente(s) vigente(s)',
+        self.assertIn('1 cliente vigente',
                       ' '.join(self.mensajes(respuesta)))
 
     def test_tipo_de_egreso_con_pendientes_no_se_da_de_baja(self):

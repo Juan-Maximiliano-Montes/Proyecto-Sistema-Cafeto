@@ -715,6 +715,10 @@
             return elemento.href ? new URL(elemento.href) : null;
         } catch (e) { return null; }
     }
+    function esDescarga(elemento, url) {
+        return elemento.hasAttribute('download') || /\/exportar|\.(pdf|xlsx|csv)$/i.test(url.pathname) ||
+               url.searchParams.has('formato');
+    }
     function sePuedeParcial(url) {
         if (!firmaActual || !firmaActual.reinicia || url.origin !== location.origin) { return false; }
         var conocida = firmas()[url.pathname];
@@ -778,7 +782,7 @@
     document.addEventListener('htmx:confirm', function (evento) {
         var elemento = evento.detail.elt;
         var url = elemento && urlDe(elemento);
-        if (!url || sePuedeParcial(url)) { return; }
+        if (!url || (!esDescarga(elemento, url) && sePuedeParcial(url))) { return; }
         evento.preventDefault();
         irA(url, elemento);
     });
@@ -866,11 +870,6 @@
     // ---------------------------------------------------------------------
     function columnaDe(campo) {
         return campo.closest('.col-md-6, .col-12') || campo.parentNode;
-    }
-    function escapar(texto) {
-        var div = document.createElement('div');
-        div.textContent = texto == null ? '' : String(texto);
-        return div.innerHTML;
     }
     function quitarAviso(campo) {
         var viejo = columnaDe(campo).querySelector(':scope > .aviso-parecidos');

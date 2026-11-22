@@ -25,7 +25,7 @@
     <div class="tarjeta kpi h-100"><span class="eyebrow">Gastos, mermas e incobrables</span><span class="valor">{{ gastos_y_mermas|pesos }}</span></div>
     <div class="tarjeta kpi h-100 tarjeta-destacada"><span class="eyebrow">Resultado del mes</span><span class="valor{% if resultado < 0 %} text-peligro{% endif %}">{{ resultado|pesos }}</span><span class="detalle">ganancia bruta{% if interes %} más recargos por mora{% endif %}, menos gastos, mermas e incobrables</span></div>
 </div>
-{% if bruta.sin_costo %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ bruta.sin_costo }} renglón(es) se vendieron con costo $ 0: la ganancia está inflada hasta que les cargues el costo a esos productos.</span></div>{% endif %}
+{% if bruta.sin_costo %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ bruta.sin_costo|pluralizar:"renglón,renglones" }} {{ bruta.sin_costo|segun:"se vendió,se vendieron" }} con costo $ 0: la ganancia está inflada hasta que {{ bruta.sin_costo|segun:"le cargues el costo a ese producto,les cargues el costo a esos productos" }}.</span></div>{% endif %}
 
 <div class="row g-3">
     <div class="col-md-6 col-xl-4">

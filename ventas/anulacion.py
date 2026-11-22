@@ -55,6 +55,7 @@ from ventas.models import (
     TurnoCaja,
     Venta,
 )
+from nucleo.textos import pluralizar
 
 PERMISO = 'anular_venta'
 
@@ -73,8 +74,7 @@ class Anulacion:
     def resumen(self):
         partes = []
         if self.renglones_stock:
-            partes.append(f'volvió al stock lo de {self.renglones_stock} '
-                          'asiento(s)')
+            partes.append(f"volvió al stock lo de {pluralizar(self.renglones_stock, 'asiento')}")
         if self.efectivo:
             partes.append(f'salieron {pesos(self.efectivo)} del cajón')
         if self.deuda_cancelada:

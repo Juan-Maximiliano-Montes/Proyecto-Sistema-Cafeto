@@ -33,6 +33,7 @@ from stock.models import Producto, Rubro
 from nucleo.templatetags.cafeto import pesos
 from nucleo.validaciones import id_valido
 from nucleo import json_seguro
+from nucleo.textos import pluralizar, segun
 
 MAXIMO_DE_RENGLONES = 120
 
@@ -243,14 +244,17 @@ def recepcion(request):
                     + ('son tres compras seguidas a este proveedor.' if motivo == 'FRECUENCIA'
                        else f'a {anterior} no se le compra hace más de seis meses.')))
             if marcas_puestas:
-                messages.info(request, f'{len(marcas_puestas)} producto(s) que estaban sin marca '
-                                       'quedaron con la que figura en la factura.')
+                messages.info(request, f"{pluralizar(len(marcas_puestas), 'producto')} que "
+                                       f"{segun(len(marcas_puestas), 'estaba sin marca quedó', 'estaban sin marca quedaron')} "
+                                       'con la que figura en la factura.')
             registrar_auditoria(
                 request, 'ALTA', 'COMPRA', instancia=compra,
                 nuevo=foto(compra, renglones=compra.detalles.all()),
                 detalle=f'{compra.get_tipo_comprobante_display()} {compra.numero_formateado} '
-                        f'de {proveedor}: {pesos(compra.total_compra)}, {len(renglones)} renglón(es).'
-                        + (f' {compra.vinculados} producto(s) sin proveedor quedaron vinculados a éste.'
+                        f'de {proveedor}: {pesos(compra.total_compra)}, '
+                        f"{pluralizar(len(renglones), 'renglón', 'renglones')}."
+                        + (f" {pluralizar(compra.vinculados, 'producto')} sin proveedor "
+                           f"{segun(compra.vinculados, 'quedó vinculado', 'quedaron vinculados')} a éste."
                            if compra.vinculados else '')
                         + (' Pasó a ser el proveedor habitual de: '
                            + ', '.join(f'{p} (antes {a})' for p, a, _ in compra.rotados) + '.'
@@ -263,8 +267,9 @@ def recepcion(request):
                              + (' Como es ocasional, los costos y los proveedores habituales no cambiaron.'
                                 if compra.compra_ocasional else ''))
             if getattr(compra, 'vinculados', 0):
-                messages.info(request, f'{compra.vinculados} producto(s) que no tenían proveedor '
-                                       f'quedaron a nombre de {proveedor}.')
+                messages.info(request, f"{pluralizar(compra.vinculados, 'producto')} que no "
+                                       f"{segun(compra.vinculados, 'tenía proveedor quedó', 'tenían proveedor quedaron')} "
+                                       f'a nombre de {proveedor}.')
             if orden is not None:
                 orden.refresh_from_db()
                 if orden.estado_orden == 'CON_DIFERENCIAS':

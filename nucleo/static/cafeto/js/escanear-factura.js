@@ -25,6 +25,7 @@
         if (texto != null) { n.textContent = texto; }
         return n;
     }
+    function plural(cantidad, uno, varios) { return cantidad + ' ' + (cantidad === 1 ? uno : varios); }
     function aviso(tipo, texto, icono) {
         estado.textContent = '';
         var caja = el('div', 'aviso aviso-' + tipo + ' mb-0');
@@ -135,7 +136,7 @@
         poner('vence_pago', r.vence);
         sumarRenglones(r.renglones);
         var total = r.renglones.length + r.nuevos.length;
-        var cuerpo = aviso('exito', (origenes[r.origen] || 'Factura leída') + ': ' + total + ' renglón(es), ' +
+        var cuerpo = aviso('exito', (origenes[r.origen] || 'Factura leída') + ': ' + plural(total, 'renglón', 'renglones') + ', ' +
                            r.renglones.length + ' ya en el catálogo. Controlá todo contra el papel antes de guardar.',
                            'bi-check-circle-fill');
         if (!r.proveedor.existe) { proveedorNuevo(r.proveedor, cuerpo); }
@@ -183,7 +184,8 @@
         if (nuevos.hidden || !pendientes) { return; }
         evento.preventDefault();
         evento.stopImmediatePropagation();
-        aviso('error', 'Quedan ' + pendientes + ' producto(s) de la factura sin dar de alta. Dalos de alta ' +
+        aviso('error', (pendientes === 1 ? 'Queda 1 producto' : 'Quedan ' + pendientes + ' productos') +
+              ' de la factura sin dar de alta. ' + (pendientes === 1 ? 'Dalo de alta ' : 'Dalos de alta ') +
               '(«Dar de alta y sumar») o sacalos de la factura antes de guardar la compra.', 'bi-exclamation-octagon-fill');
         nuevos.scrollIntoView({behavior: 'smooth', block: 'center'});
         var primero = listaNuevos.querySelector('button.js-dar-alta:not([disabled])');

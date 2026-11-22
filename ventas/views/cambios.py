@@ -33,6 +33,7 @@ from ventas import puesto
 from ventas.models import Cambio, MedioPago, MotivoCambio, Venta
 from nucleo.templatetags.cafeto import pesos
 from nucleo.validaciones import id_valido
+from nucleo.textos import pluralizar, segun
 
 MAXIMO_ENTREGADOS = 5
 
@@ -200,9 +201,11 @@ def cambios(request):
         cliente = Cliente.objects.get(pk=venta.id_cliente_id)
         partes = []
         if reverso.acumulacion:
-            partes.append(f'se descuentan {reverso.acumulacion} punto(s) de la compra devuelta')
+            partes.append(f"se {segun(reverso.acumulacion, 'descuenta', 'descuentan')} "
+                         f"{pluralizar(reverso.acumulacion, 'punto')} de la compra devuelta")
         if reverso.canjes:
-            partes.append(f'se le devuelven {reverso.canjes} punto(s) del canje')
+            partes.append(f"se le {segun(reverso.canjes, 'devuelve', 'devuelven')} "
+                         f"{pluralizar(reverso.canjes, 'punto')} del canje")
         texto = '; '.join(partes)
         registrar_auditoria(
             request, 'REVERSO DE PUNTOS', 'CLIENTE', instancia=cliente,

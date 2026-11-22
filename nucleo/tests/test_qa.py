@@ -341,7 +341,7 @@ class PerfilDeSistemaTest(TestCase):
 
     def test_un_perfil_comun_con_usuarios_activos_tampoco(self):
         motivos = self.operador.motivos_que_impiden_la_baja()
-        self.assertEqual(motivos, ['tiene 1 usuario(s) activo(s) asignado(s)'])
+        self.assertEqual(motivos, ['tiene 1 usuario activo asignado'])
 
     def test_un_perfil_comun_vacio_si_se_da_de_baja(self):
         vacio = Perfil.objects.create(nombre='Sin Usuarios QA')
@@ -436,17 +436,17 @@ class RedaccionDeMensajesTest(TestCase):
 
         self.assertEqual(
             texto,
-            "El medio de pago 'Efectivo' es el método por defecto del "
-            'sistema y no puede ser deshabilitado.')
-        self.assertNotIn('porque', texto)
+            'El efectivo no se puede dar de baja porque la caja lo '
+            'necesita para dar vuelto y hacer el arqueo.')
+        self.assertFalse(texto.startswith('No se puede dar de baja "Efectivo"'))
 
     def test_un_motivo_comun_sigue_engarzandose(self):
         texto = redactar('No se puede dar de baja "Cafetería"',
-                         ['tiene 3 producto(s) vigente(s)'])
+                         ['tiene 3 productos vigentes'])
         self.assertEqual(
             texto,
             'No se puede dar de baja "Cafetería" porque tiene 3 '
-            'producto(s) vigente(s).')
+            'productos vigentes.')
 
     def test_se_pueden_mezclar_completo_y_fragmento(self):
         texto = redactar('No se puede dar de baja "X"',

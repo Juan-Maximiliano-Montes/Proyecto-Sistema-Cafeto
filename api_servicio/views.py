@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from api_servicio.autenticacion import de_servicio
 from nucleo import json_seguro
+from nucleo.textos import pluralizar, segun
 
 TOPE = 200
 
@@ -366,9 +367,10 @@ def mantenimiento_mensual(request):
             anterior={'proveedor_habitual': [{'producto': r['producto'], 'proveedor': r['antes']}
                                              for r in reasignados[:TOPE]]},
             nuevo={'archivadas': int(total.group(1)) if total else 0, 'reasignados': reasignados[:TOPE]},
-            detalle=f'Mantenimiento mensual automático: {total.group(1) if total else 0} fila(s) al histórico, '
-                    f'{len(reasignados)} producto(s) cambiaron de proveedor habitual, '
-                    f'{len(inactivos)} proveedor(es) sin movimiento hace más de 6 meses.')
+            detalle=(f"Mantenimiento mensual automático: {pluralizar(int(total.group(1)) if total else 0, 'fila')} "
+                     f"al histórico, {pluralizar(len(reasignados), 'producto')} "
+                     f"{segun(len(reasignados), 'cambió', 'cambiaron')} de proveedor habitual, "
+                     f"{pluralizar(len(inactivos), 'proveedor', 'proveedores')} sin movimiento hace más de 6 meses."))
     return JsonResponse({
         'simulacion': simular,
         'filas_al_historico': int(total.group(1)) if total else 0,

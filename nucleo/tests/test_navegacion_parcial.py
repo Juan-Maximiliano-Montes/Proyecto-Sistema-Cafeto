@@ -157,8 +157,10 @@ class PantallasTest(TestCase):
         exportar = html[html.index('class="dropdown exportar-capsula"'):]
         exportar = exportar[:exportar.index('</ul>')]
         self.assertIn('aria-label="Exportar el reporte «Medios de pago»"', exportar)
-        self.assertIn('>Exportar</button>', exportar)
-        self.assertIn('Sólo «Medios de pago», del ', exportar)
+        self.assertIn('class="btn btn-secundario dropdown-toggle exportar-capsula-boton"', exportar)
+        self.assertIn('<span class="text-truncate">Exportar «Medios de pago»</span></button>', exportar)
+        self.assertIn('<h6 class="dropdown-header">Del ', exportar)
+        self.assertEqual(exportar.count('hx-boost="false"'), 2)
         self.assertIn('hx-boost="false"', exportar)
         self.assertIn('ver=medios', exportar)
         self.assertIn('<nav id="periodosTablero" class="d-flex flex-wrap gap-1" aria-label="Período del tablero" hx-boost="true">', html)
@@ -180,3 +182,26 @@ class PantallasTest(TestCase):
         html = self.html('seguridad:permisos')
         self.assertEqual(SCRIPT_EN_LINEA.findall(html), [])
         self.assertIn('cafeto/js/permisos.js', html)
+
+
+class BarraEInicioTest(TestCase):
+    """DD-106: el rol se ve debajo del nombre y el Inicio arma su grilla
+    según cuántos atajos y cuántas tarjetas de resumen tiene cada perfil."""
+
+    def test_el_rol_debajo_del_nombre_y_la_grilla_segun_la_cantidad(self):
+        admin = f.usuario('40800009', 'Administrador', nombre='Ana')
+        f.entrar(self.client, admin)
+        html = self.client.get(reverse('home')).content.decode()
+        self.assertRegex(html, r'<span class="d-block small text-secondary">\s*Administrador')
+        atajos = re.search(r'class="grilla grilla-atajos atajos-(\d+) mb-4"', html)
+        resumen = re.search(r'class="grilla grilla-resumen resumen-(\d+)"', html)
+        self.assertEqual(int(atajos.group(1)), html.count('class="tarjeta tarjeta-accion"'))
+        self.assertEqual(int(resumen.group(1)), html.count('class="tarjeta kpi text-reset'))
+
+    def test_un_perfil_con_menos_atajos_tiene_su_propia_grilla(self):
+        operador = f.usuario('40800010', 'Operador', nombre='Cami')
+        f.entrar(self.client, operador)
+        html = self.client.get(reverse('home')).content.decode()
+        atajos = re.search(r'grilla-atajos atajos-(\d+)', html)
+        if atajos:
+            self.assertEqual(int(atajos.group(1)), html.count('class="tarjeta tarjeta-accion"'))

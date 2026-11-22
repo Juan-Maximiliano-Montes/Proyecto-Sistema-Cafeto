@@ -19,6 +19,7 @@ from django.utils import timezone
 
 from negocio.models import ParametrosNegocio
 from nucleo.templatetags.cafeto import pesos
+from nucleo.textos import pluralizar, segun
 
 
 DIAS_DE_RECONTEOS = 7
@@ -46,8 +47,8 @@ def del_dia(usuario, hoy=None):
         indicadores.append({
             'clave': 'VENDIDO_HOY', 'titulo': 'Vendido hoy',
             'valor': ventas_hoy['total'] or Decimal('0'), 'formato': 'pesos',
-            'detalle': f"{ventas_hoy['cantidad']} ticket(s)"
-                       + (f' · el mismo día de la semana pasada: $ {ayer:,.0f}'.replace(',', '.') if ayer else '')})
+            'detalle': pluralizar(ventas_hoy['cantidad'], 'ticket')
+                       + (f' · el mismo día de la semana pasada: {pesos(ayer)}' if ayer else '')})
 
     if puede('ver_caja'):
         from ventas.models import TurnoCaja
@@ -57,15 +58,16 @@ def del_dia(usuario, hoy=None):
         indicadores.append({
             'clave': 'CAJAS_ABIERTAS', 'titulo': 'Cajas abiertas', 'valor': abiertos,
             'formato': 'numero',
-            'detalle': f'{con_diferencia} cierre(s) de hoy con diferencia' if con_diferencia else 'Sin diferencias hoy'})
+            'detalle': f"{pluralizar(con_diferencia, 'cierre')} de hoy con diferencia" if con_diferencia else 'Sin diferencias hoy'})
 
     if puede('supervisar_cierre'):
         from ventas import caja
         recontados = caja.turnos_con_reconteo(hoy - timedelta(days=DIAS_DE_RECONTEOS)).count()
         if recontados:
             avisos.append({'clave': 'RECONTEOS', 'tipo': 'aviso',
-                           'texto': f'{recontados} cierre(s) de caja de los últimos '
-                                    f'{DIAS_DE_RECONTEOS} días se contaron más de una vez: mirá los conteos.'})
+                           'texto': f"{pluralizar(recontados, 'cierre')} de caja de los últimos "
+                                    f"{DIAS_DE_RECONTEOS} días {segun(recontados, 'se contó', 'se contaron')} "
+                                    'más de una vez: mirá los conteos.'})
 
     if puede('ver_stock'):
         from stock import servicios as stock
@@ -74,20 +76,22 @@ def del_dia(usuario, hoy=None):
         vencidos = por_vencer.filter(fecha_vencimiento__lt=hoy).count()
         if faltantes:
             avisos.append({'clave': 'BAJO_MINIMO', 'tipo': 'aviso',
-                           'texto': f'{faltantes} producto(s) por debajo del mínimo.'})
+                           'texto': f"{pluralizar(faltantes, 'producto')} por debajo del mínimo."})
         if vencidos:
             avisos.append({'clave': 'VENCIDOS', 'tipo': 'error',
-                           'texto': f'{vencidos} lote(s) vencido(s) en la góndola: cargalos como merma.'})
+                           'texto': f"{pluralizar(vencidos, 'lote vencido', 'lotes vencidos')} en la góndola: "
+                                   f"{segun(vencidos, 'cargalo', 'cargalos')} como merma."})
         elif por_vencer.exists():
             avisos.append({'clave': 'POR_VENCER', 'tipo': 'aviso',
-                           'texto': f'{por_vencer.count()} lote(s) vencen en los próximos {parametros.dias_aviso_vencimiento} días.'})
+                           'texto': f"{pluralizar(por_vencer.count(), 'lote')} {segun(por_vencer.count(), 'vence', 'vencen')} "
+                                   f'en los próximos {parametros.dias_aviso_vencimiento} días.'})
 
     if puede('autorizar_ajustes'):
         from stock.models import AjusteStock
         pendientes = AjusteStock.objects.filter(estado_ajuste='PENDIENTE').count()
         if pendientes:
             avisos.append({'clave': 'AJUSTES', 'tipo': 'aviso',
-                           'texto': f'{pendientes} ajuste(s) de stock esperan tu autorización.'})
+                           'texto': f"{pluralizar(pendientes, 'ajuste')} de stock {segun(pendientes, 'espera', 'esperan')} tu autorización."})
 
     if puede('gestionar_ordenes'):
         from compras.models import OrdenCompra
@@ -95,8 +99,9 @@ def del_dia(usuario, hoy=None):
         if con_diferencias:
             # El reporte de diferencias de recepción, a quien lo resuelve (DD-64).
             avisos.append({'clave': 'ORDENES', 'tipo': 'aviso',
-                           'texto': f'{con_diferencias} orden(es) de compra llegaron '
-                                    'con diferencias: revisalas con el proveedor.'})
+                           'texto': f"{pluralizar(con_diferencias, 'orden', 'órdenes')} de compra "
+                                    f"{segun(con_diferencias, 'llegó', 'llegaron')} con diferencias: "
+                                    f"{segun(con_diferencias, 'revisala', 'revisalas')} con el proveedor."})
 
     if puede('registrar_compra'):
         from compras import facturas
@@ -111,18 +116,19 @@ def del_dia(usuario, hoy=None):
             # Lo que ya venció va primero y en rojo: no es lo mismo que lo
             # que vence la semana que viene.
             avisos.insert(0, {'clave': 'PAGOS_VENCIDOS', 'tipo': 'error',
-                              'texto': f"{vencidos['cantidad']} pago(s) a proveedores o servicios ya "
-                                       f"vencieron (por {pesos(vencidos['monto'])})."})
+                              'texto': f"{pluralizar(vencidos['cantidad'], 'pago')} a proveedores o servicios ya "
+                                       f"{segun(vencidos['cantidad'], 'venció', 'vencieron')} (por {pesos(vencidos['monto'])})."})
         proximos = egresos.vencimientos_proximos(hoy + timedelta(days=7), desde=hoy)
         cantidad = proximos['obligaciones'].count() + proximos['compras'].count()
         if cantidad:
             avisos.append({'clave': 'PAGOS', 'tipo': 'aviso',
-                           'texto': f'{cantidad} pago(s) vencen en los próximos 7 días.'})
+                           'texto': f"{pluralizar(cantidad, 'pago')} {segun(cantidad, 'vence', 'vencen')} en los próximos 7 días."})
         sin_confirmar = egresos.sin_confirmar(hoy).count()
         if sin_confirmar:
             avisos.append({'clave': 'SIN_ACREDITAR', 'tipo': 'aviso',
-                           'texto': f'{sin_confirmar} pago(s) enviados hace más de {egresos.DIAS_SIN_CONFIRMAR} '
-                                    'días siguen sin confirmar ni rechazar: miralos con el resumen del banco.'})
+                           'texto': f"{pluralizar(sin_confirmar, 'pago enviado', 'pagos enviados')} hace más de "
+                                    f"{egresos.DIAS_SIN_CONFIRMAR} días {segun(sin_confirmar, 'sigue', 'siguen')} "
+                                    f"sin confirmar ni rechazar: {segun(sin_confirmar, 'miralo', 'miralos')} con el resumen del banco."})
 
     if puede('cobrar_credito'):
         from fidelizacion import credito
@@ -131,7 +137,7 @@ def del_dia(usuario, hoy=None):
             # Rojo también, después de los pagos vencidos (que son plata que sale).
             delante = 1 if avisos and avisos[0]['clave'] == 'PAGOS_VENCIDOS' else 0
             avisos.insert(delante, {'clave': 'FIADO_VENCIDO', 'tipo': 'error',
-                              'texto': f'{len(atrasados)} cliente(s) tienen deuda en cuenta corriente vencida '
+                              'texto': f"{pluralizar(len(atrasados), 'cliente')} {segun(len(atrasados), 'tiene', 'tienen')} deuda en cuenta corriente vencida "
                                        f'(por {pesos(sum((c.vencido for c in atrasados), Decimal("0")))}).'})
 
     if puede('ver_clientes'):
@@ -141,14 +147,14 @@ def del_dia(usuario, hoy=None):
             # La app del club identifica al cliente por su correo: con dos
             # fichas que lo comparten, no sabe cuál mostrarle.
             avisos.append({'clave': 'CORREOS_REPETIDOS', 'tipo': 'aviso',
-                           'texto': f'{repetidos} cliente(s) comparten el correo: unificalos.'})
+                           'texto': f"{pluralizar(repetidos, 'cliente')} {segun(repetidos, 'comparte', 'comparten')} el correo: unificalos."})
 
     if puede('ver_auditoria'):
         from seguridad.servicios import alertas_sin_revisar
         alertas = alertas_sin_revisar(usuario).count()
         if alertas:
             avisos.append({'clave': 'SEGURIDAD', 'tipo': 'error',
-                           'texto': f'{alertas} alerta(s) de seguridad: intentos fallidos de ingreso sin revisar.'})
+                           'texto': f"{pluralizar(alertas, 'alerta')} de seguridad: intentos fallidos de ingreso sin revisar."})
 
     if puede('supervisar_cierre'):
         from ventas import caja
@@ -161,8 +167,8 @@ def del_dia(usuario, hoy=None):
             cuanto = ' y '.join(x for x in (f'faltan {pesos(faltan)}' if faltan else '',
                                             f'sobran {pesos(sobran)}' if sobran else '') if x)
             avisos.insert(0, {'clave': 'CAJA_A_REVISAR', 'tipo': 'error',
-                              'texto': f'{len(a_revisar)} cierre(s) de caja con una diferencia que nadie aprobó '
-                                       f'({cuanto}): revisalos.'})
+                              'texto': f"{pluralizar(len(a_revisar), 'cierre')} de caja con una diferencia que nadie aprobó "
+                                       f"({cuanto}): {segun(len(a_revisar), 'revisalo', 'revisalos')}."})
 
     if puede('ver_reportes'):
         indicadores.append({'clave': 'REPORTES', 'titulo': 'Reportes', 'valor': None,

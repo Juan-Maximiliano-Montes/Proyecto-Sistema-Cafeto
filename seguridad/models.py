@@ -62,6 +62,7 @@ from nucleo.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 from nucleo.validaciones import (
     exigir_nombre_unico,
 )
+from nucleo.textos import pluralizar
 
 # ---------------------------------------------------------------------------
 #  VALIDADORES compartidos
@@ -176,7 +177,7 @@ class Perfil(SinBajaFisica, models.Model):
         activos = self.usuarios.filter(activo=True).count()
         if activos:
             motivos.append(
-                f'tiene {activos} usuario(s) activo(s) asignado(s)')
+                f"tiene {pluralizar(activos, 'usuario activo asignado', 'usuarios activos asignados')}")
         return motivos
 
     def clean(self):

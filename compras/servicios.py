@@ -48,7 +48,6 @@ CENTAVO = Decimal('0.01')
 #  LA ORDEN
 # ===========================================================================
 @transaction.atomic
-@transaction.atomic
 def emitir_orden(proveedor, usuario, items):
     """Crea el borrador con sus renglones.
 

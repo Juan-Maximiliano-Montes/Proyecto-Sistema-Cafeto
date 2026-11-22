@@ -117,7 +117,7 @@ class IdentidadDelProductoTest(BaseMaestros):
             self.url('marcas', 'eliminar', self.marca.pk), follow=True)
         self.marca.refresh_from_db()
         self.assertFalse(self.marca.borrado_logico)
-        self.assertIn('producto(s) vigente(s)',
+        self.assertIn('1 producto vigente',
                       ' '.join(self.mensajes(respuesta)))
 
     def test_el_combo_de_marcas_no_ofrece_las_dadas_de_baja(self):

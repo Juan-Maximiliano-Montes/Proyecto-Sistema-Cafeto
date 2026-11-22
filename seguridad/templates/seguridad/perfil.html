@@ -7,7 +7,7 @@
     <div>
         <span class="eyebrow"><i class="bi bi-person-badge me-1"></i>Mi cuenta</span>
         <h1 class="titulo-pantalla mb-0">Hola, {{ usuario.nombre }}</h1>
-        <p class="bajada">Tus datos son de sólo lectura. Si algo está mal, avisale a un administrador.</p>
+        <p class="bajada">Estos datos solo los puede editar un administrador. Si algo está mal, avisale.</p>
     </div>
     <div class="acciones">
         <a href="{% url 'seguridad:cambiar_clave' %}" class="btn btn-secundario"><i class="bi bi-key me-1"></i>Cambiar mi clave</a>

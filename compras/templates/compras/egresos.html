@@ -15,8 +15,8 @@
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'compras:exportar_egresos' %}?formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
-                <li><a class="dropdown-item" href="{% url 'compras:exportar_egresos' %}?formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+                <li><a class="dropdown-item" hx-boost="false" href="{% url 'compras:exportar_egresos' %}?formato=xlsx&amp;{{ parametros }}"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" hx-boost="false" href="{% url 'compras:exportar_egresos' %}?formato=pdf&amp;{{ parametros }}"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
             </ul>
         </div>
         {% if puede_caja %}<button class="btn btn-secundario" data-bs-toggle="modal" data-bs-target="#modalCaja"><i class="bi bi-cash me-1"></i>Gasto de caja</button>{% endif %}
@@ -65,7 +65,7 @@
         </div>
         <dl class="tarjeta-datos">
             <dt>Monto</dt><dd class="monto">{{ e.monto|pesos }}</dd>
-            {% if e.fecha_vencimiento and e.estado_pago == 'PENDIENTE_PAGO' %}<dt>{% if e.fecha_vencimiento < hoy %}Venció{% elif e.fecha_vencimiento == hoy %}Vence{% else %}Vence{% endif %}</dt><dd class="{% if e.fecha_vencimiento <= hoy %}text-peligro fw-semibold{% endif %}">{% if e.fecha_vencimiento == hoy %}hoy{% else %}{{ e.fecha_vencimiento|date:"d/m/Y" }}{% endif %}</dd>{% endif %}
+            {% if e.fecha_vencimiento and e.estado_pago == 'PENDIENTE_PAGO' %}<dt>{% if e.fecha_vencimiento < hoy %}Venció{% else %}Vence{% endif %}</dt><dd class="{% if e.fecha_vencimiento <= hoy %}text-peligro fw-semibold{% endif %}">{% if e.fecha_vencimiento == hoy %}hoy{% else %}{{ e.fecha_vencimiento|date:"d/m/Y" }}{% endif %}</dd>{% endif %}
             {% if e.fecha_egreso %}<dt>{% if e.estado_pago == 'RECHAZADO' %}Se intentó pagar{% elif e.estado_pago == 'PENDIENTE_ACREDITACION' %}Enviado{% else %}Pagado{% endif %}</dt><dd>{{ e.fecha_egreso|date:"d/m/Y" }} · {{ e.id_medio_pago }}</dd>{% endif %}
             {% if e.estado_pago == 'PENDIENTE_ACREDITACION' and e.fecha_egreso %}{% with dias=e.fecha_egreso|dias_desde:hoy %}<dt>Esperando</dt><dd class="{% if dias > dias_sin_confirmar %}text-peligro fw-semibold{% endif %}">{% if dias == 0 %}desde hoy{% else %}{{ dias }} día{{ dias|pluralize }}{% endif %}</dd>{% endwith %}{% endif %}
             {% if e.id_compra_id %}<dt>Factura</dt><dd>{{ e.id_compra.numero_formateado }}</dd>{% endif %}
@@ -77,7 +77,7 @@
         <form method="post" action="{% url 'compras:pagar_egreso' e.pk %}" class="tarjeta-pie"
               data-titulo="¿Pagamos {{ e.monto|pesos }}?" data-aceptar="Sí, pagar"
               data-confirmar="{{ e.concepto }}. Si elegiste efectivo, la plata sale del cajón. Un pago registrado no se borra.">
-            {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}">
+            {% csrf_token %}<input type="hidden" name="token_operacion" value="{% token_operacion %}">
             <select name="medio" class="form-select form-select-sm w-auto" aria-label="Medio de pago">{% for m in medios %}<option value="{{ m.pk|stringformat:"d" }}">{{ m }}</option>{% endfor %}</select>
             <button type="submit" class="btn btn-sm btn-primary ms-auto">Pagar</button>
         </form>
@@ -107,7 +107,7 @@
 <div class="modal fade" id="modalEgreso" tabindex="-1" aria-hidden="true"{% if compra_elegida %} data-modal-auto{% endif %}>
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate{% if not compra_elegida %} data-acreedor{% endif %}>
-            {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}">
+            {% csrf_token %}<input type="hidden" name="token_operacion" value="{% token_operacion %}">
             {% if compra_elegida %}<input type="hidden" name="compra" value="{{ compra_elegida.pk|stringformat:"d" }}">{% endif %}
             <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>{% if compra_elegida %}Pagar {{ compra_elegida.get_tipo_comprobante_display }} {{ compra_elegida.numero_formateado }}{% else %}Nuevo pago{% endif %}</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
             <div class="modal-body">
@@ -119,7 +119,7 @@
                         </div>
                     </div>
                     <div class="col-md-6"><label class="form-label" for="eTipo">Tipo</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="tipo" id="eTipo" class="form-select">{% for t in tipos %}<option value="{{ t.pk|stringformat:"d" }}"{% if compra_elegida and t.nombre_tipo_egreso == 'Proveedores' %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'tipos_egreso' 'eTipo' %}</div>{% panel_alta_rapida 'eTipo' %}</div>
-                    <div class="col-md-6"><label class="form-label" for="eMonto">Monto</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="monto" id="eMonto" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.saldo_pendiente|stringformat:'s'|cut:'.00' }}{% endif %}"></div></div>
+                    <div class="col-md-6"><label class="form-label" for="eMonto">Monto</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="monto" id="eMonto" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.falta|stringformat:'s'|cut:'.00' }}{% endif %}"></div></div>
                     <div class="col-12"><label class="form-label" for="eConcepto">Concepto</label><input type="text" name="concepto" id="eConcepto" maxlength="100" class="form-control" value="{% if compra_elegida %}{{ compra_elegida.get_tipo_comprobante_display }} {{ compra_elegida.numero_formateado }}{% endif %}" placeholder="Luz de octubre"></div>
                     {% if not compra_elegida %}
                     <div class="col-md-6"><label class="form-label" for="eProveedor">Proveedor</label><div class="d-flex gap-2"><div class="flex-grow-1"><select name="proveedor" id="eProveedor" class="form-select"><option value="">— Ninguno —</option>{% for p in proveedores %}<option value="{{ p.pk|stringformat:"d" }}">{{ p }}</option>{% endfor %}</select></div>{% boton_alta_rapida 'proveedores' 'eProveedor' %}</div>{% panel_alta_rapida 'eProveedor' %}</div>
@@ -141,7 +141,7 @@
 <div class="modal fade" id="modalCaja" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <form method="post" action="{% url 'compras:registrar_egreso' %}" class="modal-content form-una-vez" novalidate data-acreedor>
-            {% csrf_token %}<input type="hidden" name="token_operacion" value="{{ token }}"><input type="hidden" name="modo" value="caja">
+            {% csrf_token %}<input type="hidden" name="token_operacion" value="{% token_operacion %}"><input type="hidden" name="modo" value="caja">
             <div class="modal-header"><h5 class="modal-title"><i class="bi bi-cash me-2"></i>Gasto de caja</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
             <div class="modal-body">
                 {% if not turno %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>La caja de este dispositivo no tiene un turno abierto: el gasto sale de un cajón abierto.</span></div>{% else %}<p class="small text-secondary">Sale de {{ turno.id_caja_registradora }}.</p>{% endif %}

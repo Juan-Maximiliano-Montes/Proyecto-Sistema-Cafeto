@@ -232,8 +232,8 @@ def mover_efectivo(request):
     registrar_auditoria(
         request, datos['tipo'], 'EFECTIVO', instancia=movimiento,
         nuevo=instantanea(movimiento),
-        detalle=f'{movimiento.get_tipo_movimiento_display()} de $ '
-                f'{abs(movimiento.monto)} en {turno.id_caja_registradora}: '
+        detalle=f'{movimiento.get_tipo_movimiento_display()} de {pesos(abs(movimiento.monto))} '
+                f'en {turno.id_caja_registradora}: '
                 f'{movimiento.concepto}.')
     messages.success(request, f'{movimiento.get_tipo_movimiento_display()} registrado.')
     return redirect(f"{reverse('ventas:caja')}?vale={movimiento.pk}")
@@ -460,9 +460,8 @@ def cierre(request):
                 anterior=antes,
                 nuevo={**instantanea(cerrado),
                        **({'turno_siguiente': instantanea(nuevo)} if nuevo else {})},
-                detalle=(f'Cerró {cerrado.id_caja_registradora}: contado $ '
-                         f'{cerrado.monto_final}, esperado $ '
-                         f'{cerrado.monto_esperado}, '
+                detalle=(f'Cerró {cerrado.id_caja_registradora}: contado {pesos(cerrado.monto_final)}, '
+                         f'esperado {pesos(cerrado.monto_esperado)}, '
                          f'{servicio_caja.en_palabras(cerrado.diferencia_caja)}'
                          + (f'; aprobó la diferencia {supervisor}'
                             + (f' a distancia (pedido N° {solicitud.pk})' if solicitud else '')

@@ -173,11 +173,42 @@ def foto_de(producto):
     return imagenes.url_de(producto)
 
 
+def _formas(argumento):
+    argumento = argumento or ''
+    singular, _coma, plural = argumento.partition('|' if '|' in argumento else ',')
+    return singular.strip(), (plural.strip() or singular.strip() + 's')
+
+
+@register.filter(name='pluralizar')
+def pluralizar_filtro(cantidad, formas):
+    """``{{ n|pluralizar:"renglón,renglones" }}`` → «1 renglón», «3 renglones»."""
+    from nucleo.textos import pluralizar
+    return pluralizar(cantidad, *_formas(formas))
+
+
+@register.filter(name='segun')
+def segun_filtro(cantidad, formas):
+    """``{{ n|segun:"vendió,vendieron" }}``: la palabra que va con ``n``."""
+    from nucleo.textos import segun
+    return segun(cantidad, *_formas(formas))
+
+
+@register.simple_tag(takes_context=True)
+def token_operacion(context):
+    """Un token de un solo uso propio para cada formulario de la página:
+    pagar una tarjeta no deja usado el token de otra."""
+    from nucleo import idempotencia
+    return idempotencia.emitir(context['request'])
+
+
 @register.filter
 def a_json(valor):
     """JSON plano (sin ``mark_safe``): Django escapa ``<``, ``>`` y ``&`` al
     volcarlo dentro de ``<template>``, así ningún texto cierra la etiqueta ni
-    inyecta HTML, y ``htmx`` no lo borra con ``allowScriptTags: false``."""
+    inyecta HTML, y ``htmx`` no lo borra con ``allowScriptTags: false``.
+    ``DjangoJSONEncoder`` convierte Decimal, fechas, horas y UUID."""
     import json
-    return json.dumps(valor, ensure_ascii=False)
+
+    from django.core.serializers.json import DjangoJSONEncoder
+    return json.dumps(valor, ensure_ascii=False, cls=DjangoJSONEncoder)
 

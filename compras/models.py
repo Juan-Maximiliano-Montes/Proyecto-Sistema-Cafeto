@@ -40,6 +40,7 @@ from nucleo.validaciones import (
     validar_telefono,
 )
 from nucleo.templatetags.cafeto import pesos
+from nucleo.textos import pluralizar, segun
 
 
 # ===========================================================================
@@ -243,7 +244,7 @@ class Proveedor(ConSelloDeModificacion,
                 id_proveedor=self, borrado_logico=False).count()
             if productos:
                 raise ValidationError({'tipo_proveedor': (
-                    f'Es el proveedor de {productos} producto(s): no puede '
+                    f"Es el proveedor de {pluralizar(productos, 'producto')}: no puede "
                     'ser sólo de servicios. Usá "Mercadería y servicios".')})
 
     @property
@@ -301,20 +302,20 @@ class Proveedor(ConSelloDeModificacion,
         ).count()
         if abiertas:
             motivos.append(
-                f'tiene {abiertas} orden(es) de compra sin cerrar '
+                f"tiene {pluralizar(abiertas, 'orden', 'órdenes')} de compra sin cerrar "
                 '(pendientes o emitidas)')
 
         impagas = Compra.objects.filter(id_proveedor=self).exclude(
             estado_compra='PAGADA').count()
         if impagas:
-            motivos.append(f'tiene {impagas} compra(s) que todavía no están pagadas')
+            motivos.append(f"tiene {pluralizar(impagas, 'compra')} que todavía no {segun(impagas, 'está pagada', 'están pagadas')}")
 
         productos = Producto.objects.filter(
             id_proveedor=self, borrado_logico=False).count()
         if productos:
             motivos.append(
-                f'tiene {productos} producto(s) vigente(s) que lo tienen como '
-                'proveedor (reasignalos primero)')
+                f"tiene {pluralizar(productos, 'producto vigente', 'productos vigentes')} que lo "
+                f"{segun(productos, 'tiene', 'tienen')} como proveedor ({segun(productos, 'reasignalo', 'reasignalos')} primero)")
 
         return motivos
 
@@ -370,7 +371,7 @@ class TipoEgreso(Maestra):
             estado_pago__in=('PENDIENTE_PAGO', 'PENDIENTE_ACREDITACION'),
         ).count()
         if pendientes:
-            return [f'tiene {pendientes} egreso(s) sin acreditar '
+            return [f"tiene {pluralizar(pendientes, 'egreso')} sin acreditar "
                     '(pendientes de pago o de acreditación)']
         return []
 

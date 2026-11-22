@@ -37,6 +37,7 @@ from seguridad.models import (
 )
 from seguridad.servicios import (
     ESCALONES_DE_BLOQUEO,
+    CUENTAS_POR_IP,
     INTENTOS_POR_IP,
     OPERACION_ALERTA,
     OPERACION_REVISION,
@@ -271,6 +272,28 @@ class BloqueoProgresivoTest(Base):
             {'identificador': '40000002', 'clave': CLAVE}, follow=True)
         self.assertIn('bloqueado', self.mensajes(respuesta))
 
+    def ip_compartida(self, cuentas, por_cuenta):
+        for c in range(cuentas):
+            for _ in range(por_cuenta):
+                IntentoAcceso.objects.create(
+                    nombre_usuario_ingresado=f'2000{c:04d}', ip_origen='127.0.0.1',
+                    motivo_rechazo='USUARIO_INEXISTENTE')
+
+    def test_una_cajera_que_se_equivoca_no_bloquea_a_las_otras_cajas(self):
+        """VPS: todo el local sale con la misma IP (DD-106)."""
+        self.fallar('40000002', 25)
+        self.assertGreaterEqual(IntentoAcceso.objects.filter(ip_origen='127.0.0.1').count(), 5)
+        self.ip_compartida(CUENTAS_POR_IP - 2, 10)
+        self.assertEqual(self.entrar('31000001').status_code, 302)
+        self.assertTrue(Sesion.objects.filter(id_usuario=self.ana, activa=True).exists())
+        self.client.logout()
+        self.assertIn('bloqueado', self.mensajes(self.entrar('40000002')))
+
+    def test_muchos_fallos_entre_varias_cuentas_frenan_la_ip(self):
+        self.ip_compartida(CUENTAS_POR_IP, INTENTOS_POR_IP // CUENTAS_POR_IP)
+        self.assertIn('bloqueado', self.mensajes(self.entrar('31000001')))
+        self.assertFalse(Sesion.objects.filter(id_usuario=self.ana, activa=True).exists())
+
     def test_el_libro_de_intentos_no_se_puede_borrar(self):
         self.fallar('40000002', 1)
         with self.assertRaises(Exception):
@@ -323,7 +346,7 @@ class AlertaIntentosTest(Base):
         self.fallar('40000002', self.UMBRAL)
         self.entrar('31000001')
         inicio = self.client.get(reverse('home'), follow=True)
-        self.assertContains(inicio, 'alerta(s) de seguridad')
+        self.assertContains(inicio, '1 alerta de seguridad')
         registro = self.client.get(reverse('seguridad:actividad'))
         self.assertContains(registro, 'sin revisar')
 
@@ -348,7 +371,7 @@ class AlertaIntentosTest(Base):
         self.fallar('31000001', self.UMBRAL)
         self.entrar('40000002')
         inicio = self.client.get(reverse('home'), follow=True)
-        self.assertNotContains(inicio, 'alerta(s) de seguridad')
+        self.assertNotContains(inicio, 'de seguridad: intentos fallidos')
 
 
 # ===========================================================================

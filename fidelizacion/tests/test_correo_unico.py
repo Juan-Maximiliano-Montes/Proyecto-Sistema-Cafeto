@@ -91,7 +91,7 @@ class CorreosRepetidosTest(TestCase):
         operador = f.usuario('40000001', 'Operador', nombre='Cami')
         _, avisos = panel.del_dia(operador)
         self.assertIn({'clave': 'CORREOS_REPETIDOS', 'tipo': 'aviso',
-                       'texto': '2 cliente(s) comparten el correo: unificalos.'}, avisos)
+                       'texto': '2 clientes comparten el correo: unificalos.'}, avisos)
         Perfil.objects.create(nombre='Cocina', descripcion='Sin permisos',
                               tope_descuento_porcentaje=Decimal('0'))
         sin_clientes = f.usuario('40000009', 'Cocina', nombre='Rita')

@@ -187,7 +187,7 @@ def registrar_canje(venta, beneficio):
             'cliente.' % beneficio)
     if bloqueado.puntos_disponibles < beneficio.puntos_requeridos:
         raise ValidationError(
-            'Puntos insuficientes: %s dispone de %d y "%s" requiere %d.'
+            'Puntos insuficientes: %s tiene %d y "%s" cuesta %d.'
             % (bloqueado.nombre_cliente, bloqueado.puntos_disponibles,
                beneficio, beneficio.puntos_requeridos))
 

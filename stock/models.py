@@ -67,6 +67,7 @@ from nucleo.validaciones import (
     validar_decimal,
     validar_entero,
 )
+from nucleo.textos import pluralizar, segun
 
 CERO = Decimal('0')
 
@@ -173,8 +174,8 @@ class Rubro(Maestra):
         vigentes = Producto.objects.filter(
             id_rubro=self, borrado_logico=False).count()
         if vigentes:
-            return [f'tiene {vigentes} producto(s) vigente(s); dalos de baja '
-                    'o cambialos de rubro primero']
+            return [f"tiene {pluralizar(vigentes, 'producto vigente', 'productos vigentes')}; "
+                    f"{segun(vigentes, 'dalo de baja o cambialo', 'dalos de baja o cambialos')} de rubro primero"]
         return []
 
 
@@ -242,8 +243,8 @@ class Marca(Maestra):
         vigentes = Producto.objects.filter(
             id_marca=self, borrado_logico=False).count()
         if vigentes:
-            return [f'tiene {vigentes} producto(s) vigente(s); dalos de baja '
-                    'o cambialos de marca primero']
+            return [f"tiene {pluralizar(vigentes, 'producto vigente', 'productos vigentes')}; "
+                    f"{segun(vigentes, 'dalo de baja o cambialo', 'dalos de baja o cambialos')} de marca primero"]
         return []
 
 
@@ -569,9 +570,9 @@ class Producto(ConSaldosDerivados, Maestra):
         return not self.fraccionable and self.tipo_producto != TipoProducto.INSUMO
 
     def cantidad_con_unidad(self, cantidad):
-        """'7 unidad(es)', '0,35 KG': cómo se dice una cantidad de esto."""
+        """'7 unidades', '1 unidad', '0,35 KG': cómo se dice una cantidad de esto."""
         if self.exige_cantidad_entera:
-            return f'{_cantidad(cantidad)} unidad(es)'
+            return f"{_cantidad(cantidad)} {segun(cantidad, 'unidad', 'unidades')}"
         return f'{_cantidad(cantidad)} {self.unidad_medida}'
 
     def costo_vigente(self):
@@ -735,8 +736,8 @@ class Producto(ConSaldosDerivados, Maestra):
             if con_stock:
                 raise ValidationError({'controla_vencimiento': (
                     f'No se puede dejar de controlar el vencimiento: hay '
-                    f'{con_stock} lote(s) con stock. Agotalos o ajustalos a 0 '
-                    'primero.')})
+                    f"{pluralizar(con_stock, 'lote')} con stock. "
+                    f"{segun(con_stock, 'Agotalo o ajustalo', 'Agotalos o ajustalos')} a 0 primero.")})
         elif not anterior['controla_vencimiento'] and self.controla_vencimiento:
             if anterior['stock_actual'] != 0:
                 raise ValidationError({'controla_vencimiento': (
@@ -784,29 +785,29 @@ class Producto(ConSaldosDerivados, Maestra):
             id_componente=self, id_producto__borrado_logico=False).count()
         if usado_en:
             motivos.append(
-                f'forma parte de {usado_en} receta(s) o combo(s) vigente(s)')
+                f"forma parte de {usado_en} {segun(usado_en, 'receta o combo vigente', 'recetas o combos vigentes')}")
         recetas = BeneficioProducto.objects.filter(
             id_producto=self, id_beneficio__borrado_logico=False).count()
         if recetas:
             motivos.append(
-                f'forma parte de {recetas} beneficio(s) en especie vigente(s)')
+                f"forma parte de {pluralizar(recetas, 'beneficio en especie vigente', 'beneficios en especie vigentes')}")
         lotes = Lote.objects.filter(id_producto=self, stock_lote__gt=0).count()
         if lotes:
-            motivos.append(f'tiene {lotes} lote(s) con stock sin agotar')
+            motivos.append(f"tiene {pluralizar(lotes, 'lote')} con stock sin agotar")
         ordenes = (self.renglones_orden.filter(
             id_orden_compra__estado_orden__in=('PENDIENTE', 'EMITIDA', 'CON_DIFERENCIAS'))
             .values('id_orden_compra').distinct().count())
         if ordenes:
             motivos.append(
-                f'está pedido en {ordenes} orden(es) de compra sin cerrar; '
-                'recibilas o cancelalas primero')
+                f"está pedido en {pluralizar(ordenes, 'orden', 'órdenes')} de compra sin cerrar; "
+                f"{segun(ordenes, 'recibila o cancelala', 'recibilas o cancelalas')} primero")
         ajustes = (self.renglones_ajuste.filter(
             id_ajuste__estado_ajuste__in=(EstadoAjuste.EN_CURSO, EstadoAjuste.PENDIENTE))
             .values('id_ajuste').distinct().count())
         if ajustes:
             motivos.append(
-                f'está en {ajustes} ajuste(s) de stock sin resolver; '
-                'aprobalos o rechazalos primero')
+                f"está en {pluralizar(ajustes, 'ajuste')} de stock sin resolver; "
+                f"{segun(ajustes, 'aprobalo o rechazalo', 'aprobalos o rechazalos')} primero")
         return motivos
 
     def motivos_que_impiden_reactivar(self):

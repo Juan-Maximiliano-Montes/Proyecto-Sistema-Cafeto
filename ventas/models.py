@@ -238,8 +238,8 @@ class MedioPago(Maestra):
             # no encaja detrás del "No se puede dar de baja X porque..." que
             # arma el CRUD para los demás casos.
             motivos.append(MotivoCompleto(
-                "El medio de pago 'Efectivo' es el método por defecto del "
-                'sistema y no puede ser deshabilitado.'))
+                'El efectivo no se puede dar de baja porque la caja lo '
+                'necesita para dar vuelto y hacer el arqueo.'))
         quedan = type(self).objects.filter(borrado_logico=False).exclude(
             pk=self.pk).count()
         if not quedan:

@@ -455,7 +455,7 @@ class PanelTest(Base):
         operador = self.panel(self.operador)
         self.assertEqual(operador['indicadores'], [])
         self.assertEqual(operador['avisos'], [{
-            'tipo': 'aviso', 'texto': '1 lote(s) vencen en los próximos 7 días.',
+            'tipo': 'aviso', 'texto': '1 lote vence en los próximos 7 días.',
             'destino': 'ALERTAS'}])
         administradora = self.panel(self.admin)
         self.assertEqual([(i['clave'], i['formato'], i['valor'])
@@ -466,7 +466,7 @@ class PanelTest(Base):
         self.merma(self.operador)                    # un ajuste que espera autorización
         celular = self.panel(self.encargada)
         self.assertIn({'tipo': 'aviso', 'destino': 'AJUSTES',
-                       'texto': '1 ajuste(s) de stock esperan tu autorización.'},
+                       'texto': '1 ajuste de stock espera tu autorización.'},
                       celular['avisos'])
         f.entrar(self.client, self.encargada)
         web = self.client.get(reverse('home'), follow=True).context

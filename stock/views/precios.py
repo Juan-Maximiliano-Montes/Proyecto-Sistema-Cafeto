@@ -14,6 +14,7 @@ from stock import precios
 from stock.models import Marca, Producto, Rubro
 from nucleo.templatetags.cafeto import pesos
 from nucleo.validaciones import id_valido
+from nucleo.textos import pluralizar, segun
 
 VISTA_PREVIA = 300
 
@@ -58,8 +59,9 @@ def actualizar_precios(request):
                           and (not bajo_costo or request.POST.get('confirmo_bajo_costo')))
             if request.method == 'POST' and not confirmado:
                 contexto['error'] = (
-                    f'Con este cambio, {len(bajo_costo)} producto(s) quedan por debajo '
-                    'del costo. Si es a propósito, tildá la confirmación de abajo.')
+                    f"Con este cambio, {pluralizar(len(bajo_costo), 'producto')} "
+                    f"{segun(len(bajo_costo), 'queda', 'quedan')} por debajo del costo. "
+                    'Si es a propósito, tildá la confirmación de abajo.')
             if confirmado:
                 if not idempotencia.consumir(request, request.POST.get('token_operacion')):
                     return redirect('stock:productos_lista')
@@ -77,8 +79,9 @@ def actualizar_precios(request):
                 registrar_auditoria(
                     request, 'AUMENTO', 'PRECIOS', modulo='STOCK',
                     anterior=antes, nuevo=cambiaron,
-                    detalle=f'{porcentaje} % ({alcance}), redondeo a {pesos(paso)}: {cantidad} precio(s) cambiados.')
-                messages.success(request, f'Listo: se actualizaron {cantidad} precio(s).')
+                    detalle=f'{porcentaje} % ({alcance}), redondeo a {pesos(paso)}: '
+                           f"{pluralizar(cantidad, 'precio cambiado', 'precios cambiados')}.")
+                messages.success(request, f"Listo: {segun(cantidad, 'se actualizó', 'se actualizaron')} {pluralizar(cantidad, 'precio')}.")
                 return redirect('stock:productos_lista')
             filas = todas[:VISTA_PREVIA]
             total = len(todas)

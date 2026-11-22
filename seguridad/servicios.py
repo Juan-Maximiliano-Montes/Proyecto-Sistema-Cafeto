@@ -34,6 +34,7 @@ from django.utils import timezone
 
 from nucleo import contexto
 from nucleo.validaciones import id_valido
+from nucleo.textos import pluralizar
 
 
 def _duracion_sesion():
@@ -330,8 +331,13 @@ ESCALONES_DE_BLOQUEO = (
 VENTANA_DE_INTENTOS = timedelta(hours=24)
 
 # Freno por IP, para el que prueba muchos usuarios distintos con la misma
-# clave: no llega a bloquear a ninguno, pero sí a sí mismo.
-INTENTOS_POR_IP = 30
+# clave: no llega a bloquear a ninguno, pero sí a sí mismo. Desde el VPS
+# todas las cajas del local salen con la misma IP pública: el freno sólo
+# salta con muchos fallos repartidos entre varias cuentas, así que quien
+# se equivoca con su clave bloquea su cuenta (5 intentos) y no a las demás
+# cajas (DD-106).
+INTENTOS_POR_IP = 20
+CUENTAS_POR_IP = 4
 VENTANA_POR_IP = timedelta(minutes=15)
 
 # El ingreso desde la app móvil (api_movil) no abre una fila en SESIONES: la
@@ -368,17 +374,31 @@ def _fallos(identificador, usuario, ip, desde):
         nombre_usuario_ingresado__iexact=(identificador or '')[:35])
 
 
-def espera_por_bloqueo(identificador, usuario, ip):
-    """Cuánto falta para poder volver a intentar, o None si no hay bloqueo."""
+def fallos_por_ip(ip, ahora=None):
+    """(fallos, cuentas distintas, último fallo) desde ``ip`` en la ventana
+    del freno por IP. Una cuenta es el usuario reconocido o, si no existe,
+    lo que se escribió."""
     from seguridad.models import IntentoAcceso
 
+    ahora = ahora or timezone.now()
+    filas = list(IntentoAcceso.objects.filter(
+        ip_origen=ip, fecha_hora__gt=ahora - VENTANA_POR_IP).exclude(
+        motivo_rechazo='CUENTA_BLOQUEADA').values_list(
+        'id_usuario', 'nombre_usuario_ingresado', 'fecha_hora'))
+    cuentas = {usuario or (nombre or '').strip().lower() for usuario, nombre, _ in filas}
+    return len(filas), len(cuentas), max((f for _, _, f in filas), default=None)
+
+
+def ip_frenada(cantidad, cuentas):
+    return cantidad >= INTENTOS_POR_IP and cuentas >= CUENTAS_POR_IP
+
+
+def espera_por_bloqueo(identificador, usuario, ip):
+    """Cuánto falta para poder volver a intentar, o None si no hay bloqueo."""
     ahora = timezone.now()
 
-    por_ip = IntentoAcceso.objects.filter(
-        ip_origen=ip, fecha_hora__gt=ahora - VENTANA_POR_IP).exclude(
-        motivo_rechazo='CUENTA_BLOQUEADA')
-    if por_ip.count() >= INTENTOS_POR_IP:
-        ultimo = por_ip.aggregate(m=Max('fecha_hora'))['m']
+    cantidad, cuentas, ultimo = fallos_por_ip(ip, ahora)
+    if ip_frenada(cantidad, cuentas):
         return ultimo + VENTANA_POR_IP - ahora
 
     fallos = _fallos(identificador, usuario, ip, ahora - VENTANA_DE_INTENTOS)
@@ -450,7 +470,7 @@ OPERACION_REVISION = 'REVISIÓN DE ALERTAS DE SEGURIDAD'
 def alertar_intentos_fallidos(request, identificador, usuario):
     """Si el último fallo cruzó un umbral, asienta la alerta. Devuelve los
     textos de las alertas asentadas (lista vacía si no hubo)."""
-    from seguridad.models import IntentoAcceso
+    from seguridad.models import LogAuditoria
 
     ip = ip_del_request(request)
     ahora = timezone.now()
@@ -469,13 +489,14 @@ def alertar_intentos_fallidos(request, identificador, usuario):
             f'{ip}. El ingreso queda bloqueado '
             f'{describir_espera(escalones[cantidad])}.')
 
-    por_ip = IntentoAcceso.objects.filter(
-        ip_origen=ip, fecha_hora__gt=ahora - VENTANA_POR_IP).exclude(
-        motivo_rechazo='CUENTA_BLOQUEADA').count()
-    if por_ip == INTENTOS_POR_IP:
+    por_ip, cuentas, _ultimo = fallos_por_ip(ip, ahora)
+    marca = f'desde la IP {ip} en '
+    if ip_frenada(por_ip, cuentas) and not LogAuditoria.objects.filter(
+            operacion_realizada=OPERACION_ALERTA, detalle_operacion__contains=marca,
+            fecha_hora__gt=ahora - VENTANA_POR_IP).exists():
         textos.append(
-            f'{por_ip} intentos fallidos desde la IP {ip} en '
-            f'{describir_espera(VENTANA_POR_IP)}, con uno o varios usuarios. '
+            f'{por_ip} intentos fallidos {marca}'
+            f'{describir_espera(VENTANA_POR_IP)}, sobre {cuentas} cuentas distintas. '
             'La IP queda frenada.')
 
     for texto in textos:
@@ -508,7 +529,7 @@ def marcar_alertas_revisadas(request):
         return None
     return registrar_auditoria(
         request, 'REVISIÓN', 'ALERTAS DE SEGURIDAD',
-        detalle=f'Revisó {cantidad} alerta(s) de intentos fallidos.',
+        detalle=f"Revisó {pluralizar(cantidad, 'alerta')} de intentos fallidos.",
         modulo='SEGURIDAD')
 
 

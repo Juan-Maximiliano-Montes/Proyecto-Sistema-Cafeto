@@ -153,8 +153,8 @@ class MarcasTest(BaseApi):
         respuesta = self.pedir('delete', f'/marcas/{marca.pk}/', como=self.admin)
         self.assertEqual(respuesta.status_code, 409)
         self.assertEqual(respuesta.json(), {'detail': (
-            'No se puede dar de baja "Arcor" porque tiene 1 producto(s) '
-            'vigente(s); dalos de baja o cambialos de marca primero.')})
+            'No se puede dar de baja "Arcor" porque tiene 1 producto '
+            'vigente; dalo de baja o cambialo de marca primero.')})
         marca.refresh_from_db()
         self.assertFalse(marca.borrado_logico)
 
@@ -207,7 +207,7 @@ class RubrosTest(BaseApi):
         rubro = f.rubro('Minisuper')
         respuesta = self.pedir('delete', f'/rubros/{rubro.pk}/', como=self.admin)
         self.assertEqual(respuesta.status_code, 409)
-        self.assertIn('1 producto(s) vigente(s)', respuesta.json()['detail'])
+        self.assertIn('1 producto vigente', respuesta.json()['detail'])
 
     def test_un_rubro_sin_productos_se_da_de_baja(self):
         alta = self.pedir('post', '/rubros/', {'nombre': 'Regalería'}, como=self.admin)

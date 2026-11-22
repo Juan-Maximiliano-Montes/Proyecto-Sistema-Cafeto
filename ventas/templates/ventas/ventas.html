@@ -13,10 +13,10 @@
         <div class="dropdown">
             <button class="btn btn-secundario dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-download me-1"></i>Exportar</button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'ventas:exportar_ventas' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
-                <li><a class="dropdown-item" href="{% url 'ventas:exportar_ventas' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+                <li><a hx-boost="false" class="dropdown-item" href="{% url 'ventas:exportar_ventas' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel</a></li>
+                <li><a hx-boost="false" class="dropdown-item" href="{% url 'ventas:exportar_ventas' %}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
                 {% if ganancia %}<li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{% url 'ventas:exportar_renglones' %}{% if parametros %}?{{ parametros }}{% endif %}"><i class="bi bi-cash-coin me-2"></i>Renglones con ganancia (Excel)</a></li>{% endif %}
+                <li><a hx-boost="false" class="dropdown-item" href="{% url 'ventas:exportar_renglones' %}{% if parametros %}?{{ parametros }}{% endif %}"><i class="bi bi-cash-coin me-2"></i>Renglones con ganancia (Excel)</a></li>{% endif %}
             </ul>
         </div>
     </div>
@@ -63,7 +63,7 @@
     <div class="tarjeta kpi"><span class="eyebrow">Margen sobre el costo</span><span class="valor">{% if ganancia.margen is None %}—{% else %}{{ ganancia.margen }} %{% endif %}</span></div>
     <div class="tarjeta kpi"><span class="eyebrow">Queda de cada venta</span><span class="valor">{% if ganancia.rentabilidad is None %}—{% else %}{{ ganancia.rentabilidad }} %{% endif %}</span></div>
 </div>
-{% if ganancia.sin_costo %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ ganancia.sin_costo }} renglón(es) se vendieron con costo $ 0: la ganancia está inflada hasta que les cargues el costo a esos productos.</span></div>{% endif %}
+{% if ganancia.sin_costo %}<div class="aviso aviso-aviso"><i class="bi bi-exclamation-triangle-fill"></i><span>{{ ganancia.sin_costo|pluralizar:"renglón,renglones" }} {{ ganancia.sin_costo|segun:"se vendió,se vendieron" }} con costo $ 0: la ganancia está inflada hasta que {{ ganancia.sin_costo|segun:"le cargues el costo a ese producto,les cargues el costo a esos productos" }}.</span></div>{% endif %}
 {% endif %}
 
 <div class="tarjeta p-0 overflow-hidden">

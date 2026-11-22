@@ -46,6 +46,7 @@ from stock.models import (
     TipoAjuste,
     TipoProducto,
 )
+from nucleo.textos import pluralizar
 
 POR_RECIBIR = ('EMITIDA', 'CON_DIFERENCIAS')
 SIN_CONTEO = 'No hay ningún conteo en curso.'
@@ -214,7 +215,7 @@ def recepciones(request):
             nuevo=foto(compra, renglones=compra.detalles.all()),
             detalle=f'{compra.get_tipo_comprobante_display()} {compra.numero_formateado} '
                     f'de {elegida.id_proveedor}: {pesos(compra.total_compra)}, '
-                    f'{len(renglones)} renglón(es). ' + desde_el_celular(request))
+                    f"{pluralizar(len(renglones), 'renglón', 'renglones')}. " + desde_el_celular(request))
         elegida.refresh_from_db()
         return JsonResponse({
             'id': compra.pk,

@@ -38,8 +38,8 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                 <i class="bi bi-download me-1"></i>Exportar
             </button>
             <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{{ url_exportar }}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel (lo filtrado)</a></li>
-                <li><a class="dropdown-item" href="{{ url_exportar }}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF (lo filtrado)</a></li>
+                <li><a hx-boost="false" class="dropdown-item" href="{{ url_exportar }}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=xlsx"><i class="bi bi-file-earmark-excel me-2"></i>Excel (lo filtrado)</a></li>
+                <li><a hx-boost="false" class="dropdown-item" href="{{ url_exportar }}?{% if parametros %}{{ parametros }}&amp;{% endif %}formato=pdf"><i class="bi bi-file-earmark-pdf me-2"></i>PDF (lo filtrado)</a></li>
             </ul>
         </div>
         {% endif %}

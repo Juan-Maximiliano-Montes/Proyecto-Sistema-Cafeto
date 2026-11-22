@@ -118,8 +118,7 @@ class ProveedorForm(forms.ModelForm):
         ).exclude(pk=self.instance.pk).exists()
         if existe:
             raise ValidationError(
-                'Este nombre ya se encuentra registrado '
-                '(ignorando mayúsculas/minúsculas).')
+                'Ya existe un proveedor cargado con ese nombre.')
         return nombre_limpio
 
     def clean_cuit_proveedor(self):

@@ -22,6 +22,7 @@ from seguridad.servicios import foto, instantanea, registrar_auditoria
 from stock.models import Producto, Rubro
 from nucleo.validaciones import id_valido
 from nucleo import json_seguro
+from nucleo.templatetags.cafeto import pesos
 
 UTILIDAD_SUGERIDA = Decimal('0.40')
 
@@ -155,7 +156,7 @@ def alta_producto(request):
         return JsonResponse({'ok': False, 'error': _texto(error)})
     registrar_auditoria(request, 'ALTA', 'PRODUCTO', instancia=producto, nuevo=instantanea(producto),
                         detalle=f'Alta de {producto} desde la factura escaneada en «Recibir mercadería»: '
-                                f'costo $ {producto.precio_costo}, precio $ {producto.precio_venta}.')
+                                f'costo {pesos(producto.precio_costo)}, precio {pesos(producto.precio_venta)}.')
     return JsonResponse({'ok': True, 'producto': producto.pk, 'nombre': str(producto),
                          'controla': producto.controla_vencimiento,
                          'fraccionable': not producto.exige_cantidad_entera,

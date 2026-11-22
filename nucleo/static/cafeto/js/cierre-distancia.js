@@ -14,7 +14,20 @@
         });
         envio.disabled = forma() === 'DISTANCIA' && !remota.aprobada;
     }
-    radios.forEach(function (r) { r.addEventListener('change', mostrar); });
+    function parar() {
+        if (remota.reloj) { clearInterval(remota.reloj); remota.reloj = null; }
+    }
+    function vigilar() {
+        if (remota.id && !remota.aprobada && !remota.reloj) { remota.reloj = setInterval(preguntar, 2000); }
+    }
+    radios.forEach(function (r) {
+        r.addEventListener('change', function () {
+            if (forma() === 'DISTANCIA') { vigilar(); } else { parar(); }
+            mostrar();
+        });
+    });
+    window.addEventListener('pagehide', parar);
+    document.addEventListener('htmx:beforeSwap', parar);
     if (!document.querySelector('#formas input:checked') && radios.length) { radios[0].checked = true; }
     var yaAprobada = $('remotaYaAprobada');
     if (yaAprobada) {
@@ -43,17 +56,17 @@
         if (r.estado === 'PENDIENTE') {
             pintar('Esperando respuesta. Le avisamos por ' + (remota.avisos || 'la bandeja del sistema') + '. Vence en ' + minutos(r.restan) + ' min. Si te dictan el PIN, escribilo acá.', 'info', true);
         } else if (r.estado === 'APROBADA') {
-            clearInterval(remota.reloj);
+            parar();
             remota.aprobada = true;
             document.querySelector('[name=remota]').value = remota.id;
             pintar('Aprobó ' + r.autorizo + ' (' + (r.via || '').toLowerCase() + '). Ya podés cerrar.', 'exito', false);
             $('remotaPedir').classList.add('d-none');
             mostrar();
         } else if (r.estado === 'RECHAZADA') {
-            clearInterval(remota.reloj); remota.id = null;
+            parar(); remota.id = null;
             pintar('Rechazaron el pedido. Volvé a contar con quien supervise o dejalo pendiente de revisión.', 'error', false);
         } else if (r.estado === 'ANULADA') {
-            clearInterval(remota.reloj); remota.id = null;
+            parar(); remota.id = null;
             pintar('El pedido venció sin respuesta. Podés pedirlo de nuevo.', 'aviso', false);
         }
     }
@@ -73,7 +86,8 @@
             if (!r.ok) { pintar(r.error, 'error', false); return; }
             remota = {id: r.id, reloj: null, aprobada: false, avisos: (r.avisos || []).join(' y ') || 'la bandeja del sistema'};
             seguir(r);
-            remota.reloj = setInterval(preguntar, 2000);
+            parar();
+            vigilar();
             $('remotaPin').value = ''; $('remotaPin').focus();
         }).catch(function () { boton.disabled = false; pintar('No se pudo pedir la autorización. Revisá la conexión.', 'error', false); });
     });

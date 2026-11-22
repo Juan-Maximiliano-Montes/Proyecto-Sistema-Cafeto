@@ -493,6 +493,6 @@ class EstadoEnPantallaTest(Base):
         _numeros, avisos = panel.del_dia(self.admin)
         aviso = next(a for a in avisos if a['clave'] == 'FIADO_VENCIDO')
         self.assertEqual(aviso['tipo'], 'error')
-        self.assertIn('1 cliente(s) tienen deuda en cuenta corriente vencida (por $\u00a03.000,00)', aviso['texto'])
+        self.assertIn('1 cliente tiene deuda en cuenta corriente vencida (por $\u00a03.000,00)', aviso['texto'])
         self.assertEqual(self.client.get(reverse('fidelizacion:cuentas'), {'estado': 'vencidos'}).context['ver'],
                          'mora')
