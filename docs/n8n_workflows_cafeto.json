@@ -46,7 +46,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const r = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst lineas = ['*Cafeto · cierre del ' + r.fecha + '*', '',\n  'Vendido: ' + plata(r.ventas_hoy), 'Ganancia bruta: ' + plata(r.ganancia_bruta_hoy)];\nfor (const m of r.desglose_medios_pago_hoy) lineas.push('  · ' + m.medio + ': ' + plata(m.total));\nif (r.renglones_sin_costo_hoy) lineas.push('', 'Ojo: ' + r.renglones_sin_costo_hoy + ' renglón(es) vendidos sin costo cargado.');\nif (r.avisos.length) { lineas.push('', '*Avisos*'); for (const a of r.avisos) lineas.push('  · ' + a.texto); }\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+          "jsCode": "const r = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst lineas = ['*Cafeto · cierre del ' + r.fecha + '*', '',\n  'Vendido: ' + plata(r.ventas_hoy), 'Ganancia bruta: ' + plata(r.ganancia_bruta_hoy)];\nfor (const m of (r.desglose_medios_pago_hoy || [])) lineas.push('  · ' + m.medio + ': ' + plata(m.total));\nif (r.renglones_sin_costo_hoy) lineas.push('', 'Ojo: ' + r.renglones_sin_costo_hoy + ' renglón(es) vendidos sin costo cargado.');\nconst avisos = r.avisos || [];\nif (avisos.length) { lineas.push('', '*Avisos*'); for (const a of avisos) lineas.push('  · ' + a.texto); }\nreturn [{ json: { texto: lineas.join('\\n') } }];"
         },
         "name": "Armar el mensaje",
         "type": "n8n-nodes-base.code",
@@ -170,7 +170,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const r = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst cc = r.cuentas_corrientes || {atrasados: [], vencen_pronto: []};\nif (!r.vencimientos_proximos.length && !cc.atrasados.length && !cc.vencen_pronto.length) return [];\nconst lineas = ['*Cafeto · buen día*'];\nif (r.vencimientos_proximos.length) {\n  lineas.push('', '*Para pagar en estos días*');\n  for (const v of r.vencimientos_proximos)\n    lineas.push((v.vencido ? 'VENCIDO ' : '') + v.vence + ' · ' + v.a_quien + ' · ' + v.concepto + ' · ' + plata(v.monto));\n}\nif (cc.atrasados.length) {\n  lineas.push('', '*Fiados atrasados* (te deben ' + plata(cc.te_deben) + ' en total)');\n  for (const c of cc.atrasados)\n    lineas.push('  · ' + c.cliente + ': ' + plata(c.vencido) + ' vencido' + (c.dias_de_atraso ? ', ' + c.dias_de_atraso + ' día(s)' : '') + (c.suspendido ? ' (suspendido)' : '') + (c.nota ? ' — ' + c.nota : ''));\n}\nif (cc.vencen_pronto.length) {\n  lineas.push('', '*Fiados que vencen en estos días*');\n  for (const c of cc.vencen_pronto) lineas.push('  · ' + c.vence + ' · ' + c.cliente + ' · ' + plata(c.falta));\n}\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+          "jsCode": "const r = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst cc = r.cuentas_corrientes || {atrasados: [], vencen_pronto: []};\nconst vencimientos = r.vencimientos_proximos || [];\nif (!vencimientos.length && !cc.atrasados.length && !cc.vencen_pronto.length) return [];\nconst lineas = ['*Cafeto · buen día*'];\nif (vencimientos.length) {\n  lineas.push('', '*Para pagar en estos días*');\n  for (const v of vencimientos)\n    lineas.push((v.vencido ? 'VENCIDO ' : '') + v.vence + ' · ' + v.a_quien + ' · ' + v.concepto + ' · ' + plata(v.monto));\n}\nif (cc.atrasados.length) {\n  lineas.push('', '*Fiados atrasados* (te deben ' + plata(cc.te_deben) + ' en total)');\n  for (const c of cc.atrasados)\n    lineas.push('  · ' + c.cliente + ': ' + plata(c.vencido) + ' vencido' + (c.dias_de_atraso ? ', ' + c.dias_de_atraso + ' día(s)' : '') + (c.suspendido ? ' (suspendido)' : '') + (c.nota ? ' — ' + c.nota : ''));\n}\nif (cc.vencen_pronto.length) {\n  lineas.push('', '*Fiados que vencen en estos días*');\n  for (const c of cc.vencen_pronto) lineas.push('  · ' + c.vence + ' · ' + c.cliente + ' · ' + plata(c.falta));\n}\nreturn [{ json: { texto: lineas.join('\\n') } }];"
         },
         "name": "Sólo si hay algo que avisar",
         "type": "n8n-nodes-base.code",
@@ -294,7 +294,7 @@
       },
       {
         "parameters": {
-          "jsCode": "return $input.first().json.productos.map((p) => ({ json: p }));"
+          "jsCode": "return ($input.first().json.productos || []).map((p) => ({ json: p }));"
         },
         "name": "Uno por producto",
         "type": "n8n-nodes-base.code",
@@ -336,7 +336,8 @@
         "position": [
           660,
           0
-        ]
+        ],
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
@@ -364,7 +365,13 @@
               }
             ]
           },
-          "options": {},
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          },
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify($json.cuerpo) }}"
@@ -375,7 +382,8 @@
         "position": [
           1100,
           0
-        ]
+        ],
+        "onError": "continueRegularOutput"
       }
     ],
     "connections": {
@@ -714,7 +722,7 @@
       },
       {
         "parameters": {
-          "jsCode": "const r = $input.first().json;\nconst lineas = ['*Cafeto · mantenimiento del mes*', '',\n  'Registros viejos que pasaron al histórico: ' + r.filas_al_historico,\n  'Productos que cambiaron de proveedor habitual: ' + r.cantidad_reasignados];\nfor (const p of r.productos_reasignados.slice(0, 15)) lineas.push('  · ' + p.producto + ': ' + p.antes + ' → ' + p.ahora);\nif (r.proveedores_inactivos_6m.length) {\n  lineas.push('', '*Proveedores sin movimiento hace más de 6 meses* (fijate si conviene darlos de baja)');\n  for (const p of r.proveedores_inactivos_6m) lineas.push('  · ' + p.nombre + (p.ultima_compra ? ' (última compra ' + p.ultima_compra + ')' : ' (sin compras)'));\n}\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+          "jsCode": "const r = $input.first().json;\nconst lineas = ['*Cafeto · mantenimiento del mes*', '',\n  'Registros viejos que pasaron al histórico: ' + r.filas_al_historico,\n  'Productos que cambiaron de proveedor habitual: ' + r.cantidad_reasignados];\nfor (const p of (r.productos_reasignados || []).slice(0, 15)) lineas.push('  · ' + p.producto + ': ' + p.antes + ' → ' + p.ahora);\nconst inactivos = r.proveedores_inactivos_6m || [];\nif (inactivos.length) {\n  lineas.push('', '*Proveedores sin movimiento hace más de 6 meses* (fijate si conviene darlos de baja)');\n  for (const p of inactivos) lineas.push('  · ' + p.nombre + (p.ultima_compra ? ' (última compra ' + p.ultima_compra + ')' : ' (sin compras)'));\n}\nreturn [{ json: { texto: lineas.join('\\n') } }];"
         },
         "name": "Armar el resumen",
         "type": "n8n-nodes-base.code",
@@ -1466,7 +1474,8 @@
         "position": [
           660,
           0
-        ]
+        ],
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
@@ -1511,7 +1520,8 @@
         "position": [
           1100,
           0
-        ]
+        ],
+        "onError": "continueRegularOutput"
       }
     ],
     "connections": {
@@ -1672,7 +1682,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Un solo mensaje, corto: qué receta cargar primero (la que más plata\n// movió) y qué se está vendiendo sin costo o a pérdida. Lo demás espera.\nconst recetas = $('Elaborados sin receta').first().json;\nconst margenes = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst lineas = ['*Cafeto · la revisión del lunes*'];\nif (recetas.total_pendientes) {\n  lineas.push('', '*Recetas que faltan* (' + recetas.total_pendientes + ' en total)');\n  for (const p of recetas.productos) {\n    const vendido = Number(p.facturado) > 0\n      ? ' · vendió ' + plata(p.facturado) + ' en ' + recetas.dias + ' días'\n      : ' · todavía sin ventas';\n    lineas.push('  · ' + p.nombre + vendido);\n  }\n}\nconst perdida = margenes.productos.filter((p) => p.motivo !== 'MARGEN_BAJO');\nconst bajos = margenes.productos.filter((p) => p.motivo === 'MARGEN_BAJO');\nif (perdida.length) {\n  lineas.push('', '*Sin costo o a pérdida*');\n  for (const p of perdida.slice(0, 5)) {\n    lineas.push('  · ' + p.nombre + ' (' + (p.motivo === 'SIN_COSTO' ? 'costo en $ 0' : 'se vende a pérdida') + ')');\n  }\n}\nif (bajos.length) {\n  lineas.push('', '*Margen por debajo del ' + margenes.piso + ' %*');\n  for (const p of bajos.slice(0, 5)) {\n    lineas.push('  · ' + p.nombre + ': ' + p.utilidad_porcentaje + ' %');\n  }\n}\nif (lineas.length === 1) return [];\nlineas.push('', 'Para resolverlas: ' + (recetas.productos[0] || margenes.productos[0] || {}).url);\nreturn [{ json: { texto: lineas.join('\\n') } }];\n"
+          "jsCode": "// Un solo mensaje, corto: qué receta cargar primero (la que más plata\n// movió) y qué se está vendiendo sin costo o a pérdida. Lo demás espera.\nconst recetas = $('Elaborados sin receta').first().json || {};\nconst margenes = $input.first().json || {};\n// Si una de las dos consultas contestó un error, lo que falta queda vacío\n// y el mensaje sale con la mitad que sí se pudo leer.\nconst sinReceta = Array.isArray(recetas.productos) ? recetas.productos : [];\nconst conMargen = Array.isArray(margenes.productos) ? margenes.productos : [];\nconst dias = recetas.dias || 7;\nconst piso = margenes.piso === undefined ? 15 : margenes.piso;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst lineas = ['*Cafeto · la revisión del lunes*'];\nif (recetas.total_pendientes) {\n  lineas.push('', '*Recetas que faltan* (' + recetas.total_pendientes + ' en total)');\n  for (const p of sinReceta) {\n    const vendido = Number(p.facturado) > 0\n      ? ' · vendió ' + plata(p.facturado) + ' en ' + dias + ' días'\n      : ' · todavía sin ventas';\n    lineas.push('  · ' + p.nombre + vendido);\n  }\n}\nconst perdida = conMargen.filter((p) => p.motivo !== 'MARGEN_BAJO');\nconst bajos = conMargen.filter((p) => p.motivo === 'MARGEN_BAJO');\nif (perdida.length) {\n  lineas.push('', '*Sin costo o a pérdida*');\n  for (const p of perdida.slice(0, 5)) {\n    lineas.push('  · ' + p.nombre + ' (' + (p.motivo === 'SIN_COSTO' ? 'costo en $ 0' : 'se vende a pérdida') + ')');\n  }\n}\nif (bajos.length) {\n  lineas.push('', '*Margen por debajo del ' + piso + ' %*');\n  for (const p of bajos.slice(0, 5)) {\n    lineas.push('  · ' + p.nombre + ': ' + p.utilidad_porcentaje + ' %');\n  }\n}\nif (lineas.length === 1) return [];\n// El enlace es el del primer producto que TRAIGA url. Antes se tomaba\n// (recetas.productos[0] || margenes.productos[0] || {}).url y, con las dos\n// listas vacías o un objeto sin url, el mensaje terminaba en «undefined».\nconst destino = sinReceta.concat(conMargen)\n  .map((p) => p && p.url)\n  .find((u) => typeof u === 'string' && u.length > 0);\nif (destino) lineas.push('', 'Para resolverlas: ' + destino);\nreturn [{ json: { texto: lineas.join('\\n') } }];\n"
         },
         "name": "Armar el mensaje",
         "type": "n8n-nodes-base.code",
@@ -1820,7 +1830,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Cinco productos, tres minutos, antes de abrir. Son los que figuran en\n// cero (o en negativo) y sin embargo se siguen vendiendo: o nunca se\n// contaron, o se venden sin descargar. Si no hay ninguno, no se manda nada.\nconst r = $input.first().json;\nif (!r.productos || !r.productos.length) return [];\nconst lineas = ['*Cafeto · conteo de 3 minutos*', '',\n  'Estos figuran en 0 y se siguen vendiendo. Contalos y cargá el conteo:'];\nfor (const p of r.productos) {\n  const rotacion = Number(p.unidades_vendidas) > 0\n    ? ' (salieron ' + p.unidades_vendidas + ' en ' + r.dias + ' días)'\n    : ' (quedó en 0 desde la migración)';\n  lineas.push('  · ' + p.nombre + rotacion);\n}\nlineas.push('', 'Quedan ' + r.total + ' así en total. De a cinco por día se termina.');\nreturn [{ json: { texto: lineas.join('\\n') } }];\n"
+          "jsCode": "// Cinco productos, tres minutos, antes de abrir. Son los que figuran en\n// cero (o en negativo) y sin embargo se siguen vendiendo: o nunca se\n// contaron, o se venden sin descargar. Si no hay ninguno, no se manda nada.\nconst r = $input.first().json || {};\n// Si el sistema contestó un error (sin \"productos\"), no hay misión: se\n// sale en silencio en lugar de romper el nodo con un TypeError.\nconst productos = Array.isArray(r.productos) ? r.productos : [];\nif (!productos.length) return [];\nconst lineas = ['*Cafeto · conteo de 3 minutos*', '',\n  'Estos figuran en 0 y se siguen vendiendo. Contalos y cargá el conteo:'];\nfor (const p of productos) {\n  const rotacion = Number(p.unidades_vendidas) > 0\n    ? ' (salieron ' + p.unidades_vendidas + ' en ' + (r.dias || 30) + ' días)'\n    : ' (quedó en 0 desde la migración)';\n  lineas.push('  · ' + p.nombre + rotacion);\n}\nlineas.push('', 'Quedan ' + (r.total || productos.length) + ' así en total. De a cinco por día se termina.');\nreturn [{ json: { texto: lineas.join('\\n') } }];\n"
         },
         "name": "Armar la misión",
         "type": "n8n-nodes-base.code",
@@ -1906,12 +1916,12 @@
             "interval": [
               {
                 "field": "cronExpression",
-                "expression": "30 3 * * *"
+                "expression": "50 3 * * *"
               }
             ]
           }
         },
-        "name": "Cada noche 3:30",
+        "name": "Cada noche 3:50",
         "type": "n8n-nodes-base.scheduleTrigger",
         "typeVersion": 1.2,
         "position": [
@@ -1953,7 +1963,7 @@
       },
       {
         "parameters": {
-          "jsCode": "// Un item por producto, para consultar Open Food Facts de a uno.\nreturn $input.first().json.productos.map((p) => ({ json: p }));\n"
+          "jsCode": "// Un item por producto, para consultar Open Food Facts de a uno.\n// Si el sistema contestó un error (sin \"productos\"), no hay nada que\n// recorrer: se sale en silencio en lugar de romper el flujo.\nreturn ($input.first().json.productos || []).map((p) => ({ json: p }));\n"
         },
         "name": "Uno por producto",
         "type": "n8n-nodes-base.code",
@@ -1965,7 +1975,7 @@
       },
       {
         "parameters": {
-          "url": "=https://world.openfoodfacts.org/api/v2/product/{{ $json.codigo_barras }}.json?fields=categories",
+          "url": "=https://world.openfoodfacts.org/api/v2/product/{{ $json.codigo_barras || '0000000000000' }}.json?fields=categories",
           "options": {
             "batching": {
               "batch": {
@@ -1995,12 +2005,13 @@
         "position": [
           660,
           0
-        ]
+        ],
+        "onError": "continueRegularOutput"
       },
       {
         "parameters": {
           "mode": "runOnceForEachItem",
-          "jsCode": "// El rubro se adivina con palabras del local; Open Food Facts sólo suma\n// cuando el producto tiene código de barras y está en su catálogo.\n// NADA se cambia acá: esto arma una sugerencia que aprueba una persona.\nconst p = $('Uno por producto').item.json;\nconst d = $input.item.json || {};\nconst PALABRAS = {\n  'Bebidas con Alcohol': ['cerveza', 'vino', 'fernet', 'whisky', 'vodka', 'gin', 'aperitivo', 'champagne', 'sidra'],\n  'Bebidas sin Alcohol': ['gaseosa', 'agua', 'jugo', 'soda', 'energizante', 'isotonica', 'tonica'],\n  'Lácteos': ['leche', 'yogur', 'queso', 'manteca', 'crema', 'dulce de leche', 'ricota'],\n  'Fiambrería': ['jamon', 'salame', 'mortadela', 'bondiola', 'panceta', 'salchichon'],\n  'Panadería': ['pan', 'factura', 'medialuna', 'bizcocho', 'tostada', 'budin', 'criollo'],\n  'Kiosco': ['alfajor', 'chicle', 'caramelo', 'chocolate', 'turron', 'oblea', 'golosina'],\n  'Limpieza': ['lavandina', 'detergente', 'jabon en polvo', 'desodorante de piso', 'esponja', 'trapo', 'suavizante'],\n  'Perfumería': ['shampoo', 'jabon de tocador', 'papel higienico', 'pañal', 'desodorante', 'crema de enjuague', 'toallita'],\n  'Almacén': ['fideo', 'arroz', 'harina', 'azucar', 'aceite', 'yerba', 'cafe', 'sal', 'pure', 'arveja', 'lenteja', 'conserva', 'galletita'],\n};\nconst sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();\nconst texto = sinTildes(p.nombre + ' ' + (p.marca || ''));\nlet rubro = '';\nlet motivo = '';\nfor (const [candidato, palabras] of Object.entries(PALABRAS)) {\n  const encontrada = palabras.find((palabra) => texto.includes(sinTildes(palabra)));\n  if (encontrada) { rubro = candidato; motivo = 'El nombre dice \"' + encontrada + '\"'; break; }\n}\nif (!rubro && d.status === 1 && d.product) {\n  const categorias = sinTildes(d.product.categories || '');\n  for (const [candidato, palabras] of Object.entries(PALABRAS)) {\n    const encontrada = palabras.find((palabra) => categorias.includes(sinTildes(palabra)));\n    if (encontrada) {\n      rubro = candidato;\n      motivo = 'Open Food Facts lo tiene en \"' + String(d.product.categories).split(',')[0].trim() + '\"';\n      break;\n    }\n  }\n}\nif (!rubro) return null;\nreturn { json: { cuerpo: { producto: p.id, tipo: 'RUBRO',\n  motivo: motivo + '. Hoy está en \"' + p.rubro_actual + '\".',\n  propuesta: { rubro } } } };\n"
+          "jsCode": "// El rubro se adivina con palabras del local; Open Food Facts sólo suma\n// cuando el producto tiene código de barras y está en su catálogo.\n// NADA se cambia acá: esto arma una sugerencia que aprueba una persona.\n//\n// La coincidencia es por PALABRA COMPLETA (con su plural), no por\n// «contiene»: con includes(), «original» caía en Bebidas con Alcohol por\n// «gin», «pañal» en Panadería por «pan» y «salsa» en Almacén por «sal».\n// Y las frases más largas se prueban primero, así «crema de enjuague» va\n// a Perfumería y no a Lácteos por la palabra «crema».\nconst LARGO_MOTIVO = 200;   // stock.SugerenciaCatalogo.motivo es CharField(200)\nconst LARGO_CATEGORIA = 60;\nconst p = $('Uno por producto').item.json;\nconst d = $input.item.json || {};\n// Perfumería y Limpieza van antes que Lácteos: ante dos palabras igual de\n// específicas (jabón, crema, desodorante) manda el rubro no comestible.\nconst PALABRAS = {\n  'Bebidas con Alcohol': ['cerveza', 'vino', 'fernet', 'whisky', 'vodka', 'gin', 'ginebra', 'aperitivo', 'champagne', 'sidra'],\n  'Bebidas sin Alcohol': ['gaseosa', 'agua', 'jugo', 'soda', 'energizante', 'isotonica', 'tonica'],\n  'Fiambrería': ['jamon', 'salame', 'mortadela', 'bondiola', 'panceta', 'salchichon'],\n  'Panadería': ['pan', 'factura', 'medialuna', 'bizcocho', 'tostada', 'budin', 'criollo'],\n  'Kiosco': ['alfajor', 'chicle', 'caramelo', 'chocolate', 'turron', 'oblea', 'golosina'],\n  'Perfumería': ['shampoo', 'jabon de tocador', 'papel higienico', 'pañal', 'desodorante', 'crema de enjuague', 'toallita'],\n  'Limpieza': ['lavandina', 'detergente', 'jabon en polvo', 'desodorante de piso', 'esponja', 'trapo', 'suavizante'],\n  'Lácteos': ['leche', 'yogur', 'queso', 'manteca', 'crema', 'dulce de leche', 'ricota'],\n  'Almacén': ['fideo', 'arroz', 'harina', 'azucar', 'aceite', 'yerba', 'cafe', 'sal', 'salsa', 'pure', 'arveja', 'lenteja', 'conserva', 'galletita'],\n};\nconst sinTildes = (t) => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();\n// Los pares (rubro, palabra) de la frase más específica a la más general:\n// primero las de más palabras y, con la misma cantidad, la más larga. El\n// orden del objeto resuelve los empates (sort es estable).\nconst CANDIDATOS = [];\nfor (const [rubro, palabras] of Object.entries(PALABRAS)) {\n  for (const palabra of palabras) CANDIDATOS.push({ rubro, palabra, limpia: sinTildes(palabra) });\n}\nCANDIDATOS.sort((a, b) => (b.limpia.split(' ').length - a.limpia.split(' ').length)\n  || (b.limpia.length - a.limpia.length));\n// Palabra entera, admitiendo el plural del castellano («fideos»,\n// «alfajores»). El \\b alcanza porque el texto ya viene sin tildes y en\n// minúsculas, y ninguna palabra de la lista lleva caracteres de regex.\nconst dice = (texto, limpia) => new RegExp('\\\\b' + limpia + '(?:es|s)?\\\\b').test(texto);\nconst buscar = (texto) => (texto ? CANDIDATOS.find((c) => dice(texto, c.limpia)) : undefined);\n\nlet rubro = '';\nlet razon = '';\nconst porNombre = buscar(sinTildes(p.nombre + ' ' + (p.marca || '')));\nif (porNombre) {\n  rubro = porNombre.rubro;\n  razon = 'El nombre dice \"' + porNombre.palabra + '\"';\n}\nif (!rubro && d.status === 1 && d.product) {\n  const porCategoria = buscar(sinTildes(d.product.categories || ''));\n  if (porCategoria) {\n    rubro = porCategoria.rubro;\n    const primera = String(d.product.categories || '').split(',')[0].trim().slice(0, LARGO_CATEGORIA);\n    razon = 'Open Food Facts lo tiene en \"' + primera + '\"';\n  }\n}\nif (!rubro) return null;\n// El motivo se corta acá y no en PostgreSQL: el truncado del backend\n// dejaría la frase partida al medio sin que nadie se entere.\nlet motivo = razon + '. Hoy está en \"' + (p.rubro_actual || 'sin rubro') + '\".';\nif (motivo.length > LARGO_MOTIVO) motivo = motivo.slice(0, LARGO_MOTIVO - 1).trimEnd() + '…';\nreturn { json: { cuerpo: { producto: p.id, tipo: 'RUBRO', motivo, propuesta: { rubro } } } };\n"
         },
         "name": "Proponer el rubro",
         "type": "n8n-nodes-base.code",
@@ -2023,7 +2034,13 @@
               }
             ]
           },
-          "options": {},
+          "options": {
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          },
           "sendBody": true,
           "specifyBody": "json",
           "jsonBody": "={{ JSON.stringify($json.cuerpo) }}"
@@ -2034,21 +2051,11 @@
         "position": [
           1100,
           0
-        ]
+        ],
+        "onError": "continueRegularOutput"
       }
     ],
     "connections": {
-      "Cada noche 3:30": {
-        "main": [
-          [
-            {
-              "node": "Productos sin clasificar",
-              "type": "main",
-              "index": 0
-            }
-          ]
-        ]
-      },
       "Productos sin clasificar": {
         "main": [
           [
@@ -2087,6 +2094,17 @@
           [
             {
               "node": "Dejar la sugerencia",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Cada noche 3:50": {
+        "main": [
+          [
+            {
+              "node": "Productos sin clasificar",
               "type": "main",
               "index": 0
             }
