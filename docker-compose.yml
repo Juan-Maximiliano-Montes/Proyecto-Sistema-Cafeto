@@ -23,6 +23,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Memoria acotada para una máquina de desarrollo de 4 GB: PostgreSQL
+    # reserva shared_buffers de entrada (por defecto 128 MB) y hasta
+    # work_mem por cada orden y cada hash de CADA consulta. Con estos
+    # valores alcanza de sobra para la base de un comercio y quedan unos
+    # 100 MB libres para los otros tres contenedores. En el NAS no se toca:
+    # docker-compose.prod.yml tiene su propia configuración.
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c work_mem=4MB
+      -c max_connections=30
     ports:
       - "5432:5432"
     volumes:
@@ -34,10 +45,18 @@ services:
       retries: 30
 
   # ---------- Servicio 2: Adminer (administrador web de la BD) ----------
+  # No arranca con "docker compose up": es una herramienta para mirar la
+  # base a mano, no hace falta para trabajar, y un contenedor menos son
+  # ~60 MB de RAM libres en una máquina de 4 GB. Cuando se la necesita:
+  #
+  #   docker compose --profile herramientas up -d adminer
+  #
+  # y queda en http://localhost:9090.
   adminer:
     image: adminer:latest
     container_name: cafeto_adminer
-    restart: always
+    profiles: ["herramientas"]
+    restart: unless-stopped
     environment:
       ADMINER_DEFAULT_SERVER: db
     ports:
@@ -76,6 +95,15 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-solo-para-desarrollo}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-True}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      # Un solo proceso de Python (sin el vigilante del autoreload): ver
+      # docker/arrancar.sh. Con 8 GB o más, DJANGO_NORELOAD=False en .env.
+      DJANGO_NORELOAD: ${DJANGO_NORELOAD:-True}
+      # Desde qué direcciones se aceptan formularios y si hay un proxy o un
+      # túnel adelante. Se usan igual en desarrollo cuando se entra por
+      # Cloudflare Tunnel: sin reenviarlas, el login desde el túnel fallaba
+      # con «CSRF verification failed» y la IP del cliente salía la del proxy.
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+      DJANGO_CONFIAR_EN_PROXY: ${DJANGO_CONFIAR_EN_PROXY:-True}
       # En desarrollo los estáticos se sirven desde el código montado.
       CAFETO_ESTATICOS_CON_HASH: "False"
       # Correo para los enlaces de clave. Vacío en desarrollo: los correos
@@ -131,6 +159,10 @@ services:
     environment:
       GENERIC_TIMEZONE: America/Argentina/Salta
       TZ: America/Argentina/Salta
+      # Node reserva el montón (heap) según la RAM que ve de la máquina, no
+      # la que queda libre: en un equipo de 4 GB n8n pedía ~1 GB sólo para
+      # sí y dejaba al resto sin aire. 384 MB alcanzan para estos flujos.
+      NODE_OPTIONS: --max-old-space-size=384
       # Para que los flujos lean la credencial sin tenerla escrita adentro.
       CAFETO_URL: http://web:8000
       CAFETO_N8N_TOKEN: ${CAFETO_N8N_TOKEN:-}

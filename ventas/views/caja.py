@@ -380,119 +380,128 @@ def cierre(request):
         return redirect('ventas:cierre')
     if request.method == 'POST':
         form = ConfirmacionCierreForm(request.POST, modos=modos)
-        form.is_valid()
-        datos = form.cleaned_data
-        if etapa == 'COINCIDE' and diferencia != 0 and not datos.get('observacion'):
-            datos['observacion'] = 'Diferencia dentro de lo tolerado'
-        forma = datos.get('forma') or 'ACA'
+        # Si el formulario no está bien, no se toca nada: ni el token de
+        # idempotencia ni el turno.
+        #
+        # Antes se llamaba a ``form.is_valid()`` y se seguía de largo con
+        # ``cleaned_data`` incompleto. Con una observación más larga de lo
+        # que entra en la columna, el token se consumía igual, el cierre
+        # fallaba y el segundo intento salía con «ese cierre ya se había
+        # procesado»: el turno quedaba abierto, sin diferencia explicada y
+        # sin forma de cerrarlo salvo volviendo a contar el cajón.
+        if form.is_valid():
+            datos = form.cleaned_data
+            if etapa == 'COINCIDE' and diferencia != 0 and not datos.get('observacion'):
+                datos['observacion'] = 'Diferencia dentro de lo tolerado'
+            forma = datos.get('forma') or 'ACA'
 
-        token = datos.get('token_operacion')
-        if not idempotencia.consumir(request, token):
-            messages.info(request, 'Ese cierre ya se había procesado.')
-            return redirect('ventas:caja')
-        antes = instantanea(turno)
-        solicitud = entrante = None
-        if relevo and _es_quien_opera(datos.get('entrante_usuario'), usuario):
-            if abrio_otra_persona and ArqueoForm.AUSENCIA in modos:
-                # El turno era de otra persona y sigue quien está acá: es
-                # cerrar el turno anterior y abrir el propio, sin pedirle la
-                # clave a un tercero (DD-101).
-                modo, relevo, ausencia = ArqueoForm.AUSENCIA, False, True
-        try:
-            supervisor, a_revisar = None, False
-            if titular_sola:
-                autorizar_con_clave(
-                    request, usuario.nombre_usuario,
-                    datos.get('autoriza_clave'), 'supervisar_cierre',
-                    para='cerrar con esta diferencia')
-            elif pide_supervisor and forma == 'REVISAR':
-                a_revisar = True
-            elif pide_supervisor and forma != 'DISTANCIA':
-                supervisor = autorizar_con_clave(
-                    request, datos.get('autoriza_usuario'),
-                    datos.get('autoriza_clave'), 'supervisar_cierre',
-                    distinto_de=usuario, para='cerrar con esta diferencia')
+            token = datos.get('token_operacion')
+            if not idempotencia.consumir(request, token):
+                messages.info(request, 'Ese cierre ya se había procesado.')
+                return redirect('ventas:caja')
+            antes = instantanea(turno)
+            solicitud = entrante = None
             if relevo and _es_quien_opera(datos.get('entrante_usuario'), usuario):
-                raise ValidationError(SIGUE_EL_MISMO)
-            if relevo:
-                # Custodia: firma que recibió el cajón. No aprueba nada.
-                entrante = autorizar_con_clave(
-                    request, datos.get('entrante_usuario'),
-                    datos.get('entrante_clave'), 'abrir_caja',
-                    distinto_de=usuario, para='recibir el cajón',
-                    titular_se_confirma=False)
-            with transaction.atomic():
-                if pide_supervisor and not titular_sola and forma == 'DISTANCIA':
-                    solicitud = a_distancia.aprobada_para(
-                        datos.get('remota'), usuario, huella, bloquear=True, turno=turno)
-                    supervisor = solicitud.id_usuario_autorizante
-                if relevo or ausencia:
-                    cerrado, nuevo = servicio_caja.relevar(
-                        turno, usuario, contado, entrante or usuario,
-                        datos.get('observacion'), supervisor=supervisor,
-                        confirmo_titular=titular_sola, a_revisar=a_revisar,
-                        en_ausencia=ausencia or (relevo and abrio_otra_persona))
-                else:
-                    cerrado = servicio_caja.cerrar(
-                        turno, usuario, contado, datos.get('observacion'),
-                        supervisor=supervisor, confirmo_titular=titular_sola,
-                        a_revisar=a_revisar)
-                    nuevo = None
-                if solicitud is not None:
-                    a_distancia.marcar_usada(solicitud)
-                # Lo que se pidió a distancia y no se usó ya no tiene a qué
-                # aplicarse: no queda esperando en la bandeja de nadie.
-                a_distancia.anular_pedidos_de_cierre(turno)
-        except ValidationError as error:
-            idempotencia.devolver(request, token)
-            form.add_error(None, _texto(error))
-        except IntegrityError as error:
-            # Una regla de la base: se explica en la misma pantalla, sin
-            # perder lo que se cargó (DD-100/101).
-            from nucleo.errores import mensaje_de
-            idempotencia.devolver(request, token)
-            form.add_error(None, mensaje_de(error)[0])
-        else:
-            request.session.pop(CLAVE_ARQUEO, None)
-            abrio = cerrado.id_usuario_apertura
-            registrar_auditoria(
-                request, 'CIERRE', 'TURNO DE CAJA', instancia=cerrado,
-                anterior=antes,
-                nuevo={**instantanea(cerrado),
-                       **({'turno_siguiente': instantanea(nuevo)} if nuevo else {})},
-                detalle=(f'Cerró {cerrado.id_caja_registradora}: contado {pesos(cerrado.monto_final)}, '
-                         f'esperado {pesos(cerrado.monto_esperado)}, '
-                         f'{servicio_caja.en_palabras(cerrado.diferencia_caja)}'
-                         + (f'; aprobó la diferencia {supervisor}'
-                            + (f' a distancia (pedido N° {solicitud.pk})' if solicitud else '')
-                            if supervisor else '')
-                         + ('; la titular lo confirmó con su clave, sin otra persona'
-                            if titular_sola else '')
-                         + ('; nadie aprobó la diferencia: queda pendiente de revisión'
-                            if cerrado.requiere_revision else '')
-                         + (f'; cerrado en relevo por {_nombre(usuario)} en ausencia de {_nombre(abrio)}'
-                            if ausencia else '')
-                         + (f'; sigue {nuevo.id_usuario_apertura} (turno {nuevo.pk})' if nuevo else '')
-                         + '.'))
-            if relevo:
-                caja = cerrado.id_caja_registradora
-                traspasar_sesion(
-                    request, entrante,
-                    detalle_salida=(f'Salió por cambio de turno: dejó {caja} a {_nombre(entrante)} '
-                                    f'(turno N° {nuevo.pk}).'),
-                    detalle_entrada=(f'Entró por cambio de turno: recibió {caja} de {_nombre(usuario)} '
-                                     f'con {pesos(nuevo.monto_inicial)} de fondo (turno N° {nuevo.pk}).'))
-                messages.success(request, f'Turno relevado: ahora estás operando con la cuenta de '
-                                          f'{_nombre(entrante)}.')
-            elif ausencia:
-                messages.success(request, f'Cerraste el turno de {_nombre(abrio)} en su ausencia y abriste '
-                                          f'el tuyo con {pesos(nuevo.monto_inicial)} de fondo.')
+                if abrio_otra_persona and ArqueoForm.AUSENCIA in modos:
+                    # El turno era de otra persona y sigue quien está acá: es
+                    # cerrar el turno anterior y abrir el propio, sin pedirle la
+                    # clave a un tercero (DD-101).
+                    modo, relevo, ausencia = ArqueoForm.AUSENCIA, False, True
+            try:
+                supervisor, a_revisar = None, False
+                if titular_sola:
+                    autorizar_con_clave(
+                        request, usuario.nombre_usuario,
+                        datos.get('autoriza_clave'), 'supervisar_cierre',
+                        para='cerrar con esta diferencia')
+                elif pide_supervisor and forma == 'REVISAR':
+                    a_revisar = True
+                elif pide_supervisor and forma != 'DISTANCIA':
+                    supervisor = autorizar_con_clave(
+                        request, datos.get('autoriza_usuario'),
+                        datos.get('autoriza_clave'), 'supervisar_cierre',
+                        distinto_de=usuario, para='cerrar con esta diferencia')
+                if relevo and _es_quien_opera(datos.get('entrante_usuario'), usuario):
+                    raise ValidationError(SIGUE_EL_MISMO)
+                if relevo:
+                    # Custodia: firma que recibió el cajón. No aprueba nada.
+                    entrante = autorizar_con_clave(
+                        request, datos.get('entrante_usuario'),
+                        datos.get('entrante_clave'), 'abrir_caja',
+                        distinto_de=usuario, para='recibir el cajón',
+                        titular_se_confirma=False)
+                with transaction.atomic():
+                    if pide_supervisor and not titular_sola and forma == 'DISTANCIA':
+                        solicitud = a_distancia.aprobada_para(
+                            datos.get('remota'), usuario, huella, bloquear=True, turno=turno)
+                        supervisor = solicitud.id_usuario_autorizante
+                    if relevo or ausencia:
+                        cerrado, nuevo = servicio_caja.relevar(
+                            turno, usuario, contado, entrante or usuario,
+                            datos.get('observacion'), supervisor=supervisor,
+                            confirmo_titular=titular_sola, a_revisar=a_revisar,
+                            en_ausencia=ausencia or (relevo and abrio_otra_persona))
+                    else:
+                        cerrado = servicio_caja.cerrar(
+                            turno, usuario, contado, datos.get('observacion'),
+                            supervisor=supervisor, confirmo_titular=titular_sola,
+                            a_revisar=a_revisar)
+                        nuevo = None
+                    if solicitud is not None:
+                        a_distancia.marcar_usada(solicitud)
+                    # Lo que se pidió a distancia y no se usó ya no tiene a qué
+                    # aplicarse: no queda esperando en la bandeja de nadie.
+                    a_distancia.anular_pedidos_de_cierre(turno)
+            except ValidationError as error:
+                idempotencia.devolver(request, token)
+                form.add_error(None, _texto(error))
+            except IntegrityError as error:
+                # Una regla de la base: se explica en la misma pantalla, sin
+                # perder lo que se cargó (DD-100/101).
+                from nucleo.errores import mensaje_de
+                idempotencia.devolver(request, token)
+                form.add_error(None, mensaje_de(error)[0])
             else:
-                messages.success(request, f'{cerrado.id_caja_registradora} cerrada. ¡Gracias!')
-            if cerrado.requiere_revision:
-                messages.warning(request, 'La diferencia quedó pendiente de revisión de la titular.')
-            # El comprobante del turno que se acaba de cerrar.
-            return redirect('ventas:recaudacion', pk=cerrado.pk)
+                request.session.pop(CLAVE_ARQUEO, None)
+                abrio = cerrado.id_usuario_apertura
+                registrar_auditoria(
+                    request, 'CIERRE', 'TURNO DE CAJA', instancia=cerrado,
+                    anterior=antes,
+                    nuevo={**instantanea(cerrado),
+                           **({'turno_siguiente': instantanea(nuevo)} if nuevo else {})},
+                    detalle=(f'Cerró {cerrado.id_caja_registradora}: contado {pesos(cerrado.monto_final)}, '
+                             f'esperado {pesos(cerrado.monto_esperado)}, '
+                             f'{servicio_caja.en_palabras(cerrado.diferencia_caja)}'
+                             + (f'; aprobó la diferencia {supervisor}'
+                                + (f' a distancia (pedido N° {solicitud.pk})' if solicitud else '')
+                                if supervisor else '')
+                             + ('; la titular lo confirmó con su clave, sin otra persona'
+                                if titular_sola else '')
+                             + ('; nadie aprobó la diferencia: queda pendiente de revisión'
+                                if cerrado.requiere_revision else '')
+                             + (f'; cerrado en relevo por {_nombre(usuario)} en ausencia de {_nombre(abrio)}'
+                                if ausencia else '')
+                             + (f'; sigue {nuevo.id_usuario_apertura} (turno {nuevo.pk})' if nuevo else '')
+                             + '.'))
+                if relevo:
+                    caja = cerrado.id_caja_registradora
+                    traspasar_sesion(
+                        request, entrante,
+                        detalle_salida=(f'Salió por cambio de turno: dejó {caja} a {_nombre(entrante)} '
+                                        f'(turno N° {nuevo.pk}).'),
+                        detalle_entrada=(f'Entró por cambio de turno: recibió {caja} de {_nombre(usuario)} '
+                                         f'con {pesos(nuevo.monto_inicial)} de fondo (turno N° {nuevo.pk}).'))
+                    messages.success(request, f'Turno relevado: ahora estás operando con la cuenta de '
+                                              f'{_nombre(entrante)}.')
+                elif ausencia:
+                    messages.success(request, f'Cerraste el turno de {_nombre(abrio)} en su ausencia y abriste '
+                                              f'el tuyo con {pesos(nuevo.monto_inicial)} de fondo.')
+                else:
+                    messages.success(request, f'{cerrado.id_caja_registradora} cerrada. ¡Gracias!')
+                if cerrado.requiere_revision:
+                    messages.warning(request, 'La diferencia quedó pendiente de revisión de la titular.')
+                # El comprobante del turno que se acaba de cerrar.
+                return redirect('ventas:recaudacion', pk=cerrado.pk)
     else:
         form = ConfirmacionCierreForm(modos=modos, initial={
             'token_operacion': idempotencia.emitir(request), 'modo': modo})
@@ -502,12 +511,22 @@ def cierre(request):
                 if pide_supervisor and not titular_sola else None)
     if aprobada is not None and request.method != 'POST':
         form.initial.update({'forma': 'DISTANCIA', 'remota': aprobada.pk})
+    # Un pedido que quedó esperando respuesta: al recargar la página se
+    # RETOMA, en vez de empezar de cero y anularlo al volver a pedir (el PIN
+    # que la titular ya dictó dejaba de servir).
+    pendiente_remota = (a_distancia.pendiente_de_cierre(turno)
+                        if aprobada is None and pide_supervisor and not titular_sola else None)
+    if pendiente_remota is not None and request.method != 'POST':
+        form.initial.update({'forma': 'DISTANCIA'})
 
     return render(request, 'ventas/cierre.html', {
         'turno': turno, 'contado': contado, 'esperado': esperado,
         'diferencia': diferencia, 'diferencia_abs': abs(diferencia), 'tolerancia': tolerancia,
         'pide_supervisor': pide_supervisor, 'relevo': relevo, 'ausencia': ausencia,
         'modo': modo, 'modos': modos, 'form': form, 'aprobada': aprobada,
+        'pendiente_remota': pendiente_remota,
+        'pendiente_restan': (a_distancia.estado(pendiente_remota)['restan']
+                             if pendiente_remota is not None else 0),
         'abrio': turno.id_usuario_apertura, 'abrio_otra_persona': abrio_otra_persona,
         'titular_sola': titular_sola, 'etapa': etapa,
         'motivo_minimo': servicio_caja.MOTIVO_MINIMO,

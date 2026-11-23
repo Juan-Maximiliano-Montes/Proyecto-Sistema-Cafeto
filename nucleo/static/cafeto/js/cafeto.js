@@ -151,11 +151,34 @@
 
     function apagarBotones(form) {
         form.querySelectorAll('button[type=submit]').forEach(function (boton) {
-            boton.disabled = true;
+            if (boton.disabled) { return; }
             boton.dataset.textoOriginal = boton.innerHTML;
+            boton.disabled = true;
             boton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Guardando…';
         });
     }
+
+    function encenderBotones(raiz) {
+        (raiz || document).querySelectorAll('button[type=submit][data-texto-original]')
+            .forEach(function (boton) {
+                boton.innerHTML = boton.dataset.textoOriginal;
+                delete boton.dataset.textoOriginal;
+                boton.disabled = false;
+            });
+    }
+
+    //  Volver con la flecha «atrás» no recarga la página: el navegador la
+    //  saca del caché del historial (bfcache) tal como quedó, con el botón
+    //  apagado en «Guardando…» y el formulario marcado como ya confirmado.
+    //  La pantalla quedaba muerta: no se podía volver a guardar ni salía la
+    //  confirmación. Al reaparecer se devuelve todo a su estado inicial.
+    window.addEventListener('pageshow', function (evento) {
+        if (!evento.persisted) { return; }
+        encenderBotones(document);
+        document.querySelectorAll('form[data-confirmado]').forEach(function (form) {
+            delete form.dataset.confirmado;
+        });
+    });
 
     // form[data-confirmar="pregunta"]: una acción que cambia el estado.
     // La pregunta también puede ir en el botón (button[data-confirmar]) cuando
@@ -195,19 +218,44 @@
 
     // form.form-una-vez: resumen de lo que se va a guardar, y el botón se
     // apaga una sola vez (un doble clic no da de alta dos veces).
+    //  Un grupo de radios tiene su pregunta en el <legend> del <fieldset>
+    //  (el modo de cierre) o en el aria-label del grupo de botones (cuándo
+    //  se paga un egreso). Lo que se muestra en el resumen es esa pregunta,
+    //  no el name del control.
+    function preguntaDelGrupo(control) {
+        var campo = control.closest('fieldset');
+        var leyenda = campo && campo.querySelector('legend');
+        if (leyenda && leyenda.textContent.trim()) { return leyenda.textContent.trim(); }
+        var grupo = control.closest('[role="group"][aria-label], [role="radiogroup"][aria-label]');
+        if (grupo) { return grupo.getAttribute('aria-label').trim(); }
+        return control.name;
+    }
+
     function resumenDelFormulario(form) {
         var filas = [];
         var raiz = form.querySelector('.modal-body') || form;
         raiz.querySelectorAll('[name]').forEach(function (control) {
             if (control.type === 'hidden' || control.name === 'csrfmiddlewaretoken') { return; }
             if (/-DELETE$/.test(control.name)) { return; }
+            // Un grupo de radios es UNA respuesta: las opciones que no se
+            // eligieron no se listan. Antes salían las tres («Cerrar la
+            // caja: —», «Cambio de turno: —») y el resumen decía lo
+            // contrario de lo que se iba a hacer.
+            if (control.type === 'radio' && !control.checked) { return; }
             var renglon = control.closest('.js-renglon');
             if (renglon && renglon.classList.contains('d-none')) { return; }
             if (control.closest('.d-none')) { return; }
             var etiqueta = form.querySelector('label[for="' + control.id + '"]');
             var nombre = etiqueta ? etiqueta.textContent.replace('*', '').trim() : control.name;
             var valor;
-            if (control.type === 'checkbox') {
+            if (control.type === 'radio') {
+                // La etiqueta del radio es la OPCIÓN elegida; el nombre de
+                // la fila es la pregunta del grupo.
+                valor = nombre === control.name ? control.value : nombre;
+                var fuerte = etiqueta && etiqueta.querySelector('strong');
+                if (fuerte && fuerte.textContent.trim()) { valor = fuerte.textContent.trim(); }
+                nombre = preguntaDelGrupo(control);
+            } else if (control.type === 'checkbox') {
                 valor = control.checked ? 'Sí' : 'No';
             } else if (control.type === 'password') {
                 valor = control.value ? '••••••' : '';
@@ -221,7 +269,61 @@
                        '</th><td class="text-start">' +
                        (valor === '' ? '<span class="text-tenue">—</span>' : escapar(valor)) + '</td></tr>');
         });
-        return filas.length ? '<table class="table table-sm mb-0"><tbody>' + filas.join('') + '</tbody></table>' : '';
+        var tabla = filas.length ? '<table class="table table-sm mb-0"><tbody>' + filas.join('') + '</tbody></table>' : '';
+        return avisosDeMonto(form) + tabla;
+    }
+
+    //  Un monto chiquísimo casi siempre es un error de tipeo: en la planilla
+    //  del local hay gastos cargados como "28.8" donde el papel decía
+    //  $28.800. El servidor no lo puede rechazar (un gasto de $50 existe:
+    //  una bolsa de hielo), así que se pregunta ANTES de guardar, con el
+    //  monto escrito en pesos para que se lea de un vistazo.
+    //  El umbral lo pone cada campo con data-avisar-si-menor.
+    function avisosDeMonto(form) {
+        var avisos = [];
+        form.querySelectorAll('input[data-avisar-si-menor]').forEach(function (control) {
+            if (control.disabled || control.closest('.d-none')) { return; }
+            var tope = leerNumero(control.dataset.avisarSiMenor, decimalesDe(control));
+            var valor = leerNumero(control.value, decimalesDe(control));
+            if (isNaN(tope) || isNaN(valor) || valor <= 0 || valor >= tope) { return; }
+            var etiqueta = form.querySelector('label[for="' + control.id + '"]');
+            avisos.push('<p class="aviso aviso-aviso mb-2"><i class="bi bi-exclamation-triangle-fill"></i>' +
+                '<span>' + escapar(etiqueta ? etiqueta.textContent.replace('*', '').trim() : 'El monto') +
+                ' es de <strong>' + escapar(pesosDeNumero(valor)) + '</strong>, menos de ' +
+                escapar(pesosDeNumero(tope)) + '. Fijate que no te falte un cero: ' +
+                escapar(pesosDeNumero(valor)) + ' no es lo mismo que ' +
+                escapar(pesosDeNumero(valor * 1000)) + '.</span></p>');
+        });
+        return avisos.join('');
+    }
+
+    //  Punto de venta de una compra informal: un ticket de la verdulería o
+    //  un remito escrito a mano no lo traen impreso, pero la base exige
+    //  uno. El campo declara con qué valor se completa
+    //  (data-punto-por-defecto) y para qué comprobantes
+    //  (data-tipos-sin-punto); el servidor hace lo mismo al guardar, así
+    //  que sin JavaScript tampoco traba.
+    function ajustarPuntoPorDefecto(form) {
+        var punto = form.querySelector('input[data-punto-por-defecto]');
+        var tipo = form.querySelector('[name="tipo_comprobante"]');
+        if (!punto || !tipo) { return; }
+        var sin = (punto.dataset.tiposSinPunto || '').split(',');
+        var informal = sin.indexOf(tipo.value) !== -1;
+        if (informal && punto.value.trim() === '') {
+            punto.value = punto.dataset.puntoPorDefecto;
+        }
+        var ayuda = document.getElementById(punto.getAttribute('aria-describedby') || '');
+        if (ayuda) { ayuda.classList.toggle('d-none', !informal); }
+    }
+    document.addEventListener('change', function (evento) {
+        var tipo = evento.target.closest && evento.target.closest('[name="tipo_comprobante"]');
+        if (tipo && tipo.form) { ajustarPuntoPorDefecto(tipo.form); }
+    });
+
+    var FORMATO_PESOS = window.Intl && window.Intl.NumberFormat
+        ? new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS'}) : null;
+    function pesosDeNumero(valor) {
+        return FORMATO_PESOS ? FORMATO_PESOS.format(valor) : '$ ' + textoDeNumero(valor, 2);
     }
 
     // form[data-acreedor]: un egreso se le paga a un proveedor O a otro
@@ -259,15 +361,79 @@
     // Los importes y cantidades se revisan antes del resumen: un «-500» o
     // un «abc» no llegan a la ventana de confirmación como si estuvieran
     // bien (DD-103). Las mismas reglas que leer_numero del servidor.
-    function leerNumero(texto) {
-        texto = String(texto || '').replace(/[\s$]/g, '').replace(/\u2212/g, '-');
+    //  Las mismas reglas que ``leer_numero`` de nucleo/formularios.py, en el
+    //  mismo orden, porque lo que el navegador acepta y lo que el servidor
+    //  guarda tienen que ser el MISMO número:
+    //
+    //    * con coma y punto, el que va ÚLTIMO es el separador decimal;
+    //    * sólo con coma, la coma es decimal ('1500,50');
+    //    * sólo con punto: si el valor admite tres decimales (una cantidad
+    //      en kilos) el punto es decimal ('1.250' kg = 1,25); en un importe,
+    //      un punto seguido de exactamente tres dígitos es de MILES
+    //      ('1.500' = mil quinientos) y si no, decimal ('12.5').
+    //
+    //  Esa última regla es la que faltaba: con parseFloat, el precio '1.500'
+    //  que dibuja el servidor se leía como 1,5 y la calculadora de precios
+    //  devolvía cualquier cosa.
+    var DIGITOS_EN_BASE = 12;
+
+    function leerNumero(texto, decimales) {
+        decimales = decimales === undefined || decimales === null ? 2 : decimales;
+        texto = String(texto === null || texto === undefined ? '' : texto)
+            .replace(/[\s$]/g, '').replace(/\u2212/g, '-');
         if (!/^-?[\d.,]+$/.test(texto) || !/\d/.test(texto)) { return NaN; }
-        var coma = texto.lastIndexOf(','), punto = texto.lastIndexOf('.');
-        var decimal = coma > punto ? ',' : '.';
-        if (coma >= 0 && punto >= 0) {
-            texto = texto.split(decimal === ',' ? '.' : ',').join('');
+        var hayComa = texto.indexOf(',') !== -1, hayPunto = texto.indexOf('.') !== -1;
+        if (hayComa && hayPunto) {
+            var decimal = texto.lastIndexOf(',') > texto.lastIndexOf('.') ? ',' : '.';
+            var miles = decimal === ',' ? '.' : ',';
+            texto = texto.split(miles).join('').split(decimal).join('.');
+        } else if (hayComa) {
+            if ((texto.match(/,/g) || []).length > 1) { return NaN; }
+            texto = texto.split(',').join('.');
+        } else if (hayPunto) {
+            var partes = texto.split('.');
+            var grupos = partes.slice(1);
+            var todosDeTres = grupos.every(function (p) { return p.length === 3; });
+            if (decimales < 3 && todosDeTres) {
+                texto = partes.join('');
+            } else if (partes.length > 2) {
+                return NaN;
+            }
         }
-        return parseFloat(texto.replace(',', '.'));
+        // Lo que Decimal() acepta y nada más: un '1.23.4' no es un número.
+        if (!/^-?(\d+\.?\d*|\.\d+)$/.test(texto)) { return NaN; }
+        var numero = parseFloat(texto);
+        if (isNaN(numero) || !isFinite(numero)) { return NaN; }
+        // No más decimales que los que guarda la base, ni más dígitos que
+        // los que entran en la columna (12 en total).
+        var coma = texto.indexOf('.');
+        if (coma !== -1 && texto.length - coma - 1 > decimales) { return NaN; }
+        if (Math.abs(numero) >= Math.pow(10, DIGITOS_EN_BASE - decimales)) { return NaN; }
+        return numero;
+    }
+
+    //  Y al revés: un número se escribe en un campo como se escribe acá,
+    //  con coma decimal. Con punto, Django lo lee como separador de MILES
+    //  (LANGUAGE_CODE='es-ar' y USE_THOUSAND_SEPARATOR=True) y un precio de
+    //  '1400.00' se guardaba como $140.000.
+    function textoDeNumero(valor, decimales) {
+        decimales = decimales === undefined || decimales === null ? 2 : decimales;
+        return valor.toFixed(decimales).replace('.', ',');
+    }
+
+    function escribirNumero(control, valor, decimales) {
+        if (!control) { return; }
+        control.value = textoDeNumero(valor, decimales);
+    }
+
+    Cafeto.leerNumero = leerNumero;
+    Cafeto.textoDeNumero = textoDeNumero;
+
+    function decimalesDe(control) {
+        var declarados = control && control.dataset ? control.dataset.decimales : null;
+        var numero = declarados === undefined || declarados === null || declarados === ''
+            ? NaN : parseInt(declarados, 10);
+        return isNaN(numero) ? 2 : numero;
     }
 
     function numerosValidos(form) {
@@ -279,7 +445,7 @@
             if (viejo) { viejo.remove(); }
             control.classList.remove('is-invalid');
             if (control.value.trim() === '') { return; }
-            var numero = leerNumero(control.value);
+            var numero = leerNumero(control.value, decimalesDe(control));
             var minimo = parseFloat(control.dataset.minimo);
             var texto = null;
             if (isNaN(numero)) {
@@ -627,6 +793,9 @@
             if (s.value && !s.dataset.lotesPedidos) { s.dataset.lotesPedidos = '1'; cargarLotes(s); }
         });
         todos(contenedor, '.js-camara').forEach(function (boton) { boton.hidden = !puedeCamara; });
+        todos(contenedor, 'input[data-punto-por-defecto]').forEach(function (punto) {
+            if (punto.form) { ajustarPuntoPorDefecto(punto.form); }
+        });
         // Sólo una ventana (.modal) se abre sola: el atributo en otro
         // elemento —un botón— dejaba el fondo oscuro y la pantalla trabada.
         todos(contenedor, '.modal[data-modal-auto]').forEach(function (modal) {
@@ -1067,9 +1236,12 @@
     //  Va en los dos sentidos: se cambia la utilidad y sale el precio; se
     //  cambia el precio y sale la utilidad. El servidor guarda el precio.
     // ---------------------------------------------------------------------
+    //  El costo, el IVA, la utilidad y el precio se leen con las mismas
+    //  reglas que el servidor (leerNumero): el precio "1.500" que dibuja
+    //  Django son mil quinientos pesos, no uno con cincuenta.
     function numeroDe(control) {
         if (!control || control.value === '') { return null; }
-        var valor = parseFloat(String(control.value).replace(',', '.'));
+        var valor = leerNumero(control.value, decimalesDe(control));
         return isNaN(valor) ? null : valor;
     }
     function recalcular(origen) {
@@ -1081,14 +1253,15 @@
         var costo = numeroDe(campo('costo')), iva = numeroDe(campo('iva')) || 0;
         if (costo === null || costo <= 0) { return; }
         var base = costo * (1 + iva / 100);
+        if (!isFinite(base) || base <= 0) { return; }
         var queCambio = origen.dataset.calculo;
         if (queCambio === 'precio' || (queCambio !== 'utilidad' && utilidad.value === '')) {
             var p = numeroDe(precio);
-            if (p !== null && p > 0) { utilidad.value = ((p / base - 1) * 100).toFixed(2); }
+            if (p !== null && p > 0) { escribirNumero(utilidad, (p / base - 1) * 100, 2); }
             return;
         }
         var u = numeroDe(utilidad);
-        if (u !== null) { precio.value = (base * (1 + u / 100)).toFixed(2); }
+        if (u !== null) { escribirNumero(precio, base * (1 + u / 100), 2); }
     }
     ['input', 'change'].forEach(function (tipo) {
         document.addEventListener(tipo, function (evento) {
@@ -1101,8 +1274,8 @@
         if (paso) {
             var precio = document.getElementById(paso.closest('.js-redondeo').dataset.destino);
             var valor = numeroDe(precio), salto = parseFloat(paso.dataset.paso);
-            if (precio && valor !== null && valor > 0) {
-                precio.value = (Math.max(salto, Math.round(valor / salto) * salto)).toFixed(2);
+            if (precio && valor !== null && valor > 0 && salto > 0) {
+                escribirNumero(precio, Math.max(salto, Math.round(valor / salto) * salto), 2);
                 recalcular(precio);
             }
             return;

@@ -37,6 +37,14 @@ from nucleo.textos import pluralizar, segun
 
 MAXIMO_DE_RENGLONES = 120
 
+#  Comprobantes informales: el ticket de la verdulería, la bolsa de carbón
+#  del kiosco, un remito escrito a mano. No tienen punto de venta impreso
+#  (eso es de los comprobantes de ARCA), pero la base exige uno >= 1, así
+#  que si el campo queda vacío se asume el 1. El constraint de la base y la
+#  unicidad del comprobante quedan intactos.
+SIN_PUNTO_DE_VENTA = frozenset({TipoComprobante.TICKET, TipoComprobante.OTRO,
+                                TipoComprobante.REMITO})
+
 
 def _texto(error):
     return ' '.join(getattr(error, 'messages', [str(error)]))
@@ -168,6 +176,14 @@ def recepcion(request):
         'puede_crear_proveedor': usuario.puede('crear_proveedor'),
         'rubros_json': {'rubros': [{'id': r.pk, 'nombre': r.nombre_rubro} for r in
                                    Rubro.objects.filter(borrado_logico=False, activo=True).order_by('nombre_rubro')]},
+        # Los renglones de la factura que la automatización NO pudo
+        # reconocer (``borrador['x']``), con la misma forma que devuelve
+        # «Escanear factura»: así la pantalla ofrece «Dar de alta y sumar»
+        # también cuando la factura llegó por WhatsApp o por correo. Antes
+        # sólo se listaban como texto en el aviso de arriba y había que
+        # darlos de alta uno por uno en Productos, en otra pestaña, y
+        # volver a cargar la compra.
+        'nuevos_json': {'nuevos': (borrador or {}).get('x') or []},
         'proveedores': proveedores, 'tipos': TipoComprobante.choices,
         'orden': orden, 'datos': datos, 'hoy': timezone.localdate().isoformat(),
         'catalogo': reverse('stock:buscar_productos') + '?tipos=REVENTA,INSUMO',
@@ -192,6 +208,18 @@ def recepcion(request):
                 orden = OrdenCompra.objects.filter(pk=id_valido(request.POST['orden'])).first()
             punto = request.POST.get('punto_venta', '').strip()
             numero = request.POST.get('numero', '').strip()
+            tipo_comprobante = request.POST.get('tipo_comprobante')
+            # Una compra informal (el ticket de la verdulería, la bolsa de
+            # carbón del kiosco, el remito escrito a mano) no trae punto de
+            # venta: el papel tiene un número suelto y nada más. La base
+            # exige punto_venta >= 1 (ck_compras_comprobante), así que
+            # quedaba trabada en un campo que no existe en el papel. Para
+            # esos tres tipos se asume el 1, que es lo que ya se venía
+            # cargando a mano. El resto (las facturas de ARCA) lo sigue
+            # pidiendo: ahí el punto de venta ESTÁ impreso y es parte de la
+            # identidad del comprobante.
+            if not punto and tipo_comprobante in SIN_PUNTO_DE_VENTA:
+                punto = '1'
             if not (punto.isascii() and punto.isdigit() and numero.isascii() and numero.isdigit()):
                 raise ValidationError('El punto de venta y el número del comprobante van en números.')
             renglones = _leer_renglones(request.POST.get('renglones'))
@@ -212,7 +240,7 @@ def recepcion(request):
                 if alta:
                     proveedor.save()
                 compra = servicios.recepcionar(
-                    proveedor, request.usuario_actual, request.POST.get('tipo_comprobante'),
+                    proveedor, request.usuario_actual, tipo_comprobante,
                     punto, numero, renglones,
                     fecha_compra=_fecha(request.POST.get('fecha'), 'la fecha de la factura'),
                     importe_otros_conceptos=otros, orden=orden,

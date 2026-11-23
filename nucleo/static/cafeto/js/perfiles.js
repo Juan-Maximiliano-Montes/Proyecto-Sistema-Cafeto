@@ -54,5 +54,12 @@
             abrir('modalEditar');
         }
     });
-    if (document.getElementById('formEditar')) { ajustarAlTipo(false); }
+    // Al cargar la página. Si el modal se reabre porque el guardado falló
+    // (data-modal-auto), el servidor ya dejó puesto el nombre, el tope y los
+    // tildes, y dice en data-es-sistema de qué perfil se trata: sin eso se
+    // llamaba siempre con `false` y el bloque de Seguridad del perfil
+    // administrador quedaba escondido y DESHABILITADO, así que al corregir
+    // el error se mandaba el formulario sin sus permisos exclusivos.
+    var formEditar = document.getElementById('formEditar');
+    if (formEditar) { ajustarAlTipo(formEditar.dataset.esSistema === '1'); }
 })();

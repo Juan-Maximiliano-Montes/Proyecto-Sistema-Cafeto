@@ -109,11 +109,55 @@ class AlineacionConDjangoTest(LeerFlujos, SimpleTestCase):
             self.assertEqual(coincidencia.namespace, 'api_servicio', ruta)
 
     def test_el_aviso_de_autorizacion_exige_el_bearer_del_sistema(self):
+        """El token se controla en un nodo IF, igual que en el de facturas.
+
+        Antes lo revisaba el propio nodo Code y cortaba con ``return []``:
+        el flujo terminaba sin mandar nada y sin dejar rastro, así que un
+        token mal puesto y una caída del JS Task Runner —que en un equipo
+        con poca memoria pasa— se veían exactamente igual. Con el IF, el
+        rechazo es un 401 que el sistema anota en su log.
+        """
         flujo = self.flujos['Cafeto · Autorización a distancia por WhatsApp']
-        codigo = self.nodos(flujo)['Armar el mensaje']['parameters']['jsCode']
-        self.assertIn("['authorization']", codigo)
-        self.assertIn("recibida !== 'Bearer ' + token", codigo)
-        self.assertIn('token.length < 32', codigo)
+        nodos = self.nodos(flujo)
+        self.assertEqual(self.siguientes(flujo, 'La caja pide autorización'),
+                         ['¿Trae el token de Cafeto?'])
+        control = json.dumps(nodos['¿Trae el token de Cafeto?']['parameters'], ensure_ascii=False)
+        self.assertIn('$json.headers.authorization', control)
+        self.assertIn('Bearer {{ $env.CAFETO_N8N_TOKEN }}', control)
+        self.assertIn("String($env.CAFETO_N8N_TOKEN || '').length >= 32", control)
+        self.assertEqual(self.siguientes(flujo, '¿Trae el token de Cafeto?'), ['Armar el mensaje'])
+        self.assertEqual(self.siguientes(flujo, '¿Trae el token de Cafeto?', 1), ['Rechazar sin token'])
+        rechazo = nodos['Rechazar sin token']
+        self.assertEqual(rechazo['type'], 'n8n-nodes-base.respondToWebhook')
+        self.assertEqual(rechazo['parameters']['options']['responseCode'], 401)
+        self.assertEqual(nodos['La caja pide autorización']['parameters']['responseMode'],
+                         'responseNode')
+        # El nodo Code ya no decide nada sobre el token: sólo arma el texto.
+        # Se miran las LÍNEAS de código, no los comentarios: el comentario
+        # del nodo explica justamente el «return []» que se sacó.
+        lineas = nodos['Armar el mensaje']['parameters']['jsCode'].splitlines()
+        codigo = '\n'.join(l for l in lineas if not l.strip().startswith('//'))
+        self.assertNotIn('return []', codigo)
+        self.assertNotIn('CAFETO_N8N_TOKEN', codigo)
+
+    def test_los_mensajes_de_whatsapp_van_con_json_stringify(self):
+        """Un salto de línea sin escapar rompe el JSON que recibe WAHA.
+
+        Los mensajes llevan varias líneas (el PIN, el enlace, los
+        renglones del ticket). Armando el cuerpo a mano, el primer ``\\n``
+        dejaba a WAHA con un JSON inválido y el aviso no salía.
+        """
+        encontrados = 0
+        for nombre, flujo in self.flujos.items():
+            for nodo in flujo['nodes']:
+                if not nodo['type'].endswith('httpRequest'):
+                    continue
+                if 'whatsapp' not in nodo['name'].lower():
+                    continue
+                encontrados += 1
+                self.assertIn('JSON.stringify', nodo['parameters'].get('jsonBody', ''),
+                              f'{nombre} · {nodo["name"]}')
+        self.assertGreaterEqual(encontrados, 6)
 
     def test_las_fotos_de_los_productos_sin_foto(self):
         flujo = self.flujos['Cafeto · Fotos de los productos sin foto (Open Food Facts)']

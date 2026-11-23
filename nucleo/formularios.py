@@ -355,9 +355,15 @@ class CampoNumero(forms.DecimalField):
         # Sin min/max/step del navegador (rechazan la coma). El mínimo viaja
         # como dato para que el resumen de .form-una-vez avise antes de
         # mostrar «—» o un monto negativo (DD-103).
+        #
+        # Con el mínimo viajan los decimales que acepta el campo: el JS lee
+        # lo tipeado con las MISMAS reglas que ``leer_numero``, y ahí los
+        # decimales deciden si "1.500" son mil quinientos (un importe) o uno
+        # con medio (una cantidad en kilos).
         if self.min_value is None:
             return {}
-        return {'data-minimo': str(self.min_value)}
+        return {'data-minimo': str(self.min_value),
+                'data-decimales': str(self.decimales)}
 
     def prepare_value(self, value):
         """Se muestra como se escribe acá: 10.000 o 1.234,50."""

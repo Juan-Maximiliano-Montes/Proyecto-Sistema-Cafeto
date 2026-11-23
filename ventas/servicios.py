@@ -182,7 +182,11 @@ def _exigir_vendible(producto):
     if not producto.es_vendible:
         raise ValidationError(
             f'"{producto}" es un insumo: se usa para preparar, no se vende.')
-    if producto.es_compuesto and not producto.composicion.exists():
+    # Un combo sin contenido y un producido sin receta no se pueden cobrar.
+    # Un ELABORADO sí: el café o la promo se preparan al momento y la receta
+    # puede cargarse después; mientras no la tenga, se vende sin descontar
+    # insumos (ver TIPOS_CON_COMPOSICION_OBLIGATORIA en stock/models.py).
+    if producto.exige_composicion and not producto.composicion.exists():
         raise ValidationError(
             f'"{producto}" no tiene cargada su receta o su contenido: no se '
             'puede vender hasta completarla.')

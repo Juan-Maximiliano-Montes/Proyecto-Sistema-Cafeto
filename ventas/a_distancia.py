@@ -221,6 +221,28 @@ def ya_aprobada(turno, huella_operacion):
             .select_related('id_usuario_autorizante').order_by('-fecha_resolucion').first())
 
 
+def pendiente_de_cierre(turno):
+    """El pedido de cierre de este turno que sigue ESPERANDO respuesta.
+
+    Al recargar la pantalla de cierre (un F5, volver de otra pestaña, la
+    tablet que se bloqueó) el pedido sigue vivo del lado del servidor, pero
+    la pantalla arrancaba en blanco: la cajera veía otra vez el botón
+    «Pedir autorización a distancia» y, al apretarlo, el pedido anterior se
+    ANULABA y a la titular le llegaba un segundo WhatsApp con otro PIN. El
+    que ya le había dictado dejaba de servir, sin que ninguna de las dos
+    entendiera por qué. Devolviéndolo, la pantalla retoma el mismo pedido:
+    el PIN dictado sigue valiendo.
+    """
+    if turno is None:
+        return None
+    pendiente = (SolicitudAutorizacion.objects
+                 .filter(id_turno_caja=turno, pedido__tipo=CIERRE,
+                         estado_solicitud=EstadoSolicitud.PENDIENTE,
+                         fecha_vencimiento__gt=timezone.now())
+                 .order_by('-pk').first())
+    return pendiente
+
+
 def _anular_pendientes(operador, turno, tipo=None):
     """Un pedido abierto por caja: el nuevo reemplaza al anterior. Los de
     cierre son del TURNO (los puede seguir otra persona), no de quien pidió."""
@@ -432,6 +454,16 @@ def en_segundo_plano(funcion, *args):
     threading.Thread(target=funcion, args=args, daemon=True).start()
 
 
+#  Cuánto se le espera a n8n. Eran 5 segundos y no alcanzaban: el webhook
+#  no contesta hasta que termina TODO el flujo (armar el mensaje, pedirle a
+#  WAHA que lo mande, WAHA hablando con WhatsApp Web), y en el equipo del
+#  local —4 GB compartidos entre PostgreSQL, Django, n8n y WAHA— eso pasa
+#  de 10 segundos con facilidad. El pedido se daba por perdido cuando en
+#  realidad el WhatsApp estaba saliendo, y el reintento mandaba el mensaje
+#  dos veces. Esto corre en un hilo aparte: la caja no espera a nadie.
+ESPERA_WEBHOOK = 20
+
+
 def _webhook(url, datos, intentos=2, espera=1):
     """Avisa a n8n. Si no contesta o contesta con un error del servidor, se
     reintenta una vez al segundo; un 4xx (token, dirección) no se arregla
@@ -445,10 +477,13 @@ def _webhook(url, datos, intentos=2, espera=1):
     for intento in range(1, intentos + 1):
         pedido = urllib.request.Request(url, data=cuerpo, method='POST', headers=encabezados_para_n8n())
         try:
-            with urllib.request.urlopen(pedido, timeout=5) as respuesta:
+            with urllib.request.urlopen(pedido, timeout=ESPERA_WEBHOOK) as respuesta:
                 return respuesta.status
         except urllib.error.HTTPError as error:
-            motivo = f'HTTP {error.code}'
+            # El cuerpo del 4xx es lo único que dice QUÉ rechazó n8n (el
+            # token, el flujo apagado, un nodo que falló). Sin esto el log
+            # decía "HTTP 403" y había que entrar a n8n a adivinar.
+            motivo = f'HTTP {error.code}{_detalle(error)}'
             if error.code < 500:
                 break
         except Exception as error:                          # noqa: BLE001
@@ -457,8 +492,24 @@ def _webhook(url, datos, intentos=2, espera=1):
             log.warning('n8n no recibió el pedido de autorización %s (%s): se reintenta en %s s',
                         datos.get('solicitud'), motivo, espera)
             time.sleep(espera)
-    log.error('n8n no recibió el pedido de autorización %s (%s)', datos.get('solicitud'), motivo)
+    log.error('n8n no recibió el pedido de autorización %s (%s). Revisá que el flujo esté '
+              'activo en n8n y que CAFETO_N8N_TOKEN sea el mismo en los dos lados.',
+              datos.get('solicitud'), motivo)
     return None
+
+
+def _detalle(error):
+    """Las primeras líneas de la respuesta de error, para el log.
+
+    Recortado a 300 caracteres: una respuesta de n8n puede traer un stack
+    entero y el log del sistema no es el lugar para eso.
+    """
+    try:
+        cuerpo = error.read(1024).decode('utf-8', 'replace')
+    except Exception:                                       # noqa: BLE001
+        return ''
+    cuerpo = ' '.join(cuerpo.split())[:300]
+    return f' · {cuerpo}' if cuerpo else ''
 
 
 # ---------------------------------------------------------------------------

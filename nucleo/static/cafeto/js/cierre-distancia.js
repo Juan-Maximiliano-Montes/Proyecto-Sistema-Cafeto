@@ -35,6 +35,19 @@
         document.querySelector('[name=remota]').value = remota.id;
         $('remotaPedir').classList.add('d-none');
     }
+    // Un pedido que quedó ESPERANDO respuesta se retoma tal cual: el mismo
+    // número, el mismo PIN y el mismo vencimiento. Antes de esto, recargar
+    // la página (un F5, la tablet que se bloqueó) dejaba la pantalla en
+    // blanco con el botón de pedir: al apretarlo se anulaba el pedido
+    // anterior y a la titular le llegaba otro PIN, así que el que ya había
+    // dictado dejaba de servir.
+    var pendiente = $('remotaPendiente');
+    if (pendiente && !yaAprobada) {
+        remota = {id: Number(pendiente.dataset.id), reloj: null, aprobada: false,
+                  avisos: pendiente.dataset.avisos || 'correo o WhatsApp'};
+        seguir({estado: 'PENDIENTE', restan: Number(pendiente.dataset.restan) || 0});
+        if (forma() === 'DISTANCIA') { vigilar(); }
+    }
     mostrar();
     function pintar(texto, tipo, conPin) {
         var caja = $('remota');

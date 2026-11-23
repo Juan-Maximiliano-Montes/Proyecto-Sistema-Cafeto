@@ -286,10 +286,17 @@ class StockInicialAlImportarTest(TestCase):
 
     def setUp(self):
         self.url = reverse('importar', args=['productos'])
-        self.filas = [FACIL_VIRTUAL,
-                      ['1001', 'CARAMELOS', 'Kiosco', 100, 0, 40, 200, '', 12, 0, 0, 'S', 'S'],
-                      ['1002', 'CHICLES', 'Kiosco', 100, 0, 40, 200, '', -4, 0, 0, 'S', 'S'],
-                      ['1003', 'PASTILLAS', 'Kiosco', 100, 0, 40, 200, '', '2,5', 0, 0, 'S', 'S']]
+        # La columna «Fraccionable» con "No" es lo que hace que estos tres
+        # sigan siendo productos POR UNIDAD: lo dice la planilla, y lo que
+        # dice la planilla manda. Es justo lo que este caso prueba —que un
+        # stock con decimales en algo que va por unidad NO se carga— y sin
+        # la columna el importador lo leería como evidencia de que se vende
+        # por peso (ver stock/tests/test_planilla_del_local.py, donde se
+        # prueba esa otra mitad con la planilla de Fácil Virtual tal cual).
+        self.filas = [FACIL_VIRTUAL + ['Fraccionable'],
+                      ['1001', 'CARAMELOS', 'Kiosco', 100, 0, 40, 200, '', 12, 0, 0, 'S', 'S', 'No'],
+                      ['1002', 'CHICLES', 'Kiosco', 100, 0, 40, 200, '', -4, 0, 0, 'S', 'S', 'No'],
+                      ['1003', 'PASTILLAS', 'Kiosco', 100, 0, 40, 200, '', '2,5', 0, 0, 'S', 'S', 'No']]
 
     def importar(self, usuario, **extra):
         fabrica.entrar(self.client, usuario)

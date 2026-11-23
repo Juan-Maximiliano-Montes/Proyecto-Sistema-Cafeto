@@ -39,6 +39,43 @@ def _sin_apostrofo(texto):
         return texto[1:]
     return texto
 
+#  Lo que Excel guarda NO es el número que se ve en la celda: un stock de
+#  0,02 kg queda como 0.020000000000000046 y un 1,25 como
+#  1.2499999999999996, porque el formato de la planilla muestra dos
+#  decimales y el valor real es el del punto flotante (IEEE-754). Peor: una
+#  resta que debería dar 0 da -2.498e-16.
+#
+#  En la planilla real de Fácil Virtual eso pasa en 40 filas. Sin limpiarlo,
+#  el importador veía "decimales" donde no hay ninguno (y reclasificaba
+#  productos envasados como fraccionables), y los números con notación
+#  científica no los lee ``leer_numero``.
+#
+#  Seis decimales alcanzan: el sistema guarda tres como máximo (cantidades)
+#  y dos (importes), así que redondear ahí no pierde nada real y borra todo
+#  el ruido.
+DECIMALES_DE_EXCEL = 6
+
+
+def _sin_ruido_flotante(valor):
+    """0.020000000000000046 -> '0,02' leído como texto: '0.02'.
+
+    Devuelve siempre notación decimal (nunca '2E-2'), porque lo que sigue
+    es ``leer_numero``, que rechaza la científica a propósito.
+    """
+    import math
+    from decimal import Decimal, InvalidOperation
+
+    if not math.isfinite(valor):
+        return ''
+    try:
+        numero = Decimal(str(round(valor, DECIMALES_DE_EXCEL))).normalize()
+    except InvalidOperation:
+        return ''
+    if numero == 0:
+        return '0'              # y no '-0', que no es un número para nadie
+    return format(numero, 'f')
+
+
 MAXIMO_DE_FILAS = 5000
 MAXIMO_DE_BYTES = 2 * 1024 * 1024
 CLAVE_SESION = 'cafeto_importacion_{}'
@@ -161,8 +198,12 @@ class Importador:
     def _texto(valor):
         if valor is None:
             return ''
-        if isinstance(valor, float) and valor.is_integer():
-            return str(int(valor))
+        if isinstance(valor, bool):
+            return 'Sí' if valor else 'No'
+        if isinstance(valor, float):
+            if valor.is_integer():
+                return str(int(valor))
+            return _sin_ruido_flotante(valor)
         if hasattr(valor, 'isoformat'):
             return valor.isoformat()[:10]
         return _sin_apostrofo(str(valor).strip())

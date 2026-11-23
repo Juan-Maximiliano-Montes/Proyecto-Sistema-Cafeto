@@ -8,6 +8,7 @@ El conteo es **ciego**: quien cuenta ve lo que cargó, no lo que el sistema
 cree que hay. La diferencia la ve recién quien aprueba.
 """
 from datetime import date
+from decimal import Decimal
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -237,9 +238,28 @@ def conteo(request):
                       .order_by('-pk') if abierto else []),
         'motivos': _motivos(TipoAjuste.CONTEO),
         'catalogo': _catalogo(),
-        'rubros': Rubro.objects.filter(borrado_logico=False).order_by('nombre_rubro'),
+        # V-G7: el combo del alta rápida ofrece sólo rubros VIGENTES, y un
+        # rubro inactivo no se ofrece al dar de alta un producto (es
+        # justamente para qué existe 'activo'). Sin el filtro, el alta
+        # rápida del conteo era la única pantalla por donde entraba un
+        # producto en un rubro que el local ya no usa.
+        'rubros': Rubro.objects.filter(borrado_logico=False, activo=True).order_by('nombre_rubro'),
         'puede_crear': request.usuario_actual.tiene_permiso('crear_producto'),
     })
+
+
+def _numero_del_alta(texto, etiqueta):
+    """Lo tipeado como número, 0 si está vacío, y un error si es cualquier
+    otra cosa (nunca un 0 silencioso)."""
+    texto = (texto or '').strip()
+    if not texto:
+        return Decimal('0')
+    numero = leer_numero(texto, 2)
+    if numero is None:
+        raise ValidationError(f'{etiqueta} "{texto}" no es un número: escribilo como 1500 o 1500,50.')
+    if numero < 0:
+        raise ValidationError(f'{etiqueta} no puede ser negativo.')
+    return numero
 
 
 @transaction.atomic
@@ -259,12 +279,19 @@ def _alta_rapida(request):
     contada = leer_numero(datos.get('contada'), 3)
     if contada is None:
         raise ValidationError('Escribí cuánto contaste.')
+    # El precio y el costo que se tipean se LEEN, no se adivinan: un
+    # "12oo" o un "doce mil" se avisaba... nada, entraba como 0 y el
+    # producto quedaba con costo $0 (margen del 100 % en los reportes) o
+    # con precio 0, que el modelo rechaza con un mensaje que no señala el
+    # campo. Ahora cada uno dice qué pasa.
+    precio = _numero_del_alta(datos.get('precio'), 'El precio de venta')
+    costo = _numero_del_alta(datos.get('costo'), 'El costo')
     producto = Producto(
         codigo_barras=datos.get('codigo'), nombre_producto=datos.get('nombre', ''),
-        id_rubro=Rubro.objects.filter(pk=id_valido(datos.get('rubro')), borrado_logico=False).first(),
+        id_rubro=Rubro.objects.filter(pk=id_valido(datos.get('rubro')),
+                                      borrado_logico=False, activo=True).first(),
         id_marca=marca_generica(), id_proveedor=proveedor_general(),
-        precio_venta=leer_numero(datos.get('precio'), 2) or 0,
-        precio_costo=leer_numero(datos.get('costo'), 2) or 0)
+        precio_venta=precio, precio_costo=costo)
     if producto.id_rubro is None:
         raise ValidationError('Elegí el rubro.')
     producto.full_clean()

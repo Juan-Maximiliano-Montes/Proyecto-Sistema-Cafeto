@@ -38,7 +38,7 @@
 {% if precarga %}
 <div class="aviso aviso-aviso"><i class="bi bi-robot"></i><span><strong>{% if recibida %}Esta factura llegó por {{ recibida.get_origen_factura_display }}{% if recibida.remitente %} ({{ recibida.remitente }}){% endif %} el {{ recibida.fecha_recepcion|date:"d/m/Y H:i" }} y la pre-cargó una automatización.{% else %}Esta compra la pre-cargó una automatización a partir de la factura.{% endif %}</strong> Todavía no se registró nada: revisá proveedor, número, cantidades y costos contra el papel antes de confirmar.
 {% if not precarga.p and not detectado %}<span class="d-block">No se reconoció al proveedor{% if precarga.n %} ("{{ precarga.n }}"){% endif %} y la factura no trae un CUIT legible: elegilo de la lista o dalo de alta en Proveedores.</span>{% endif %}
-{% if precarga.s %}<span class="d-block">Renglones de la factura que no se pudieron reconocer y hay que agregar a mano: {% for linea in precarga.s %}"{{ linea }}"{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</span></div>
+{% if precarga.s %}<span class="d-block">Renglones de la factura que no están en el catálogo: {% for linea in precarga.s %}"{{ linea }}"{% if not forloop.last %}, {% endif %}{% endfor %}.{% if precarga.x %} Los que traen cantidad y costo legibles están arriba, en "Productos de la factura que no están en el catálogo": revisalos y dalos de alta con el botón "Dar de alta y sumar". El resto, agregalos a mano.{% else %} Agregalos a mano.{% endif %}</span>{% endif %}</span></div>
 {% endif %}
 <form method="post" novalidate class="row g-3"
       data-titulo="¿Guardamos la compra?" data-aceptar="Sí, guardar"
@@ -80,7 +80,11 @@
                         {% for v, e in tipos %}<option value="{{ v }}"{% if datos.tipo_comprobante == v %} selected{% endif %}>{{ e }}</option>{% endfor %}
                     </select>
                 </div>
-                <div class="col-5"><label class="form-label" for="punto">Punto de venta</label><input type="text" inputmode="numeric" name="punto_venta" id="punto" value="{{ datos.punto_venta|default:'' }}" class="form-control" placeholder="0001"></div>
+                {% comment %}
+                Un ticket, un remito a mano u "Otro" no traen punto de venta
+                impreso: se asume 1 (lo mismo hace la vista al guardar).
+                {% endcomment %}
+                <div class="col-5"><label class="form-label" for="punto">Punto de venta</label><input type="text" inputmode="numeric" name="punto_venta" id="punto" value="{{ datos.punto_venta|default:'' }}" class="form-control" placeholder="0001" data-punto-por-defecto="1" data-tipos-sin-punto="TICKET,OTRO,REMITO" aria-describedby="ayudaPunto"><p class="form-text d-none" id="ayudaPunto">Un ticket o un remito a mano no traen punto de venta: queda en 1.</p></div>
                 <div class="col-7"><label class="form-label" for="numero">Número</label><input type="text" inputmode="numeric" name="numero" id="numero" value="{{ datos.numero|default:'' }}" class="form-control" placeholder="00012345"></div>
                 <div class="col-6"><label class="form-label" for="fecha">Fecha</label><input type="date" name="fecha" id="fecha" value="{{ datos.fecha|default:hoy }}" class="form-control"></div>
                 <div class="col-6"><label class="form-label" for="vence_pago">Se paga hasta</label><input type="date" name="vence_pago" id="vence_pago" value="{{ datos.vence_pago|default:'' }}" class="form-control" aria-describedby="ayudaVence"></div>
@@ -127,4 +131,10 @@
 
 {% block scripts %}<script src="{% static 'cafeto/js/renglones.js' %}"></script>
 {{ rubros_json|json_script:"rubrosEscaner" }}
+{% comment %}
+Lo que la automatización no pudo reconocer de una factura que llegó por
+WhatsApp o por correo: se ofrece para darlo de alta en un clic, igual que
+al escanear con la cámara.
+{% endcomment %}
+{{ nuevos_json|json_script:"nuevosPrecarga" }}
 <script src="{% static 'cafeto/js/escanear-factura.js' %}"></script>{% endblock %}

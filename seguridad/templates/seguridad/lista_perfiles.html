@@ -177,6 +177,7 @@
         <form method="post" id="formEditar" class="modal-content" novalidate
               data-titulo="¿Guardamos el perfil?" data-aceptar="Sí, guardar"
               data-confirmar="Los permisos que cambies valen al instante para todas las personas que tienen este perfil."
+              data-es-sistema="{{ editar_es_sistema|yesno:'1,0' }}"
               {% if abrir_modal_editar %}action="{% url 'seguridad:editar_perfil' editar_id %}"{% endif %}>
             {% csrf_token %}
             <div class="modal-header">
@@ -186,7 +187,12 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label" for="edit_nombre">Nombre</label>
-                    <input type="text" name="nombre" id="edit_nombre" class="form-control" maxlength="40" required value="{% if abrir_modal_editar %}{{ form_editar.data.nombre }}{% endif %}">
+                    {% comment %}
+                    maxlength 20, el del VARCHAR de Perfil.nombre (V-G2): con 40
+                    el navegador dejaba tipear el doble y el error recién salía
+                    del servidor, con el modal en blanco.
+                    {% endcomment %}
+                    <input type="text" name="nombre" id="edit_nombre" class="form-control" maxlength="20" required value="{% if abrir_modal_editar %}{{ form_editar.data.nombre }}{% endif %}">
                     {% if form_editar.nombre.errors %}<div class="error-campo">{{ form_editar.nombre.errors|striptags }}</div>{% endif %}
                 </div>
                 <div class="mb-3">
@@ -195,7 +201,7 @@
                 </div>
                 <div class="mb-3" id="bloque_tope">
                     <label class="form-label" for="edit_tope">Tope de descuento (%)</label>
-                    <input type="number" name="tope_descuento_porcentaje" id="edit_tope" class="form-control" min="0" max="100" step="0.5">
+                    <input type="number" name="tope_descuento_porcentaje" id="edit_tope" class="form-control" min="0" max="100" step="0.5" value="{% if abrir_modal_editar %}{{ editar_tope }}{% endif %}">
                     <div class="form-text">Porcentaje máximo de descuento por renglón sin pedir autorización. 0 = no puede descontar.</div>
                 </div>
                 <p class="form-label" id="permisosEditar">Permisos habilitados para este perfil</p>
@@ -215,7 +221,8 @@
                             {% for perm in permisos_modulo %}
                                 <div class="form-check">
                                     <input class="form-check-input chk-permiso-editar" type="checkbox"
-                                           name="permisos" value="{{ perm.id_permiso }}" id="edit_perm_{{ perm.id_permiso }}">
+                                           name="permisos" value="{{ perm.id_permiso }}" id="edit_perm_{{ perm.id_permiso }}"
+                                           {% if abrir_modal_editar and perm.id_permiso|stringformat:'s' in permisos_elegidos %} checked{% endif %}>
                                     <label class="form-check-label" for="edit_perm_{{ perm.id_permiso }}">
                                         <code class="text-marca">{{ perm.codigo }}</code>
                                         <span class="text-secondary small">— {{ perm.nombre }}</span>

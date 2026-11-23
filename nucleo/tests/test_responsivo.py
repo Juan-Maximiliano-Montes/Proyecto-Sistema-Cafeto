@@ -11,7 +11,7 @@ import os
 import unittest
 
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.test import tag
+from django.test import SimpleTestCase, tag
 from django.urls import reverse
 
 from nucleo.tests.test_navegador import _armar_datos
@@ -30,8 +30,12 @@ PANTALLAS = ('home', 'negocio:reportes', 'ventas:ventas', 'compras:egresos', 'co
 DESBORDE = 'document.documentElement.scrollWidth - window.innerWidth'
 
 
-@tag('navegador')
-class ResponsivoTest(StaticLiveServerTestCase):
+class BaseNavegador(StaticLiveServerTestCase):
+    """Lo que comparten las pruebas que abren un navegador de verdad.
+
+    No lleva pruebas propias: si las llevara, cada subclase las volvería a
+    correr (una copia por clase, con su navegador y su base de datos).
+    """
     serialized_rollback = True
 
     @classmethod
@@ -66,6 +70,9 @@ class ResponsivoTest(StaticLiveServerTestCase):
             finally:
                 navegador.close()
         self.assertEqual(errores, [])
+
+@tag('navegador')
+class ResponsivoTest(BaseNavegador):
 
     def test_el_ingreso_queda_arriba_y_entero_en_celular_y_tablet(self):
         for tamanio in (CELULAR, TABLET):
@@ -227,3 +234,109 @@ class ResponsivoTest(StaticLiveServerTestCase):
             self.assertEqual(etiqueta[0], '600')
             self.assertGreaterEqual(etiqueta[1], 14)
         self.con_pagina(CELULAR, hacer)
+
+
+# ===========================================================================
+#  Las cinco tarjetas del Inicio del cajero, todas del mismo ancho
+# ===========================================================================
+#  Con cinco atajos, las dos de la fila de abajo iban a "span 3" de una
+#  grilla de seis columnas: medían el doble que las tres de arriba. La
+#  pantalla de inicio quedaba desbalanceada y las dos tarjetas grandes
+#  parecían más importantes que las otras tres.
+#
+#  Esta clase NO abre un navegador: lee la hoja de estilos. Las reglas de
+#  grilla son declarativas y se pueden leer, y así la regresión se detecta
+#  también donde Playwright no está instalado (el contenedor del local).
+class GrillaDeCincoAtajosTest(SimpleTestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from pathlib import Path
+
+        from django.conf import settings
+        cls.css = ' '.join(
+            (Path(settings.BASE_DIR) / 'nucleo' / 'static' / 'cafeto' / 'css' / 'cafeto.css')
+            .read_text(encoding='utf-8').split())
+
+    def test_en_escritorio_las_cinco_miden_lo_mismo(self):
+        self.assertIn('@media (min-width: 992px) { .grilla-atajos.atajos-5 '
+                      '{ grid-template-columns: repeat(6, minmax(0, 1fr)); }', self.css)
+        self.assertIn('.grilla-atajos.atajos-5 > * { grid-column: span 2; }', self.css)
+        # Las dos de abajo, centradas: columna 2 y columna 4 de seis.
+        self.assertIn('.grilla-atajos.atajos-5 > :nth-child(4) { grid-column: 2 / span 2; }', self.css)
+        self.assertIn('.grilla-atajos.atajos-5 > :nth-child(5) { grid-column: 4 / span 2; }', self.css)
+
+    def test_ya_no_hay_tarjetas_al_doble_de_ancho(self):
+        self.assertNotIn('.grilla-atajos.atajos-5 > :nth-child(n+4)', self.css)
+        self.assertNotIn('grid-column: span 3', self.css)
+
+    def test_en_tablet_la_ultima_impar_se_centra_en_vez_de_estirarse(self):
+        self.assertIn('.grilla-atajos:not(.atajos-1) '
+                      '{ grid-template-columns: repeat(4, minmax(0, 1fr)); }', self.css)
+        self.assertIn('.grilla-atajos:not(.atajos-1) > * { grid-column: span 2; }', self.css)
+        self.assertIn('.grilla-atajos:not(.atajos-1) > :last-child:nth-child(odd)'
+                      ':not(:first-child) { grid-column: 2 / span 2; }', self.css)
+        # El resumen de abajo conserva su comportamiento: ahí la última
+        # impar sí ocupa la fila entera.
+        self.assertIn('.grilla-resumen > :last-child:nth-child(odd)'
+                      ':not(:first-child) { grid-column: 1 / -1; }', self.css)
+
+
+@tag('navegador')
+class AtajosDelCajeroTest(BaseNavegador):
+    """Lo mismo, medido en un navegador de verdad."""
+
+    def _cajero_con_cinco_atajos(self):
+        from seguridad.models import Perfil, PerfilPermiso, Permiso
+        from nucleo.tests import fabrica as f
+
+        perfil = Perfil.objects.create(nombre='Cajero 5', tope_descuento_porcentaje=0)
+        for codigo in ('registrar_cambio', 'registrar_compra', 'registrar_produccion',
+                       'registrar_merma', 'contar_stock'):
+            PerfilPermiso.objects.create(perfil=perfil,
+                                         permiso=Permiso.objects.get(codigo=codigo))
+        usuario = f.usuario('40900005', 'Operador', nombre='Pili')
+        usuario.id_perfil = perfil
+        usuario.save()
+        return usuario
+
+    def test_las_cinco_tarjetas_miden_lo_mismo_y_las_de_abajo_van_centradas(self):
+        cajero = self._cajero_con_cinco_atajos()
+
+        def hacer(pagina):
+            pagina.goto(self.live_server_url + reverse('home'))
+            atajos = pagina.eval_on_selector_all(
+                '.grilla-atajos.atajos-5 > a',
+                'es => es.map(e => { const r = e.getBoundingClientRect();'
+                ' return [Math.round(r.x), Math.round(r.y), Math.round(r.width)]; })')
+            self.assertEqual(len(atajos), 5)
+            self.assertEqual(len({ancho for _x, _y, ancho in atajos}), 1,
+                             'las cinco tarjetas tienen que medir lo mismo')
+            filas = sorted({y for _x, y, _a in atajos})
+            self.assertEqual(len(filas), 2)
+            arriba = [a for a in atajos if a[1] == filas[0]]
+            abajo = [a for a in atajos if a[1] == filas[1]]
+            self.assertEqual((len(arriba), len(abajo)), (3, 2))
+            # Centradas: el hueco de la izquierda es igual al de la derecha.
+            grilla = pagina.locator('.grilla-atajos.atajos-5').bounding_box()
+            izquierda = abajo[0][0] - round(grilla['x'])
+            derecha = round(grilla['x'] + grilla['width']) - (abajo[-1][0] + abajo[-1][2])
+            self.assertLessEqual(abs(izquierda - derecha), 2, (izquierda, derecha))
+            self.assertGreater(izquierda, 0, 'las dos de abajo tienen que quedar centradas')
+        self.con_pagina(ESCRITORIO, hacer, usuario=cajero)
+
+    def test_en_tablet_quedan_dos_por_fila_y_la_impar_centrada(self):
+        cajero = self._cajero_con_cinco_atajos()
+
+        def hacer(pagina):
+            pagina.goto(self.live_server_url + reverse('home'))
+            atajos = pagina.eval_on_selector_all(
+                '.grilla-atajos.atajos-5 > a',
+                'es => es.map(e => { const r = e.getBoundingClientRect();'
+                ' return [Math.round(r.x), Math.round(r.y), Math.round(r.width)]; })')
+            self.assertEqual(len({ancho for _x, _y, ancho in atajos}), 1,
+                             'la última tarjeta impar no puede salir más ancha')
+            self.assertEqual(len({y for _x, y, _a in atajos}), 3)
+            self.assertLessEqual(pagina.evaluate(DESBORDE), 1)
+        self.con_pagina(TABLET, hacer, usuario=cajero)

@@ -24,7 +24,14 @@
 
 <div class="row g-3">
     <div class="col-lg-5">
-        {% if s.saldo %}
+        {% if s.saldo and not cobra %}
+        {% comment %}
+        Un perfil que administra el fiado (tope, suspensión, incobrable)
+        pero no cobra entra igual a esta pantalla: se le muestra lo que
+        debe, sin el formulario de cobro, que la vista le rechaza.
+        {% endcomment %}
+        <div class="aviso aviso-aviso mb-3"><i class="bi bi-info-circle-fill"></i><span>Debe <strong class="text-nowrap">{{ s.saldo|pesos }}</strong>. Tu perfil administra la cuenta corriente pero no registra cobros: el pago lo cobra quien atiende la caja.</span></div>
+        {% elif s.saldo %}
         <form method="post" class="tarjeta tarjeta-destacada mb-3" novalidate autocomplete="off"
               data-titulo="¿Registramos el pago?" data-aceptar="Sí, cobrar" data-confirmar="Queda anotado en la cuenta del cliente. Si es en efectivo, entra a tu caja.">
             {% csrf_token %}

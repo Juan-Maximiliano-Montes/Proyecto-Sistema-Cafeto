@@ -32,6 +32,7 @@ from fidelizacion.models import (
 from nucleo.validaciones import clave_normalizada
 from stock import servicios
 from stock.models import (
+    MARCA_GENERICA,
     ComposicionProducto,
     Lote,
     Producto,
@@ -50,9 +51,20 @@ SECCION_INVALIDA = 'Elegí Cafetería o Minisuper.'
 
 MAXIMO_DESTACADOS = 8
 
-# La marca de lo que se vende suelto o se elabora en el local
-# (stock/migrations/0003): a la app va como "sin marca".
-MARCA_GENERICA = clave_normalizada('Sin marca')
+# Las dos marcas que NO son una marca: «Sin marca», la de lo que se vende
+# suelto o se elabora en el local (stock/migrations/0003), y «Genérica», la
+# reservada del alta simple y del importador (stock/migrations/0007). A la
+# app las dos van como "sin marca".
+#
+# Acá estaba sólo 'Sin marca', escrita a mano: «Genérica» —que es la que le
+# pone el importador a los cientos de artículos que entran de la planilla—
+# viajaba como si fuera una marca de verdad y la app la mostraba arriba del
+# nombre del producto, mientras el mostrador web la ocultaba
+# (``ventas/views/mostrador.py``). El nombre sale de
+# ``stock.models.MARCA_GENERICA``, el que usa la base, y no de una copia.
+# Es la misma lista que mira ``nucleo/management/commands/auditar_consistencia.py``.
+MARCAS_SIN_MARCA = frozenset({clave_normalizada('Sin marca'),
+                              clave_normalizada(MARCA_GENERICA)})
 
 # Un ícono de Ionicons por tipo, mientras el producto no tenga foto.
 ICONOS = {
@@ -208,7 +220,7 @@ def descripcion(producto):
 
 
 def marca(producto):
-    if clave_normalizada(producto.id_marca.nombre_marca) == MARCA_GENERICA:
+    if clave_normalizada(producto.id_marca.nombre_marca) in MARCAS_SIN_MARCA:
         return None
     return {'id': producto.id_marca_id, 'nombre': producto.id_marca.nombre_marca}
 

@@ -285,6 +285,20 @@ TIPOS_VENDIBLES = frozenset({TipoProducto.REVENTA, TipoProducto.ELABORADO,
                              TipoProducto.PRODUCIDO, TipoProducto.COMBO})
 TIPOS_CON_RECETA = frozenset({TipoProducto.ELABORADO, TipoProducto.PRODUCIDO})
 TIPOS_COMPUESTOS = TIPOS_CON_RECETA | {TipoProducto.COMBO}
+#  De los compuestos, cuáles NO se pueden vender sin su composición cargada.
+#
+#  Un combo es su contenido: sin renglones no es nada, y un producido se
+#  fabrica por tanda descontando insumos, así que tampoco.
+#
+#  Un ELABORADO es distinto: el café, el licuado o la promo se preparan al
+#  momento y lo que consumen puede no estar cargado todavía (los 85
+#  artículos de «Comidas Elaboradas», «CAFETERIA » y «PROMO » que entran de
+#  la planilla de Fácil Virtual vienen sin receta). Se venden igual —con el
+#  precio y el costo que trae la planilla— y, cuando la receta se carga,
+#  recién entonces descuentan insumos. Bloquearlos dejaba el mostrador sin
+#  poder cobrar un café.
+TIPOS_CON_COMPOSICION_OBLIGATORIA = frozenset({TipoProducto.PRODUCIDO,
+                                               TipoProducto.COMBO})
 # Qué puede llevar adentro cada tipo compuesto.
 COMPONENTES_ADMITIDOS = {
     TipoProducto.ELABORADO: frozenset({TipoProducto.INSUMO,
@@ -558,6 +572,15 @@ class Producto(ConSaldosDerivados, Maestra):
         return self.tipo_producto in TIPOS_COMPUESTOS
 
     @property
+    def exige_composicion(self):
+        """True si no se puede vender ni guardar sin composición cargada.
+
+        Los combos y los producidos, sí. Un elaborado sin receta se vende
+        igual (ver ``TIPOS_CON_COMPOSICION_OBLIGATORIA``).
+        """
+        return self.tipo_producto in TIPOS_CON_COMPOSICION_OBLIGATORIA
+
+    @property
     def admite_negativo(self):
         return self.tipo_producto == TipoProducto.INSUMO
 
@@ -584,8 +607,14 @@ class Producto(ConSaldosDerivados, Maestra):
         """
         if not self.es_compuesto:
             return self.precio_costo
+        renglones = list(self.composicion.select_related('id_componente'))
+        # Un elaborado todavía sin receta conserva el costo que se le
+        # cargó a mano (o el que trajo la planilla): devolver $0 inflaba el
+        # margen al 100 % en el tablero y en los reportes de ganancia.
+        if not renglones and self.tipo_producto == TipoProducto.ELABORADO:
+            return self.precio_costo
         total = CERO
-        for item in self.composicion.select_related('id_componente'):
+        for item in renglones:
             total += item.cantidad * item.id_componente.costo_vigente()
         return total.quantize(Decimal('0.01'))
 
@@ -753,7 +782,7 @@ class Producto(ConSaldosDerivados, Maestra):
         producto de reventa con receta no significaría nada.
         """
         cantidad = self.composicion.count()
-        if self.es_compuesto and cantidad == 0:
+        if self.exige_composicion and cantidad == 0:
             que = ('el contenido del combo' if self.tipo_producto ==
                    TipoProducto.COMBO else 'la receta')
             raise ValidationError(

@@ -798,7 +798,7 @@
         "parameters": {
           "httpMethod": "POST",
           "path": "cafeto-autorizacion",
-          "responseMode": "onReceived",
+          "responseMode": "responseNode",
           "options": {}
         },
         "name": "La caja pide autorización",
@@ -811,13 +811,50 @@
       },
       {
         "parameters": {
-          "jsCode": "// Sólo el sistema puede pedir: el mismo token que usa la API de servicio.\nconst pedido = $input.first().json;\nconst recibida = (pedido.headers || {})['authorization'] || '';\nconst token = String($env.CAFETO_N8N_TOKEN || '');\nif (token.length < 32 || recibida !== 'Bearer ' + token) { return []; }\nconst b = pedido.body || {};\nconst renglones = (b.renglones || []).map(r => '• ' + r).join('\\n');\nconst texto = '📲 *¿Autorizás?* ' + b.pedido + '.\\n' +\n  'Total del ticket: ' + b.total + '\\n' + (renglones ? renglones + '\\n' : '') +\n  '\\nPara aprobar: ' + b.enlace + '\\n' +\n  'O dictale este PIN a la caja: *' + b.pin + '*\\n' +\n  'Vale hasta las ' + b.vence + '.';\nreturn [{ json: { texto } }];"
+          "conditions": {
+            "options": {
+              "caseSensitive": true
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "leftValue": "={{ String($env.CAFETO_N8N_TOKEN || '').length >= 32 }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              },
+              {
+                "leftValue": "={{ $json.headers.authorization || '' }}",
+                "rightValue": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ]
+          },
+          "options": {}
+        },
+        "name": "¿Trae el token de Cafeto?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// El token ya lo revisó el nodo «¿Trae el token de Cafeto?»: acá sólo\n// se arma el texto. Antes esta validación vivía adentro de este Code y\n// cortaba con «return []»: el flujo terminaba sin mandar nada y sin\n// dejar rastro, así que un error del JS Task Runner (que en un equipo\n// con poca memoria se cae solo) se veía igual que un token mal puesto.\nconst b = $('La caja pide autorización').first().json.body || {};\nconst renglones = (b.renglones || []).map(r => '• ' + r).join('\\n');\nconst texto = '📲 *¿Autorizás?* ' + b.pedido + '.\\n' +\n  'Total del ticket: ' + b.total + '\\n' + (renglones ? renglones + '\\n' : '') +\n  '\\nPara aprobar: ' + b.enlace + '\\n' +\n  'O dictale este PIN a la caja: *' + b.pin + '*\\n' +\n  'Vale hasta las ' + b.vence + '.';\nreturn [{ json: { texto } }];"
         },
         "name": "Armar el mensaje",
         "type": "n8n-nodes-base.code",
         "typeVersion": 2,
         "position": [
-          220,
+          440,
           0
         ]
       },
@@ -843,7 +880,37 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.2,
         "position": [
+          660,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ ok: false, detail: 'Falta el token de Cafeto o no coincide.' }) }}",
+          "options": {
+            "responseCode": 401
+          }
+        },
+        "name": "Rechazar sin token",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
           440,
+          220
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+          "options": {}
+        },
+        "name": "Responder",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.1,
+        "position": [
+          880,
           0
         ]
       }
@@ -853,7 +920,25 @@
         "main": [
           [
             {
+              "node": "¿Trae el token de Cafeto?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "¿Trae el token de Cafeto?": {
+        "main": [
+          [
+            {
               "node": "Armar el mensaje",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Rechazar sin token",
               "type": "main",
               "index": 0
             }
@@ -865,6 +950,17 @@
           [
             {
               "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mandar por WhatsApp": {
+        "main": [
+          [
+            {
+              "node": "Responder",
               "type": "main",
               "index": 0
             }

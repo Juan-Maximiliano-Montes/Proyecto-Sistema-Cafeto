@@ -197,7 +197,13 @@ CAFETO_CSP = {
     'default-src': ["'self'"],
     'script-src': ["'self'"],
     'style-src': ["'self'", "'unsafe-inline'"],
-    'img-src': ["'self'", 'data:', 'blob:'],
+    # 'https:' porque la foto de un producto puede ser la de Open Food
+    # Facts: ``stock/imagenes.py`` guarda la URL que devuelve su API (que
+    # sirve las imágenes desde varios dominios y los cambia), nunca una que
+    # escriba el usuario. Sin esto la ficha del producto quedaba con el
+    # recuadro roto. Es una política de IMÁGENES: no ejecuta nada, y
+    # 'script-src' sigue siendo 'self' a secas (DD-109).
+    'img-src': ["'self'", 'data:', 'blob:', 'https:'],
     'font-src': ["'self'", 'data:'],
     'connect-src': ["'self'", 'https://world.openfoodfacts.org'],
     'media-src': ["'self'", 'blob:'],
@@ -298,7 +304,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'es-ar'
 
-TIME_ZONE = 'America/Argentina/Buenos_Aires'
+# El local está en Salta, y los contenedores (db, n8n, waha) ya corren con
+# TZ=America/Argentina/Salta: dejar Buenos_Aires acá hacía que la hora de
+# Django y la de los logs, los backups y los mensajes de WhatsApp salieran
+# de husos distintos. Hoy los dos marcan UTC-3, pero Salta no adhirió a los
+# últimos cambios de horario de verano y la diferencia ya existió.
+TIME_ZONE = 'America/Argentina/Salta'
 
 USE_I18N = True
 

@@ -102,7 +102,11 @@ se toquen por accidente; las que cambian el estado piden confirmación.
             <button type="button" class="btn btn-sm btn-secundario btn-detalle" data-url="{% url 'seguridad:detalle' u.id_usuario %}" title="Ver detalle">
                 <i class="bi bi-eye"></i><span class="ms-1">Ver</span>
             </button>
-            {% if puede_editar %}
+            {% comment %}
+            V-G13: lo dado de baja no se edita (la vista lo rechaza igual).
+            Se reactiva primero, con el botón de más abajo.
+            {% endcomment %}
+            {% if puede_editar and not u.borrado_logico %}
             <button type="button" class="btn btn-sm btn-secundario btn-editar" data-url="{% url 'seguridad:editar' u.id_usuario %}" title="Editar correo">
                 <i class="bi bi-pencil"></i><span class="ms-1">Editar</span>
             </button>

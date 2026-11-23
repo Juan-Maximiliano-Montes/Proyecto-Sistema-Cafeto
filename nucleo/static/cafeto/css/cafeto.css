@@ -815,14 +815,33 @@ html.cargando-parcial #contenido { opacity: .55; transition: opacity .2s ease .1
 .grilla-atajos, .grilla-resumen { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grilla-atajos.atajos-1, .grilla-resumen.resumen-1 { grid-template-columns: minmax(0, 1fr); }
 .grilla-atajos.atajos-2, .grilla-atajos.atajos-4, .grilla-resumen.resumen-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.grilla-atajos.atajos-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.grilla-atajos.atajos-5 > * { grid-column: span 2; }
-.grilla-atajos.atajos-5 > :nth-child(n+4) { grid-column: span 3; }
 .grilla-atajos > *, .grilla-resumen > * { min-width: 0; }
+/* Cinco atajos (lo que ve una cajera u operadora) en escritorio: tres
+   arriba y dos abajo, TODOS del mismo ancho.
+   La grilla va de seis columnas y cada tarjeta ocupa dos: así una tarjeta
+   mide exactamente un tercio, igual que en la fila de tres, y las dos de
+   abajo se centran empezando en la columna 2 y en la 4. Antes las dos de
+   abajo iban a "span 3" y salían del doble de ancho que las de arriba: la
+   pantalla de inicio de la cajera quedaba desbalanceada y las dos tarjetas
+   grandes parecían más importantes que las tres chicas.
+   Las dos columnas de ancho coinciden con las de .grilla-resumen (de tres
+   columnas), así los atajos siguen alineados con el resumen de abajo. */
+@media (min-width: 992px) {
+    .grilla-atajos.atajos-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .grilla-atajos.atajos-5 > * { grid-column: span 2; }
+    .grilla-atajos.atajos-5 > :nth-child(4) { grid-column: 2 / span 2; }
+    .grilla-atajos.atajos-5 > :nth-child(5) { grid-column: 4 / span 2; }
+}
 @media (max-width: 991.98px) {
-    .grilla-atajos:not(.atajos-1), .grilla-resumen:not(.resumen-1) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grilla-atajos.atajos-5 > * { grid-column: auto; }
-    .grilla-atajos > :last-child:nth-child(odd):not(:first-child),
+    .grilla-resumen:not(.resumen-1) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* Dos atajos por fila, también todos del mismo ancho: cuatro columnas y
+       cada tarjeta ocupa dos, de modo que una última impar se CENTRA
+       (columna 2) en vez de estirarse al doble de las demás. Con el gap de
+       la grilla, dos tarjetas de dos columnas miden lo mismo que antes
+       medían dos de una: lo único que cambia es la impar. */
+    .grilla-atajos:not(.atajos-1) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grilla-atajos:not(.atajos-1) > * { grid-column: span 2; }
+    .grilla-atajos:not(.atajos-1) > :last-child:nth-child(odd):not(:first-child) { grid-column: 2 / span 2; }
     .grilla-resumen > :last-child:nth-child(odd):not(:first-child) { grid-column: 1 / -1; }
 }
 @media (max-width: 575.98px) {

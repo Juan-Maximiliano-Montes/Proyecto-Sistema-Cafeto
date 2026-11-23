@@ -111,7 +111,12 @@ class EgresosPantallaYExportacionTest(TestCase):
 
     def test_el_monto_sugerido_es_lo_que_falta_y_no_el_saldo(self):
         pantalla = self.client.get(reverse('compras:egresos'), {'ver': 'a_pagar', 'compra': self.mitad.pk})
-        self.assertContains(pantalla, 'id="eMonto" class="form-control" value="6000"')
+        # El control y el valor por separado: entre medio van los data-* que
+        # usa el aviso de monto chico (DD-103), y la prueba es del MONTO.
+        html = pantalla.content.decode()
+        control = html[html.index('id="eMonto"'):html.index('id="eMonto"') + 300]
+        self.assertIn('value="6000"', control)
+        self.assertIn('data-minimo="0.01"', control)
 
     def test_exportar_respeta_la_pestania_y_la_busqueda(self):
         egresos.conciliar(self.transferida, True, self.hoy)

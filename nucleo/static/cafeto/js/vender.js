@@ -27,6 +27,36 @@
     // ------------------------------------------------------------------
     var pesos = new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS'});
     var numero = new Intl.NumberFormat('es-AR', {maximumFractionDigits: 3});
+
+    //  Las cantidades viajan como texto y se tipean a mano: hay que leerlas
+    //  con las MISMAS reglas que el servidor (Cafeto.leerNumero, que replica
+    //  leer_numero con tres decimales, los de un kilo).
+    //
+    //  Sin esto, Number('abc') daba NaN, se escribía la cadena "NaN" en la
+    //  cantidad del renglón, se guardaba así en el navegador y el ticket
+    //  entero quedaba roto hasta vaciarlo: cada cotización contestaba un
+    //  error que no decía nada y los botones + y − seguían sumando sobre
+    //  NaN. Ahora lo que no es un número no entra.
+    function cantidadDe(texto, porDefecto) {
+        var leer = window.Cafeto && window.Cafeto.leerNumero;
+        var valor = leer ? leer(texto, 3) : Number(String(texto).replace(',', '.'));
+        if (typeof valor !== 'number' || isNaN(valor) || !isFinite(valor)) {
+            return porDefecto;
+        }
+        return valor;
+    }
+    function textoDeCantidad(valor) {
+        return String(Math.round(valor * 1000) / 1000);
+    }
+    //  El ticket a medio armar vuelve del navegador: una cantidad que quedó
+    //  inservible de antes (un "NaN" de una versión anterior, algo editado a
+    //  mano en el almacenamiento) no arrastra el error a esta sesión.
+    estado.items = (estado.items || []).filter(function (item) {
+        var valor = cantidadDe(item.cantidad, 0);
+        if (valor <= 0) { return false; }
+        item.cantidad = textoDeCantidad(valor);
+        return true;
+    });
     function $(id) { return document.getElementById(id); }
     function plata(v) { return pesos.format(Number(v || 0)); }
     function el(tag, clase, texto) {
@@ -237,7 +267,7 @@
     function agregar(id) {
         ultimoAgregado = id;
         var item = estado.items.find(function (i) { return i.producto === id; });
-        if (item) { item.cantidad = String(Number(item.cantidad.replace(',', '.')) + 1); }
+        if (item) { item.cantidad = textoDeCantidad(cantidadDe(item.cantidad, 0) + 1); }
         else { estado.items.push({producto: id, cantidad: '1', descuento: '', motivo: '', detalle: '', info: nombres[id]}); }
         cambio();
     }
@@ -290,12 +320,32 @@
             quitar.innerHTML = '<i class="bi bi-x-lg"></i>';
             var paso = info.fraccionable ? 0.1 : 1;
             menos.addEventListener('click', function () {
-                var v = Number(item.cantidad.replace(',', '.')) - paso;
-                if (v <= 0) { estado.items.splice(i, 1); } else { item.cantidad = String(Math.round(v * 1000) / 1000); }
+                var v = cantidadDe(item.cantidad, paso) - paso;
+                if (v <= 0) { estado.items.splice(i, 1); } else { item.cantidad = textoDeCantidad(v); }
                 cambio();
             });
-            mas.addEventListener('click', function () { item.cantidad = String(Math.round((Number(item.cantidad.replace(',', '.')) + paso) * 1000) / 1000); cambio(); });
-            cant.addEventListener('change', function () { item.cantidad = cant.value.trim() || '1'; cambio(); });
+            mas.addEventListener('click', function () {
+                item.cantidad = textoDeCantidad(cantidadDe(item.cantidad, 0) + paso);
+                cambio();
+            });
+            //  Lo que no es una cantidad no se guarda: el campo vuelve a lo
+            //  que había y se marca en rojo. Antes se guardaba el texto tal
+            //  cual ("1,2,3", "medio kilo") y el ticket quedaba trabado con
+            //  un error del servidor que no señalaba ningún renglón.
+            cant.addEventListener('change', function () {
+                if (cant.value.trim() === '') { cant.value = '1'; }
+                var valor = cantidadDe(cant.value, null);
+                if (valor === null || valor <= 0) {
+                    cant.value = item.cantidad;
+                    cant.classList.add('is-invalid');
+                    cant.setAttribute('aria-invalid', 'true');
+                    return;
+                }
+                cant.classList.remove('is-invalid');
+                cant.removeAttribute('aria-invalid');
+                item.cantidad = textoDeCantidad(valor);
+                cambio();
+            });
             quitar.addEventListener('click', function () { estado.items.splice(i, 1); cambio(); });
             desc.addEventListener('click', function () { abrirDescuento(item); });
             controles.append(menos, cant, mas, unidad, desc, quitar);
@@ -685,6 +735,21 @@
             body: JSON.stringify(cuerpo)
         }).then(function (r) {
             if (r.status === 401) { location.reload(); throw new Error('sesión'); }
+            //  Un 400 (pedido mal armado) y un 403 (sin permiso, token
+            //  vencido) traen el MOTIVO en el cuerpo: "ese producto está
+            //  dado de baja", "el turno ya se cerró", "no tenés permiso
+            //  para descontar". Tirándolos todos como error de red, la
+            //  pantalla decía «Revisá la conexión» con la conexión
+            //  perfecta, y la cajera no tenía nada que arreglar.
+            if (!r.ok && (r.status === 400 || r.status === 403)) {
+                return r.json().then(function (datos) {
+                    var texto = datos && (datos.error || datos.detail);
+                    if (!texto) { throw new Error('servidor'); }
+                    datos.ok = false;
+                    datos.error = texto;
+                    return datos;
+                }, function () { throw new Error('servidor'); });
+            }
             if (!r.ok && r.status !== 200) { throw new Error('servidor'); }
             return r.json();
         });

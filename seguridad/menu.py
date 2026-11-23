@@ -63,9 +63,14 @@ GRUPOS = [
                                   ('ver_compras', 'registrar_compra'))),
         ('ruta:compras:ordenes', ('Órdenes de compra', 'bi-journal-text',
                                   'gestionar_ordenes')),
+        # 'conciliar_egresos' también: quien marca en el banco qué pagos se
+        # acreditaron trabaja en esta misma pantalla (pestaña «Por
+        # acreditar»). Sin él en la lista, un perfil que SÓLO concilia
+        # entraba por la URL pero no veía el ítem en el menú.
         ('ruta:compras:egresos', ('Pagos y gastos', 'bi-wallet2',
                                   ('ver_egresos', 'registrar_egreso',
-                                   'registrar_gasto_caja'))),
+                                   'registrar_gasto_caja',
+                                   'conciliar_egresos'))),
     ]),
     ('Inventario y Menú', 'bi-box-seam', [
         ('productos',          None),
@@ -75,7 +80,10 @@ GRUPOS = [
     ]),
     ('Club Cafeto', 'bi-award', [
         ('clientes',           None),
-        ('ruta:fidelizacion:cuentas', ('Cuentas corrientes', 'bi-journal-text', 'cobrar_credito')),
+        # 'gestionar_credito' es quien fija el límite de fiado y lo da por
+        # incobrable: su pantalla es ésta, aunque no cobre.
+        ('ruta:fidelizacion:cuentas', ('Cuentas corrientes', 'bi-journal-text',
+                                       ('cobrar_credito', 'gestionar_credito'))),
         ('categorias',         None),
         ('beneficios',         None),
     ]),

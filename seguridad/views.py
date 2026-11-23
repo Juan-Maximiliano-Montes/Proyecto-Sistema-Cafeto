@@ -418,6 +418,17 @@ def editar_usuario(request, id_usuario):
     if request.method != 'POST':
         return redirect('seguridad:lista')
 
+    # V-G13: lo que está dado de baja no se edita. Editar el correo de una
+    # cuenta cerrada le cambia el dato a la persona que ya no entra y, peor,
+    # mueve a quién llegaría un enlace para elegir clave: primero se
+    # reactiva y después se edita, y eso queda en el Registro de Actividad
+    # como dos decisiones distintas.
+    if usuario.borrado_logico:
+        messages.error(
+            request, f'"{usuario.nombre_usuario}" está dado de baja: no se '
+                     'edita. Reactivalo primero y después cambiale el correo.')
+        return redirect('seguridad:lista')
+
     anterior = instantanea(usuario)
     form = UsuarioEdicionForm(request.POST, instance=usuario)
     if form.is_valid():
@@ -700,9 +711,12 @@ def _sincronizar_permisos(perfil, permisos_seleccionados):
     (fecha_asignacion), no se puede usar ``perfil.permisos.set(...)`` sin
     vueltas: acá borramos las filas que sobran y creamos las que faltan.
 
-    DD-14: un perfil que ya tiene permisos no puede quedarse sin ninguno.
-    Un perfil asignable sin permisos es una trampa: se le puede dar a un
+    DD-14: un perfil asignable no puede quedarse —ni nacer— sin ningún
+    permiso. Un perfil sin permisos es una trampa: se le puede dar a un
     usuario y después ese usuario no puede hacer nada ni entender por qué.
+    Antes la regla sólo miraba a los perfiles que YA tenían permisos, así
+    que el alta dejaba crear uno vacío y el aviso aparecía recién al
+    intentar sacarle el único permiso que nunca llegó a tener.
     La regla se controla acá, antes de escribir, para poder decirla en
     castellano.
 
@@ -720,11 +734,12 @@ def _sincronizar_permisos(perfil, permisos_seleccionados):
                 f'El perfil "{perfil.nombre}" es el perfil administrador '
                 'del sistema: conserva todos los permisos del catálogo y no '
                 'se le puede desmarcar ninguno.')
-    elif tenia and not seleccion:
+    elif not seleccion:
         raise ValidationError(
-            f'El perfil "{perfil.nombre}" quedaría sin ningún permiso. Un '
-            'perfil asignable conserva al menos uno: dejá tildado el que '
-            'corresponda, o eliminá el perfil si ya no se usa.')
+            f'El perfil "{perfil.nombre}" {"quedaría" if tenia else "queda"} sin ningún '
+            'permiso. Un perfil asignable lleva al menos uno: tildá el que '
+            'corresponda'
+            + ('.' if not tenia else ', o eliminá el perfil si ya no se usa.'))
 
     PerfilPermiso.objects.filter(perfil=perfil).exclude(
         permiso__in=seleccion).delete()
@@ -811,6 +826,10 @@ def crear_perfil(request):
         try:
             _sincronizar_permisos(perfil, form.cleaned_data['permisos'])
         except ValidationError as error:
+            # ATOMIC_REQUESTS: sin el rollback, el perfil de arriba quedaba
+            # GUARDADO y sin permisos —justo lo que la regla prohíbe—, y la
+            # pantalla mostraba el error como si no se hubiera creado nada.
+            transaction.set_rollback(True)
             messages.error(request, error.messages[0])
             return redirect('seguridad:perfiles')
         registrar_auditoria(
@@ -833,6 +852,16 @@ def editar_perfil(request, id_perfil):
     perfil = get_object_or_404(Perfil, pk=id_perfil)
 
     if request.method != 'POST':
+        return redirect('seguridad:perfiles')
+
+    # V-G13: un perfil dado de baja no se edita. Cambiarle los permisos
+    # mientras está de baja deja a los usuarios históricos apuntando a un
+    # perfil que ya no dice con qué permisos operaban, y si alguien lo
+    # reactiva después se encuentra con otra cosa de la que dio de baja.
+    if perfil.borrado_logico:
+        messages.error(
+            request, f'El perfil "{perfil.nombre}" está dado de baja: no se '
+                     'edita. Reactivalo primero y después cambiale los permisos.')
         return redirect('seguridad:perfiles')
 
     anterior = _foto_perfil(perfil)
@@ -862,6 +891,14 @@ def editar_perfil(request, id_perfil):
     contexto['form_editar'] = form
     contexto['editar_id'] = id_perfil
     contexto['abrir_modal_editar'] = True
+    # Lo que la persona había tildado y escrito, para que el modal vuelva a
+    # abrirse COMO ESTABA. Antes se reabría con los permisos en blanco, el
+    # tope vacío y el bloque de Seguridad escondido aunque fuera el perfil
+    # del sistema: había que volver a tildar todo de memoria para corregir
+    # un nombre repetido.
+    contexto['permisos_elegidos'] = {str(v) for v in request.POST.getlist('permisos')}
+    contexto['editar_tope'] = request.POST.get('tope_descuento_porcentaje', '')
+    contexto['editar_es_sistema'] = perfil.es_sistema
     return render(request, 'seguridad/lista_perfiles.html', contexto)
 
 

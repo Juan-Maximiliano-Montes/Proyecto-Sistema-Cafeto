@@ -20,6 +20,8 @@ No hay PermisoForm: el catálogo de permisos es de sólo lectura (lo define
 el código, con los @requiere_permiso de las vistas), así que no existe
 ninguna pantalla que dé de alta o edite un permiso.
 """
+import re
+
 from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
@@ -103,8 +105,46 @@ class UsuarioAltaForm(forms.ModelForm):
         self.fields['id_perfil'].queryset = Perfil.objects.filter(
             borrado_logico=False)
 
+        # El DNI se tipea o se PEGA desde un documento, y ahí viene con
+        # puntos: "40.125.874" son 10 caracteres.
+        #
+        # Con el maxlength de 8 (el del VARCHAR), el navegador cortaba lo
+        # pegado en el caracter 8 —"40.125.8"— y recién después el
+        # formateador le sacaba los puntos: quedaba 401258, un DNI
+        # DISTINTO, sin ningún aviso. Y el MaxLengthValidator heredado del
+        # modelo corre en ``_clean_fields()``, antes que
+        # ``clean_dni_usuario()``, así que ni con el JS apagado llegaba a
+        # limpiarse: devolvía un "asegúrese de que tenga menos de 8
+        # caracteres" que no explica nada.
+        #
+        # El largo no queda sin controlar: ``clean_dni_usuario`` exige 7 u 8
+        # dígitos, y Django vuelve a correr los validadores del modelo en
+        # ``_post_clean()`` sobre el valor ya limpio. El ``pattern`` también
+        # se va, por lo mismo: no puede describir "dígitos con o sin puntos".
+        dni = self.fields['dni_usuario']
+        dni.validators = []
+        dni.max_length = None
+        for atributo in ('maxlength', 'pattern'):
+            dni.widget.attrs.pop(atributo, None)
+        dni.widget.attrs['title'] = ('7 u 8 dígitos, con o sin puntos. '
+                                     'Se guarda como 40125874.')
+
     def clean_dni_usuario(self):
-        dni = self.cleaned_data['dni_usuario'].strip()
+        """«40.125.874» y «40125874» son el mismo DNI (paridad con ClienteForm).
+
+        El DNI se copia de un documento o de una planilla y viene con
+        puntos. Sin limpiarlos, el formulario devolvía un "el DNI son 7 u 8
+        dígitos" por la restricción de la base, y el aviso de DNI repetido
+        no salía nunca: "40.125.874" no es igual a "40125874", así que un
+        alta con puntos creaba un usuario duplicado hasta que la base la
+        frenaba con un error 500 del índice único.
+        """
+        texto = (self.cleaned_data.get('dni_usuario') or '').strip()
+        if re.search(r'[^\d.\s]', texto):
+            raise forms.ValidationError('El DNI son 7 u 8 dígitos, sin letras.')
+        dni = re.sub(r'\D', '', texto)
+        if not 7 <= len(dni) <= 8:
+            raise forms.ValidationError('El DNI son 7 u 8 dígitos.')
         if Usuario.objects.filter(dni_usuario=dni).exists():
             raise forms.ValidationError('Ya existe un usuario con ese DNI.')
         return dni

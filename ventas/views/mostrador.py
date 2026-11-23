@@ -35,7 +35,7 @@ from django.views.decorators.http import require_GET, require_POST
 from negocio.models import ParametrosNegocio
 from nucleo.busqueda import filtrar_por_texto
 from nucleo.formularios import leer_numero, sobran_decimales
-from seguridad.decorators import requiere_permiso
+from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import (
     autorizar_con_clave,
     foto,
@@ -406,11 +406,27 @@ def _cotizacion_json(cotizacion):
 # ===========================================================================
 def _producto_para_ajuste(datos):
     """El producto y la cantidad de un ajuste desde el mostrador, con sus
-    controles: lo usan el ajuste y el pedido de autorización a distancia."""
+    controles: lo usan el ajuste y el pedido de autorización a distancia.
+
+    Entre esos controles está que NO haya un conteo abierto (el índice
+    ``uq_un_conteo_abierto`` deja uno solo). Se mira acá, antes de pedir
+    nada: si no, el pedido de autorización a distancia salía, le llegaba el
+    WhatsApp a la titular, ella lo aprobaba… y al ejecutarlo el ajuste
+    fallaba con «ya hay un conteo abierto». La cajera quedaba esperando una
+    autorización que ya estaba dada y que no servía para nada.
+    """
+    from stock.models import AjusteStock, EstadoAjuste, TipoAjuste
+
     producto = Producto.objects.filter(pk=id_valido(datos.get('producto')), borrado_logico=False).first()
     cantidad = leer_numero(str(datos.get('cantidad') or ''), 3)
     if producto is None or not producto.tiene_stock_propio:
         raise ValidationError('Ese producto no lleva stock.')
+    if AjusteStock.objects.filter(
+            tipo_ajuste=TipoAjuste.CONTEO,
+            estado_ajuste__in=(EstadoAjuste.EN_CURSO, EstadoAjuste.PENDIENTE)).exists():
+        raise ValidationError(
+            'Hay un conteo de stock abierto: este ajuste no se puede hacer hasta que se '
+            'termine o se resuelva. Anotá el producto en ese conteo.')
     if producto.stock_actual > 0:
         raise ValidationError(f'{producto} ya tiene stock: actualizá la pantalla.')
     if producto.controla_vencimiento:
@@ -657,7 +673,12 @@ def alta_cliente(request):
     })
 
 
-@requiere_permiso('vender', redirigir_a='ventas:caja')
+# Quien ve las ventas (la titular, quien supervisa) tiene que poder abrir el
+# ticket aunque no venda: es el mismo criterio que ``comprobante_cambio``, y
+# es lo que la propia vista controla adentro (``usuario.puede('ver_ventas')``
+# para un ticket de otra persona). Pidiendo 'vender' acá, quien supervisa se
+# comía un «acceso denegado» con el permiso de ver ventas puesto.
+@requiere_alguno('vender', 'ver_ventas', redirigir_a='ventas:caja')
 def ticket(request, pk):
     """El comprobante interno para imprimir (no es la factura fiscal)."""
     venta = get_object_or_404(

@@ -16,7 +16,7 @@ from nucleo import idempotencia
 from nucleo.formularios import leer_numero, sobran_decimales
 from nucleo.templatetags.cafeto import pesos
 from nucleo.validaciones import clave_normalizada
-from seguridad.decorators import requiere_permiso
+from seguridad.decorators import requiere_alguno, requiere_permiso
 from seguridad.servicios import registrar_auditoria
 from ventas import puesto
 from ventas.models import MedioPago
@@ -59,7 +59,12 @@ def _estados(cliente):
     return opciones
 
 
-@requiere_permiso('cobrar_credito', redirigir_a='home')
+#  Esta pantalla es también la de quien GESTIONA el fiado: fija el tope, lo
+#  suspende, lo da por incobrable. Pidiendo sólo 'cobrar_credito', un perfil
+#  de gestión (la titular delega eso sin darle la caja) no podía ni abrir el
+#  listado, aunque el menú se lo ofreciera. Cobrar sigue pidiendo
+#  'cobrar_credito', y se controla en la acción.
+@requiere_alguno('cobrar_credito', 'gestionar_credito', redirigir_a='home')
 def cuentas(request):
     """Las cuentas corrientes, en cuatro vistas con su contador (con deuda,
     vencidos o suspendidos, incobrables, todos): ninguna queda escondida
@@ -97,13 +102,14 @@ def cuentas(request):
     })
 
 
-@requiere_permiso('cobrar_credito', redirigir_a='home')
+@requiere_alguno('cobrar_credito', 'gestionar_credito', redirigir_a='home')
 def cuenta(request, pk):
     """La cuenta de un cliente: lo que debe, su historia, y lo que se puede
     hacer (cobrar; y, quien gestiona el fiado, decidir)."""
     cliente = get_object_or_404(Cliente, pk=pk)
     usuario = request.usuario_actual
     gestiona = credito.puede_gestionar(usuario)
+    cobra = usuario is not None and usuario.puede('cobrar_credito')
     turno = puesto.turno_de(request)
     hoy = timezone.localdate()
     if request.method == 'POST':
@@ -115,6 +121,12 @@ def cuenta(request, pk):
             if not idempotencia.consumir(request, token):
                 raise ValidationError('Eso ya se había registrado: no se repitió.')
             if accion == 'cobrar':
+                # Entrar a la pantalla con 'gestionar_credito' no habilita a
+                # tocar la plata: el cobro sigue siendo de quien cobra.
+                if not cobra:
+                    raise ValidationError(
+                        'Tu perfil administra la cuenta corriente pero no registra cobros: '
+                        'el pago lo tiene que cobrar quien atiende la caja.')
                 medio = MedioPago.objects.filter(pk=id_valido(request.POST.get('medio')), borrado_logico=False).first()
                 puntos = request.POST.get('puntos')
                 resultado = credito.cobrar(
@@ -181,7 +193,8 @@ def cuenta(request, pk):
     for fiado in pendientes:
         fiado.atraso = (hoy - fiado.fecha_vencimiento).days if fiado.fecha_vencimiento < hoy else 0
     return render(request, 'fidelizacion/cuenta.html', {
-        'cliente': cliente, 's': s, 'pendientes': pendientes, 'gestiona': gestiona, 'turno': turno,
+        'cliente': cliente, 's': s, 'pendientes': pendientes, 'gestiona': gestiona, 'cobra': cobra,
+        'turno': turno,
         'aviso': credito.aviso_de_mora(cliente, hoy),
         'movimientos': movimientos,
         'recibo_nuevo': (MovimientoCuenta.objects.filter(pk=id_valido(recibo_nuevo), id_cliente=cliente,
@@ -243,7 +256,7 @@ def parecidos(request):
     return JsonResponse({'parecidos': salida})
 
 
-@requiere_permiso('cobrar_credito', redirigir_a='home')
+@requiere_alguno('cobrar_credito', 'gestionar_credito', redirigir_a='home')
 def recibo(request, pk):
     """Recibo de pago de cuenta corriente, para imprimir y darle al cliente."""
     cobro = get_object_or_404(MovimientoCuenta.objects.select_related(

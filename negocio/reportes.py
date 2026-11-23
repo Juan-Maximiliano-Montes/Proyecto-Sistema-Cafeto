@@ -16,6 +16,7 @@ acotarse a un rubro o a una caja, cuando el dato lo permite. Cada
 argumentos con nombre: ``rubro`` y ``caja`` son claves primarias ya
 validadas por la vista.
 """
+from collections import OrderedDict
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -114,11 +115,28 @@ def productos(desde, hasta, rubro=None, caja=None):
                                             id_venta__estado_venta='COMPLETADA')
     renglones = _filtrar(renglones, rubro, 'id_producto__id_rubro')
     renglones = _filtrar(renglones, caja, 'id_venta__id_turno_caja__id_caja_registradora')
-    filas = (renglones
-             .values('id_producto', 'descripcion_item')
-             .annotate(cantidad_total=Sum('cantidad'), vendido=Sum('subtotal'),
-                       costo_total=Sum(costo), descuentos=Sum('monto_descuento_linea'))
-             .order_by('-vendido'))
+    #  Un producto que cambió de nombre tiene un renglón de venta por cada
+    #  nombre con el que se vendió (la descripción queda CONGELADA en el
+    #  renglón, a propósito): agrupando por nombre, el reporte lo mostraba
+    #  como DOS productos distintos, cada uno con una parte de las unidades
+    #  y de la ganancia, y el ranking de «lo más vendido» salía mal. Se
+    #  agrupa por id_producto, igual que negocio/tablero.py, y se muestra la
+    #  ÚLTIMA descripción con la que se vendió (la del renglón más nuevo).
+    crudas = (renglones
+              .values('id_producto', 'descripcion_item')
+              .annotate(cantidad_total=Sum('cantidad'), vendido=Sum('subtotal'),
+                        costo_total=Sum(costo), descuentos=Sum('monto_descuento_linea'),
+                        ultimo=Max('pk'))
+              .order_by('id_producto', 'ultimo'))
+    por_id = OrderedDict()
+    for fila in crudas:
+        actual = por_id.setdefault(fila['id_producto'], {
+            'descripcion_item': fila['descripcion_item'], 'cantidad_total': CERO,
+            'vendido': CERO, 'costo_total': CERO, 'descuentos': CERO})
+        actual['descripcion_item'] = fila['descripcion_item']
+        for campo in ('cantidad_total', 'vendido', 'costo_total', 'descuentos'):
+            actual[campo] += fila[campo] or CERO
+    filas = sorted(por_id.values(), key=lambda f: f['vendido'], reverse=True)
     columnas = [C('Producto'), C('Cantidad', 'numero'), C('Vendido', 'dinero'),
                 C('Costo', 'dinero'), C('Ganancia', 'dinero'), C('Margen %', 'numero'),
                 C('Descuentos', 'dinero')]

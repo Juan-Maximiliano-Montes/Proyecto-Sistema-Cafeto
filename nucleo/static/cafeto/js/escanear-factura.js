@@ -148,6 +148,29 @@
         }
     }
 
+    //  Una factura que llegó por WhatsApp o por correo ya viene leída: la
+    //  pantalla se abre con ?factura=N (o con el enlace de pre-carga) y los
+    //  renglones reconocidos puestos. Los que NO se reconocieron venían sólo
+    //  como una lista de texto en el aviso de arriba: había que darlos de
+    //  alta a mano en Productos, en otra pestaña, y volver a cargar todo.
+    //  Acá se arman las mismas filas de «Dar de alta y sumar» que al
+    //  escanear con la cámara.
+    function nuevosDeLaPrecarga() {
+        var caja = document.getElementById('nuevosPrecarga');
+        if (!caja) { return; }
+        var lista = [];
+        try { lista = JSON.parse(caja.textContent).nuevos || []; } catch (e) { return; }
+        if (!lista.length) { return; }
+        listaNuevos.textContent = '';
+        lista.forEach(function (n) { listaNuevos.appendChild(filaNueva(n)); });
+        nuevos.hidden = false;
+        if (raiz.dataset.puedeProducto !== '1') {
+            listaNuevos.appendChild(el('p', 'small text-secondary mb-0',
+                'Tu perfil no da de alta productos: pedíselo a quien administra o sacalos de la factura.'));
+        }
+    }
+    nuevosDeLaPrecarga();
+
     function enviar(datos) {
         aviso('info', 'Leyendo la factura…', 'bi-hourglass-split');
         datos.append('csrfmiddlewaretoken', csrf);

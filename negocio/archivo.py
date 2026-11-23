@@ -48,7 +48,10 @@ LIBROS = (
           (('x.id_compra', Col('N° de compra', 'numero')), ('x.fecha_compra', Col('Fecha', 'fecha')),
            ('p.nombre_proveedor', Col('Proveedor')), ('p.cuit_proveedor', Col('CUIT')),
            ('x.tipo_comprobante', Col('Tipo')),
-           ("lpad(x.punto_venta::text, 5, '0') || '-' || lpad(x.numero_comprobante::text, 8, '0')", Col('Número')),
+           # Los mismos cuatro dígitos de punto de venta que Compra.numero_formateado
+           # ("0001-00001234", como figura impreso): con cinco, el archivo mostraba
+           # "00001-00001234" y no coincidía con el número que busca el contador.
+           ("lpad(x.punto_venta::text, 4, '0') || '-' || lpad(x.numero_comprobante::text, 8, '0')", Col('Número')),
            ('x.total_compra', Col('Total', 'dinero')), ('x.estado_compra', Col('Estado')),
            ('x.compra_ocasional', Col('Ocasional', 'si_no'))),
           joins='LEFT JOIN proveedores p ON p.id_proveedor = x.id_proveedor',
@@ -58,10 +61,17 @@ LIBROS = (
     # Un pago todavía sin hacer no tiene fecha de pago: cuenta por su vencimiento.
     Libro('egresos', 'Pagos y gastos', 'bi-wallet2', 'egresos', 'coalesce(x.fecha_egreso, x.fecha_vencimiento)',
           (('x.id_egreso', Col('N° de pago', 'numero')), ('x.fecha_egreso', Col('Fecha', 'fecha')),
-           ('x.destinatario', Col('A quién')), ('x.concepto', Col('Concepto')),
+           # Un egreso se le paga a un proveedor O a otro destinatario, nunca a
+           # los dos (DD-25.1): cuando es a un proveedor, el nombre está en la
+           # tabla de proveedores y 'destinatario' viene NULL. Sin el LEFT JOIN
+           # la columna «A quién» salía VACÍA en todos los pagos a proveedores,
+           # que son la mayoría del libro.
+           ('coalesce(p.nombre_proveedor, x.destinatario)', Col('A quién')),
+           ('x.concepto', Col('Concepto')),
            ('x.monto', Col('Monto', 'dinero')), ('x.estado_pago', Col('Estado')),
            ('x.fecha_acreditacion', Col('Acreditado', 'fecha')), ('x.comprobante', Col('Comprobante')),
            ('x.id_compra', Col('Compra', 'numero'))),
+          joins='LEFT JOIN proveedores p ON p.id_proveedor = x.id_proveedor',
           regla='Se archivan a los 24 meses acreditados o rechazados (los de una compra, con ella).',
           enlace='compras:egresos'),
     Libro('turnos', 'Turnos de caja', 'bi-cash-stack', 'turnos_caja', 'x.fecha_apertura::date',

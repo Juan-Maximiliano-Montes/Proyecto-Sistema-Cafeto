@@ -451,6 +451,43 @@ class DelegacionTest(Pantalla):
         self.pedir_a_distancia()
         self.assertNotIn('40100009@cafeto.test', {m.to[0] for m in mail.outbox})
 
+    def test_con_un_conteo_abierto_el_ajuste_no_se_pide_ni_se_hace(self):
+        """``uq_un_conteo_abierto`` deja UN conteo abierto a la vez.
+
+        Antes el pedido salía igual: a la titular le llegaba el WhatsApp,
+        lo aprobaba, y al ejecutarlo el ajuste fallaba con «ya hay un
+        conteo abierto». La cajera quedaba esperando una autorización que
+        ya estaba dada y que no servía para nada. Ahora se mira ANTES de
+        pedir, en el mismo control que usa el ajuste directo.
+        """
+        from stock import servicios as stock
+        from stock.models import MotivoAjuste
+
+        yerba = f.producto('Yerba', prov=self.prov, precio='3000', costo='2000')
+        conteo = stock.iniciar_conteo(self.admin, MotivoAjuste.DIFERENCIA_CONTEO)
+        self.entrar(self.cajera)
+        pedido = self.pedir('pedir_autorizacion',
+                            {'tipo': 'ajuste', 'producto': yerba.pk, 'cantidad': '4'})
+        self.assertFalse(pedido['ok'], pedido)
+        self.assertIn('conteo de stock abierto', pedido['error'])
+        self.assertFalse(SolicitudAutorizacion.objects.exists(),
+                         'no se pide una autorización que no se va a poder usar')
+        # El ajuste directo (sin pedir nada) lo rechaza por lo mismo.
+        directo = self.pedir('ajuste_express', {'producto': yerba.pk, 'cantidad': '4'})
+        self.assertFalse(directo['ok'])
+        self.assertIn('conteo de stock abierto', directo['error'])
+        # Resuelto el conteo, el pedido sale normalmente. Un conteo se
+        # envía con al menos un renglón cargado (es lo que se contó).
+        stock.cargar_conteo(conteo, self.alfajor, D('50'))
+        stock.enviar_conteo(conteo)
+        # Lo aprueba otra persona: quien carga un conteo no lo aprueba.
+        stock.aprobar(conteo, self.duenia, 'Listo')
+        self.entrar(self.cajera)
+        with self.captureOnCommitCallbacks(execute=True):
+            otra_vez = self.pedir('pedir_autorizacion',
+                                  {'tipo': 'ajuste', 'producto': yerba.pk, 'cantidad': '4'})
+        self.assertTrue(otra_vez['ok'], otra_vez)
+
     def test_el_ajuste_desde_el_mostrador_se_pide_a_distancia(self):
         yerba = f.producto('Yerba', prov=self.prov, precio='3000', costo='2000')
         self.entrar(self.cajera)

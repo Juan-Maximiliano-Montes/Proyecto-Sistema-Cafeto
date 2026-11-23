@@ -26,11 +26,22 @@ from nucleo.importar import Columna, Importador, Opcion, opcion, registrar, si_n
 from nucleo.validaciones import clave_normalizada, es_gtin, normalizar_cuit, sanear_codigo
 from stock.models import (
     ALICUOTAS_IVA, TIPOS_CON_PROVEEDOR, Marca, Producto, Rubro, TipoProducto, UnidadMedida)
-from nucleo.templatetags.cafeto import pesos
+from nucleo.templatetags.cafeto import cantidad, pesos
 from nucleo.textos import pluralizar, segun
 
 CAMPOS_QUE_SE_ACTUALIZAN = ('precio_venta', 'precio_costo', 'alicuota_iva',
                             'stock_minimo', 'id_proveedor_id', 'codigo_barras')
+
+#  Tope de kilos que se acepta como inventario inicial de un fraccionable.
+#  Arriba de eso, en la planilla real del local, lo cargado son gramos en la
+#  columna de kilos (8693.475 de queso cremoso = 8,693 kg).
+STOCK_FRACCIONABLE_MAXIMO = Decimal('200')
+
+#  Palabras que en el nombre del artículo dicen, sin lugar a dudas, que se
+#  vende por peso. Van con el espacio alrededor para que no las dispare una
+#  palabra que las contenga.
+PALABRAS_FRACCIONABLES = (' suelto ', ' suelta ', ' sueltos ', ' sueltas ',
+                          ' x kg ')
 
 
 @registrar
@@ -147,7 +158,10 @@ class ImportadorProductos(Importador):
     @staticmethod
     def _stock(texto, producto):
         """El stock de la planilla si se puede asentar: Decimal > 0 y, en lo
-        que va por unidad, entero. Si no: 'NEGATIVO', 'DECIMALES' o None."""
+        que va por unidad, entero.
+
+        Si no se puede: 'NEGATIVO', 'DECIMALES', 'ANOMALO' o None.
+        """
         texto = (texto or '').strip()
         if not texto:
             return None
@@ -158,19 +172,33 @@ class ImportadorProductos(Importador):
             return 'NEGATIVO'
         if (producto.exige_cantidad_entera and numero != numero.to_integral_value()) or numero > 99999:
             return 'DECIMALES'
+        # Un fraccionable se cuenta en kilos y nadie tiene 8.693 kg de queso
+        # cremoso en una heladera: en la planilla real eso son GRAMOS
+        # cargados en la columna de kilos. Entra en 0 y se cuenta a mano,
+        # porque cargarlo sería un inventario inicial falso de ocho toneladas.
+        if producto.fraccionable and numero > STOCK_FRACCIONABLE_MAXIMO:
+            return 'ANOMALO'
         return numero
 
     def resumen(self, resultados):
-        nuevos = [r.preparado[3] for r in resultados if r.ok and r.accion == 'ALTA']
+        altas = [r for r in resultados if r.ok and r.accion == 'ALTA']
+        nuevos = [r.preparado[3] for r in altas]
         cargables = sum(1 for s in nuevos if isinstance(s, Decimal))
         negativos, raros = nuevos.count('NEGATIVO'), nuevos.count('DECIMALES')
-        elaborados = sum(1 for r in resultados if r.ok and r.accion == 'ALTA'
-                         and r.preparado[0].tipo_producto == TipoProducto.ELABORADO)
+        anomalos = nuevos.count('ANOMALO')
+        elaborados = sum(1 for r in altas
+                         if r.preparado[0].tipo_producto == TipoProducto.ELABORADO)
+        fraccionables = sum(1 for r in altas if r.preparado[0].fraccionable)
         frases = ([f"{pluralizar(elaborados, 'producto')} {segun(elaborados, 'entra como elaborado', 'entran como elaborados')} "
                    '(por el rubro o porque el nombre empieza con '
                    '"CAFETERIA" o "PROMO"): se venden sin llevar stock. Si alguno en realidad se compra hecho, '
                    'cambiale el tipo antes de importarlo.'] if elaborados else [])
-        if not (cargables or negativos or raros):
+        if fraccionables:
+            frases.append(
+                f"{pluralizar(fraccionables, 'producto')} {segun(fraccionables, 'entra', 'entran')} por kilo "
+                '(fraccionable): el precio es POR KILO y en el mostrador se cobra lo que se pese. '
+                'Fijate en la lista de abajo cuáles son; los que vengan envasados corregilos antes de importar.')
+        if not (cargables or negativos or raros or anomalos):
             return frases
         frases.append(f"{pluralizar(cargables, 'producto nuevo', 'productos nuevos')} {segun(cargables, 'trae', 'traen')} "
                       'un stock que se puede cargar como inventario inicial.')
@@ -178,6 +206,12 @@ class ImportadorProductos(Importador):
             frases.append(
                 f'{negativos + raros} quedan en 0 pase lo que pase: {negativos} con stock negativo y {raros} '
                 'con decimales o cantidades imposibles en algo que va por unidad. Contalos cuando puedas.')
+        if anomalos:
+            tope = f'{STOCK_FRACCIONABLE_MAXIMO:.0f}'
+            frases.append(
+                f"{pluralizar(anomalos, 'producto que va por kilo trae', 'productos que van por kilo traen')} "
+                f'más de {tope} kg: eso en la planilla son gramos cargados en la columna de kilos. '
+                'Quedan en 0 para que los peses y los cuentes.')
         return frases
 
     def despues_de_aplicar(self, resultados, usuario, opciones):
@@ -209,6 +243,40 @@ class ImportadorProductos(Importador):
     #  vende sin stock propio (DD-90).
     RUBROS_ELABORADOS = ('comidas elaboradas',)
     PREFIJOS_ELABORADOS = ('cafeteria ', 'promo ')
+
+    #  La exportación de Fácil Virtual no trae ni "Fraccionable" ni
+    #  "Unidad": todo entraría por unidad, y el queso, el fiambre o la carne
+    #  se venden por peso. El precio quedaría "por unidad" y al pesar 0,250
+    #  kg el mostrador cobraría un kilo.
+    #
+    #  Se reconoce SÓLO con evidencia de la propia fila, nunca por el rubro
+    #  entero: en «Fiambrería» y «Carnicería» del local hay salchichas x 6,
+    #  queso rallado en sobre y aceitunas en doy pack, todo envasado y por
+    #  unidad, y marcarlos por peso les rompería el precio igual que al
+    #  revés. La evidencia es una de estas dos:
+    #
+    #    a) el stock de la fila tiene decimales de verdad (ya limpio el
+    #       ruido de punto flotante de Excel): nadie cuenta 2,350 sobres;
+    #    b) el nombre lo dice ("QUESO CREMOSO SUELTO", "ASADO X KG").
+    @classmethod
+    def _parece_fraccionable(cls, datos, nombre, tipo):
+        """¿La fila es, sin dudas, algo que se vende por peso?
+
+        Sólo para lo que se compra (``ck_productos_fraccionable`` no admite
+        fraccionables de otro tipo) y sólo si la planilla no trajo las
+        columnas que lo dicen: si vienen, manda lo que diga la planilla.
+        """
+        if tipo not in TIPOS_CON_PROVEEDOR:
+            return None
+        if 'fraccionable' in datos or 'unidad' in datos:
+            return None
+        clave = ' %s ' % clave_normalizada(nombre or '')
+        if any(p in clave for p in PALABRAS_FRACCIONABLES):
+            return 'el nombre dice que se vende suelto o por kilo'
+        numero = leer_numero((datos.get('stock') or '').strip(), 3)
+        if numero is not None and numero != numero.to_integral_value():
+            return f'el stock de la planilla viene con decimales ({numero})'
+        return None
 
     @classmethod
     def _tipo_por_defecto(cls, nombre, rubro):
@@ -249,6 +317,19 @@ class ImportadorProductos(Importador):
         except ValidationError as error:
             errores.extend(error.messages)
             return
+        # Se decide ANTES de buscar el producto por nombre: la identidad de
+        # un producto incluye su presentación (DD-55), así que si la fila
+        # entra por kilo también hay que buscarla por kilo. Decidirlo
+        # después daba de alta un duplicado en la segunda importación.
+        presentacion_de_la_planilla = (contenido, unidad)
+        if not fraccionable:
+            porque = self._parece_fraccionable(d, nombre, tipo)
+            if porque:
+                fraccionable, unidad, contenido = True, UnidadMedida.KG, Decimal('1')
+                resultado.avisos.append(
+                    f'Entra como fraccionable, por kilo: {porque}. Si en '
+                    'realidad viene envasado, agregale a la planilla la '
+                    'columna "Fraccionable" con "No".')
         numeros = {}
         for clave, etiqueta, decimales in (('precio', 'El precio', 2), ('costo', 'El costo', 2),
                                            ('minimo', 'El stock mínimo', 3)):
@@ -274,8 +355,17 @@ class ImportadorProductos(Importador):
         id_existente = self.por_codigo.get(codigo) if codigo else None
         identidad = (clave_normalizada(marca_texto) or '·generica·', clave_normalizada(nombre), contenido, unidad)
         if id_existente is None and marca is not None:
-            id_por_nombre, su_codigo = self.por_identidad.get(
-                (marca.pk, clave_normalizada(nombre), contenido, unidad), (None, None))
+            # Se busca por la presentación detectada Y por la que trae la
+            # planilla: un producto que la vez pasada entró "por unidad" y
+            # que ahora se reconoce "por kilo" es EL MISMO producto, y hay
+            # que encontrarlo para actualizarle el precio en vez de dar de
+            # alta un duplicado.
+            id_por_nombre, su_codigo = (None, None)
+            for presentacion in dict.fromkeys([(contenido, unidad), presentacion_de_la_planilla]):
+                id_por_nombre, su_codigo = self.por_identidad.get(
+                    (marca.pk, clave_normalizada(nombre), *presentacion), (None, None))
+                if id_por_nombre is not None:
+                    break
             if id_por_nombre is not None and codigo and su_codigo and su_codigo != codigo:
                 # Mismo nombre y presentación, otro código: son dos artículos
                 # distintos para el lector, pero el sistema los vería iguales.
@@ -323,6 +413,7 @@ class ImportadorProductos(Importador):
                     errores.extend(error.messages)
                     return
                 self._avisar_bajo_costo(resultado, producto)
+                self._avisar_sin_costo(resultado, producto)
             resultado.accion = 'CAMBIO' if cambios else 'SIN CAMBIOS'
             resultado.descripcion = str(producto) + (
                 ': ' + ', '.join(self._describir(c, antes[c], getattr(producto, c)) for c in cambios)
@@ -349,6 +440,7 @@ class ImportadorProductos(Importador):
             errores.extend(error.messages)
             return
         self._avisar_bajo_costo(resultado, producto)
+        self._avisar_sin_costo(resultado, producto)
         if codigo and len(codigo) in (8, 12, 13, 14) and not es_gtin(codigo):
             resultado.avisos.append(
                 f'El código {codigo} tiene el largo de uno de fábrica pero el dígito de control no cierra: '
@@ -377,6 +469,21 @@ class ImportadorProductos(Importador):
         producto._validar_matriz_del_tipo()
 
     @staticmethod
+    def _avisar_sin_costo(resultado, producto):
+        """Un producto que se vende y entra con costo $0 infla el margen.
+
+        No es un error (la planilla de Fácil Virtual trae varios así), pero
+        mientras el costo sea 0 el tablero muestra 100 % de ganancia y el
+        reporte de rentabilidad miente. Mejor verlo antes de importar.
+        """
+        if (producto.tipo_producto in (TipoProducto.REVENTA, TipoProducto.ELABORADO)
+                and not producto.precio_costo):
+            resultado.avisos.append(
+                'Entra sin costo ($0): hasta que le cargues el costo, la '
+                'ganancia va a salir del 100 % en el tablero y en los '
+                'reportes.')
+
+    @staticmethod
     def _avisar_bajo_costo(resultado, producto):
         """No frena la importación (puede ser una liquidación), pero una
         planilla con el precio y el costo cruzados se ve antes de aplicar."""
@@ -386,15 +493,27 @@ class ImportadorProductos(Importador):
                 f'El precio de venta ({pesos(precio)}) queda por debajo del costo '
                 f'({pesos(costo)}): se vendería a pérdida. Fijate que no estén cruzados.')
 
-    @staticmethod
-    def _describir(campo, antes, despues):
-        nombres = {'precio_venta': 'precio', 'precio_costo': 'costo', 'stock_minimo': 'mínimo',
-                   'id_proveedor_id': 'proveedor', 'codigo_barras': 'código'}
+    #  Cómo se lee cada campo en la vista previa. Están TODOS los de
+    #  CAMPOS_QUE_SE_ACTUALIZAN: faltaba 'alicuota_iva', y una fila que sólo
+    #  cambiaba el IVA —la planilla de Fácil Virtual trae la columna «% IVA»,
+    #  así que pasa seguido— reventaba la vista previa entera con un
+    #  KeyError (error 500, sin importar nada y sin decir por qué).
+    NOMBRES_DE_CAMPO = {'precio_venta': 'precio', 'precio_costo': 'costo',
+                        'alicuota_iva': 'IVA', 'stock_minimo': 'mínimo',
+                        'id_proveedor_id': 'proveedor', 'codigo_barras': 'código'}
+
+    @classmethod
+    def _describir(cls, campo, antes, despues):
+        # Un campo nuevo en CAMPOS_QUE_SE_ACTUALIZAN que nadie agregó acá
+        # sale con su propio nombre, no con un error 500.
+        nombre = cls.NOMBRES_DE_CAMPO.get(campo, campo)
         if campo in ('precio_venta', 'precio_costo'):
-            return f'{nombres[campo]} {pesos(antes)} → {pesos(despues)}'
+            return f'{nombre} {pesos(antes)} → {pesos(despues)}'
         if campo == 'id_proveedor_id':
             return 'cambia el proveedor'
-        return f'{nombres[campo]} {antes or "—"} → {despues or "—"}'
+        if campo == 'alicuota_iva':
+            return f'{nombre} {cantidad(antes)} % → {cantidad(despues)} %'
+        return f'{nombre} {antes or "—"} → {despues or "—"}'
 
     def instancia_de(self, resultado):
         return resultado.preparado[0]

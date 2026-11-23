@@ -32,6 +32,8 @@ from datetime import date
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
+from nucleo.validaciones import id_valido
+
 log = logging.getLogger(__name__)
 
 MAXIMO_BYTES = 8 * 1024 * 1024
@@ -274,8 +276,14 @@ def interpretar(texto, qr=None):
         # Lo del QR es lo oficial: manda sobre lo leído del texto.
         if qr.get('cuit'):
             datos['cuit_proveedor'] = str(qr['cuit'])
-        if isinstance(qr.get('tipoCmp'), (int, str)) and TIPOS_ARCA.get(qr['tipoCmp']):
-            datos['tipo_comprobante'] = TIPOS_ARCA[qr['tipoCmp']]
+        # TIPOS_ARCA tiene claves ENTERAS (1, 6, 11, 51) y el QR de ARCA
+        # trae el tipo a veces como número y a veces como texto ("6"), o
+        # como "06". Buscando el valor crudo, un QR con el tipo en texto no
+        # encontraba nada y la factura entraba sin tipo de comprobante: el
+        # dato oficial del QR se perdía y había que elegirlo a mano.
+        tipo_qr = id_valido(qr.get('tipoCmp'))
+        if tipo_qr is not None and tipo_qr in TIPOS_ARCA:
+            datos['tipo_comprobante'] = TIPOS_ARCA[tipo_qr]
         if qr.get('ptoVta'):
             datos['punto_venta'] = str(qr['ptoVta'])
         if qr.get('nroCmp'):

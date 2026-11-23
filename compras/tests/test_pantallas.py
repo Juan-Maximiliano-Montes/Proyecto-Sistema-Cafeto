@@ -58,6 +58,56 @@ class RecepcionTest(Base):
         self.assertEqual(Compra.objects.count(), 1)
 
 
+class CompraInformalTest(Base):
+    """El ticket de la verdulería y la bolsa de carbón del kiosco.
+
+    Esos papeles traen un número suelto y nada más: no tienen punto de
+    venta impreso (eso es de los comprobantes de ARCA). La base igual
+    exige ``punto_venta >= 1`` (``ck_compras_comprobante``), así que la
+    carga quedaba trabada en un campo que no existe en el papel. Para esos
+    tipos se asume el 1, que es lo que se venía cargando a mano.
+    """
+
+    def recibir(self, tipo, punto='', numero='4321'):
+        return self.client.post(reverse('compras:recepcion'), {
+            'token_operacion': self.token('compras:recepcion'),
+            'proveedor': self.prov.pk, 'tipo_comprobante': tipo,
+            'punto_venta': punto, 'numero': numero,
+            'renglones': json.dumps([
+                {'producto': self.gaseosa.pk, 'cantidad': '3', 'costo': '700'}])})
+
+    def test_un_ticket_sin_punto_de_venta_entra_con_el_1(self):
+        # Un número distinto por tipo: en Compras la baja es lógica
+        # (RN-8.1.1), así que entre casos no se borra nada, y el
+        # comprobante es único por proveedor + tipo + punto + número.
+        for numero, tipo in enumerate(('TICKET', 'OTRO', 'REMITO'), start=4321):
+            with self.subTest(tipo=tipo):
+                respuesta = self.recibir(tipo, numero=str(numero))
+                self.assertEqual(respuesta.status_code, 302,
+                                 getattr(respuesta, 'context', None) and respuesta.context.get('error'))
+                compra = Compra.objects.get(tipo_comprobante=tipo)
+                self.assertEqual(compra.punto_venta, 1)
+                self.assertEqual(compra.numero_formateado, f'0001-{numero:08d}')
+
+    def test_una_factura_de_ARCA_sigue_pidiendo_el_punto_de_venta(self):
+        """Ahí el punto de venta ESTÁ impreso y es parte de la identidad
+        del comprobante: no se inventa."""
+        respuesta = self.recibir('FACTURA_A')
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('punto de venta', respuesta.context['error'])
+        self.assertFalse(Compra.objects.exists())
+
+    def test_el_punto_de_venta_que_se_escribe_se_respeta(self):
+        self.recibir('TICKET', punto='7')
+        self.assertEqual(Compra.objects.get().punto_venta, 7)
+
+    def test_la_pantalla_le_dice_al_navegador_para_qué_tipos_es(self):
+        html = self.client.get(reverse('compras:recepcion')).content.decode()
+        control = html[html.index('id="punto"') - 250:html.index('id="punto"') + 400]
+        self.assertIn('data-punto-por-defecto="1"', control)
+        self.assertIn('data-tipos-sin-punto="TICKET,OTRO,REMITO"', control)
+
+
 class OrdenesTest(Base):
 
     def test_de_la_orden_a_la_recepcion(self):

@@ -44,12 +44,19 @@ class ProveedorForm(forms.ModelForm):
             # ``base.html``: pone los guiones mientras se tipea. Es una
             # ayuda visual; quien valida y normaliza sigue siendo el
             # modelo, que es lo que vale si el JS no corre.
+            #
+            # Y SIN ``maxlength``, por lo mismo. Eran 13 (los de
+            # "30-71234567-1"), pero un CUIT copiado de una factura viene
+            # con PUNTOS: "30.712.345.671" son 14 caracteres y el navegador
+            # cortaba el último dígito al pegarlo, en silencio. Se guardaba
+            # otro CUIT, o fallaba el dígito verificador y el error no decía
+            # por qué. El largo real lo controla el modelo después de
+            # normalizar (``normalizar_cuit`` deja 11 dígitos).
             'cuit_proveedor': forms.TextInput(
                 attrs={'class': 'form-control',
                        'placeholder': '30712345671 o 30-71234567-1',
                        'data-formato': 'cuit',
                        'inputmode': 'numeric',
-                       'maxlength': 13,
                        'title': 'Los 11 dígitos, con o sin guiones. '
                                 'Se guarda como 30-71234567-1.'}),
             'telefono_proveedor': forms.TextInput(
@@ -101,6 +108,14 @@ class ProveedorForm(forms.ModelForm):
         # del modelo en ``_post_clean()`` sobre el valor ya normalizado.
         self.fields['cuit_proveedor'].validators = []
         self.fields['cuit_proveedor'].max_length = None
+        # Y el ``maxlength`` del control, que no lo pone sólo el widget de
+        # Meta: Django lo agrega SIEMPRE a partir del max_length del modelo
+        # (``CharField.widget_attrs``). Mientras estuvo, el navegador
+        # cortaba en el caracter 13 lo que se PEGABA, así que
+        # "30.712.345.671" entraba como "30.712.345.67": un CUIT distinto,
+        # sin ningún aviso, y el dígito verificador fallaba sin decir por
+        # qué. Se saca acá, después de que Django lo haya puesto.
+        self.fields['cuit_proveedor'].widget.attrs.pop('maxlength', None)
 
     def clean_nombre_proveedor(self):
         """Razón social repetida sin distinguir mayúsculas, en el campo.

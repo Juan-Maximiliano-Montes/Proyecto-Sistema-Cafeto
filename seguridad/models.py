@@ -792,7 +792,17 @@ class Usuario(SinBajaFisica, models.Model):
 
         Devuelve la clave en texto plano UNA sola vez para poder
         comunicársela al usuario; después ya no se puede recuperar.
+
+        Cierra además TODO lo que esta persona tenga abierto, en la web y en
+        el celular. Una clave se restablece porque la cuenta se perdió o se
+        comprometió, y una sesión que siguiera viva podía entrar a
+        ``/cambiar-clave/`` —que con ``debe_cambiar_clave`` no pide la
+        actual— y elegir una clave nueva sin haber conocido ni la vieja ni
+        la provisoria: el restablecimiento le regalaba la cuenta a quien ya
+        estaba adentro.
         """
+        from seguridad.servicios import cerrar_sesiones_de
+
         if self.es_titular:
             raise ValidationError(
                 'La clave del titular del sistema no se restablece desde la '
@@ -802,6 +812,7 @@ class Usuario(SinBajaFisica, models.Model):
         self.save(update_fields=['clave', 'debe_cambiar_clave',
                                  'fecha_cambio_clave',
                                  'fecha_ultima_modificacion'])
+        cerrar_sesiones_de(self)
         return nueva
 
     def dar_de_baja(self):
