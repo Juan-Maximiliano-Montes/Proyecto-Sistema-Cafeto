@@ -4,6 +4,7 @@
     alertas     bajo mínimo, por vencer y el sector de ofertas
     ajustes     conteos, mermas y traspasos, y su aprobación
     produccion  las tandas de lo que se fabrica en el local
+    sugerencias la bandeja de mejoras del catálogo, que aprueba una persona
 
 Se importa ``catalogos`` acá porque registra sus CRUD al cargar la app.
 """

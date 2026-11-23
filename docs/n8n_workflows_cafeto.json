@@ -1575,5 +1575,528 @@
       "timezone": "America/Argentina/Salta"
     },
     "active": false
+  },
+  {
+    "name": "Cafeto · Recetas y márgenes (semanal)",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * 1"
+              }
+            ]
+          }
+        },
+        "name": "Lunes 09:00",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/sin-receta/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "dias",
+                "value": "7"
+              },
+              {
+                "name": "top",
+                "value": "5"
+              }
+            ]
+          }
+        },
+        "name": "Elaborados sin receta",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/margen-bajo/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "piso",
+                "value": "15"
+              },
+              {
+                "name": "top",
+                "value": "15"
+              }
+            ]
+          }
+        },
+        "name": "Productos con margen caído",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Un solo mensaje, corto: qué receta cargar primero (la que más plata\n// movió) y qué se está vendiendo sin costo o a pérdida. Lo demás espera.\nconst recetas = $('Elaborados sin receta').first().json;\nconst margenes = $input.first().json;\nconst plata = (n) => '$ ' + Number(n).toLocaleString('es-AR', {minimumFractionDigits: 2});\nconst lineas = ['*Cafeto · la revisión del lunes*'];\nif (recetas.total_pendientes) {\n  lineas.push('', '*Recetas que faltan* (' + recetas.total_pendientes + ' en total)');\n  for (const p of recetas.productos) {\n    const vendido = Number(p.facturado) > 0\n      ? ' · vendió ' + plata(p.facturado) + ' en ' + recetas.dias + ' días'\n      : ' · todavía sin ventas';\n    lineas.push('  · ' + p.nombre + vendido);\n  }\n}\nconst perdida = margenes.productos.filter((p) => p.motivo !== 'MARGEN_BAJO');\nconst bajos = margenes.productos.filter((p) => p.motivo === 'MARGEN_BAJO');\nif (perdida.length) {\n  lineas.push('', '*Sin costo o a pérdida*');\n  for (const p of perdida.slice(0, 5)) {\n    lineas.push('  · ' + p.nombre + ' (' + (p.motivo === 'SIN_COSTO' ? 'costo en $ 0' : 'se vende a pérdida') + ')');\n  }\n}\nif (bajos.length) {\n  lineas.push('', '*Margen por debajo del ' + margenes.piso + ' %*');\n  for (const p of bajos.slice(0, 5)) {\n    lineas.push('  · ' + p.nombre + ': ' + p.utilidad_porcentaje + ' %');\n  }\n}\nif (lineas.length === 1) return [];\nlineas.push('', 'Para resolverlas: ' + (recetas.productos[0] || margenes.productos[0] || {}).url);\nreturn [{ json: { texto: lineas.join('\\n') } }];\n"
+        },
+        "name": "Armar el mensaje",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          660,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          880,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Lunes 09:00": {
+        "main": [
+          [
+            {
+              "node": "Elaborados sin receta",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Elaborados sin receta": {
+        "main": [
+          [
+            {
+              "node": "Productos con margen caído",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Productos con margen caído": {
+        "main": [
+          [
+            {
+              "node": "Armar el mensaje",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar el mensaje": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Misión conteo rápido (diario)",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "30 8 * * 1-6"
+              }
+            ]
+          }
+        },
+        "name": "Lunes a sábado 8:30",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/conteo-rapido/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "dias",
+                "value": "30"
+              },
+              {
+                "name": "top",
+                "value": "5"
+              }
+            ]
+          }
+        },
+        "name": "Lo que conviene contar hoy",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Cinco productos, tres minutos, antes de abrir. Son los que figuran en\n// cero (o en negativo) y sin embargo se siguen vendiendo: o nunca se\n// contaron, o se venden sin descargar. Si no hay ninguno, no se manda nada.\nconst r = $input.first().json;\nif (!r.productos || !r.productos.length) return [];\nconst lineas = ['*Cafeto · conteo de 3 minutos*', '',\n  'Estos figuran en 0 y se siguen vendiendo. Contalos y cargá el conteo:'];\nfor (const p of r.productos) {\n  const rotacion = Number(p.unidades_vendidas) > 0\n    ? ' (salieron ' + p.unidades_vendidas + ' en ' + r.dias + ' días)'\n    : ' (quedó en 0 desde la migración)';\n  lineas.push('  · ' + p.nombre + rotacion);\n}\nlineas.push('', 'Quedan ' + r.total + ' así en total. De a cinco por día se termina.');\nreturn [{ json: { texto: lineas.join('\\n') } }];\n"
+        },
+        "name": "Armar la misión",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.WAHA_URL }}/api/sendText",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Api-Key",
+                "value": "={{ $env.WAHA_API_KEY }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({ session: 'default', chatId: $env.CAFETO_WHATSAPP_DUENIA + '@c.us', text: $json.texto }) }}",
+          "options": {}
+        },
+        "name": "Mandar por WhatsApp",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Lunes a sábado 8:30": {
+        "main": [
+          [
+            {
+              "node": "Lo que conviene contar hoy",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Lo que conviene contar hoy": {
+        "main": [
+          [
+            {
+              "node": "Armar la misión",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Armar la misión": {
+        "main": [
+          [
+            {
+              "node": "Mandar por WhatsApp",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
+  },
+  {
+    "name": "Cafeto · Sugerir rubros (nocturno)",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "30 3 * * *"
+              }
+            ]
+          }
+        },
+        "name": "Cada noche 3:30",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          0,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/sin-clasificar/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "top",
+                "value": "20"
+              }
+            ]
+          }
+        },
+        "name": "Productos sin clasificar",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Un item por producto, para consultar Open Food Facts de a uno.\nreturn $input.first().json.productos.map((p) => ({ json: p }));\n"
+        },
+        "name": "Uno por producto",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          440,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "url": "=https://world.openfoodfacts.org/api/v2/product/{{ $json.codigo_barras }}.json?fields=categories",
+          "options": {
+            "batching": {
+              "batch": {
+                "batchSize": 1,
+                "batchInterval": 1500
+              }
+            },
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          },
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "User-Agent",
+                "value": "Cafeto/1.0 (sistema de gestion de Cafeto Las Lomitas)"
+              }
+            ]
+          }
+        },
+        "name": "Categorías en Open Food Facts",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          660,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForEachItem",
+          "jsCode": "// El rubro se adivina con palabras del local; Open Food Facts sólo suma\n// cuando el producto tiene código de barras y está en su catálogo.\n// NADA se cambia acá: esto arma una sugerencia que aprueba una persona.\nconst p = $('Uno por producto').item.json;\nconst d = $input.item.json || {};\nconst PALABRAS = {\n  'Bebidas con Alcohol': ['cerveza', 'vino', 'fernet', 'whisky', 'vodka', 'gin', 'aperitivo', 'champagne', 'sidra'],\n  'Bebidas sin Alcohol': ['gaseosa', 'agua', 'jugo', 'soda', 'energizante', 'isotonica', 'tonica'],\n  'Lácteos': ['leche', 'yogur', 'queso', 'manteca', 'crema', 'dulce de leche', 'ricota'],\n  'Fiambrería': ['jamon', 'salame', 'mortadela', 'bondiola', 'panceta', 'salchichon'],\n  'Panadería': ['pan', 'factura', 'medialuna', 'bizcocho', 'tostada', 'budin', 'criollo'],\n  'Kiosco': ['alfajor', 'chicle', 'caramelo', 'chocolate', 'turron', 'oblea', 'golosina'],\n  'Limpieza': ['lavandina', 'detergente', 'jabon en polvo', 'desodorante de piso', 'esponja', 'trapo', 'suavizante'],\n  'Perfumería': ['shampoo', 'jabon de tocador', 'papel higienico', 'pañal', 'desodorante', 'crema de enjuague', 'toallita'],\n  'Almacén': ['fideo', 'arroz', 'harina', 'azucar', 'aceite', 'yerba', 'cafe', 'sal', 'pure', 'arveja', 'lenteja', 'conserva', 'galletita'],\n};\nconst sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();\nconst texto = sinTildes(p.nombre + ' ' + (p.marca || ''));\nlet rubro = '';\nlet motivo = '';\nfor (const [candidato, palabras] of Object.entries(PALABRAS)) {\n  const encontrada = palabras.find((palabra) => texto.includes(sinTildes(palabra)));\n  if (encontrada) { rubro = candidato; motivo = 'El nombre dice \"' + encontrada + '\"'; break; }\n}\nif (!rubro && d.status === 1 && d.product) {\n  const categorias = sinTildes(d.product.categories || '');\n  for (const [candidato, palabras] of Object.entries(PALABRAS)) {\n    const encontrada = palabras.find((palabra) => categorias.includes(sinTildes(palabra)));\n    if (encontrada) {\n      rubro = candidato;\n      motivo = 'Open Food Facts lo tiene en \"' + String(d.product.categories).split(',')[0].trim() + '\"';\n      break;\n    }\n  }\n}\nif (!rubro) return null;\nreturn { json: { cuerpo: { producto: p.id, tipo: 'RUBRO',\n  motivo: motivo + '. Hoy está en \"' + p.rubro_actual + '\".',\n  propuesta: { rubro } } } };\n"
+        },
+        "name": "Proponer el rubro",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CAFETO_URL }}/api/servicio/productos/sugerencias/",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Authorization",
+                "value": "=Bearer {{ $env.CAFETO_N8N_TOKEN }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify($json.cuerpo) }}"
+        },
+        "name": "Dejar la sugerencia",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1100,
+          0
+        ]
+      }
+    ],
+    "connections": {
+      "Cada noche 3:30": {
+        "main": [
+          [
+            {
+              "node": "Productos sin clasificar",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Productos sin clasificar": {
+        "main": [
+          [
+            {
+              "node": "Uno por producto",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Uno por producto": {
+        "main": [
+          [
+            {
+              "node": "Categorías en Open Food Facts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Categorías en Open Food Facts": {
+        "main": [
+          [
+            {
+              "node": "Proponer el rubro",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Proponer el rubro": {
+        "main": [
+          [
+            {
+              "node": "Dejar la sugerencia",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "timezone": "America/Argentina/Salta"
+    },
+    "active": false
   }
 ]

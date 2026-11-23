@@ -109,6 +109,15 @@ def del_dia(usuario, hoy=None):
         if recibidas:
             avisos.append({'clave': 'FACTURAS_RECIBIDAS', 'tipo': 'aviso', 'texto': facturas.aviso(recibidas)})
 
+    if puede('editar_producto'):
+        from stock import sugerencias
+        propuestas = sugerencias.pendientes().count()
+        if propuestas:
+            # La mejora del catálogo no corre: avisa y espera. Nada se
+            # cambió hasta que alguien entra y lo aprueba.
+            avisos.append({'clave': 'SUGERENCIAS_CATALOGO', 'tipo': 'aviso',
+                           'texto': sugerencias.aviso(propuestas)})
+
     if puede('ver_egresos'):
         from compras import egresos
         vencidos = egresos.vencidos(hoy)

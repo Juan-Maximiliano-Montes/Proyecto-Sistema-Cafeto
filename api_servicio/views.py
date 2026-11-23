@@ -377,3 +377,320 @@ def mantenimiento_mensual(request):
         'productos_reasignados': reasignados[:TOPE], 'cantidad_reasignados': len(reasignados),
         'proveedores_inactivos_6m': inactivos,
     })
+
+
+# ===========================================================================
+#  DIAGNÓSTICO PROGRESIVO DEL CATÁLOGO (Etapa 2)
+# ===========================================================================
+#  Cuatro consultas de SÓLO LECTURA para que la automatización acompañe el
+#  saneamiento de lo que vino del sistema anterior sin frenar el mostrador:
+#  qué elaborado se vende todo el día sin receta, qué se vende a pérdida o
+#  sin costo, qué conviene contar hoy y qué quedó sin rubro. Ninguna cambia
+#  nada: lo que se hace con esto lo decide una persona (o una SUGERENCIA,
+#  que también aprueba una persona).
+RUBROS_SIN_CLASIFICAR = ('Sin Clasificar', 'Otros Rubros')
+DIAS_DE_ROTACION = 30
+MOTIVOS_DE_MARGEN = ('SIN_COSTO', 'A_PERDIDA', 'MARGEN_BAJO')
+
+
+def _entero(request, clave, defecto, minimo, maximo):
+    try:
+        return max(minimo, min(int(request.GET.get(clave, defecto)), maximo))
+    except (TypeError, ValueError):
+        return defecto
+
+
+def _base_publica(request):
+    """La dirección con la que se arma el enlace que viaja por WhatsApp."""
+    from django.conf import settings
+
+    return ((getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').strip()
+            or request.build_absolute_uri('/')).rstrip('/')
+
+
+def _url_del_producto(base, producto):
+    from django.urls import reverse
+
+    return base + reverse('stock:productos_editar', args=[producto.pk])
+
+
+def _vendido_desde(desde):
+    """El filtro de los renglones de venta COMPLETADA desde ``desde``."""
+    from django.db.models import Q
+
+    return Q(renglones_venta__id_venta__estado_venta='COMPLETADA',
+             renglones_venta__id_venta__fecha_venta__gte=desde)
+
+
+def _con_movimiento_reciente(consulta, desde):
+    """Marca ``reciente`` en lo que se vendió o se compró desde ``desde``."""
+    from django.db.models import Exists, OuterRef, Q
+
+    from compras.models import DetalleCompra
+    from ventas.models import DetalleVenta
+
+    ventas = DetalleVenta.objects.filter(
+        id_producto=OuterRef('pk'), id_venta__estado_venta='COMPLETADA',
+        id_venta__fecha_venta__gte=desde)
+    compras = DetalleCompra.objects.filter(
+        id_producto=OuterRef('pk'), id_compra__fecha_compra__gte=desde)
+    return consulta.annotate(
+        vendido_hace_poco=Exists(ventas),
+        comprado_hace_poco=Exists(compras)).annotate(
+        reciente=Q(vendido_hace_poco=True) | Q(comprado_hace_poco=True))
+
+
+@de_servicio
+@require_GET
+def productos_sin_receta(request):
+    """Elaborados que se venden y todavía no tienen la receta cargada.
+
+    Un ELABORADO sin receta se vende igual (la matriz del tipo lo permite:
+    el mostrador no se frena), pero no descuenta insumos y su margen es el
+    que trajo la planilla. Los que más facturaron son los que más conviene
+    cargar primero.
+
+    Si en la ventana no hubo ventas, igual devuelve los pendientes —los de
+    mayor precio, y después los últimos cargados—: la lista existe para
+    terminar el trabajo, no para quedar vacía.
+    """
+    from django.db.models import Count, DecimalField, Sum, Value
+    from django.db.models.functions import Coalesce
+
+    from stock.models import Producto, TipoProducto
+
+    dias = _entero(request, 'dias', 7, 1, 90)
+    top = _entero(request, 'top', 5, 1, TOPE)
+    desde = timezone.localdate() - timedelta(days=dias)
+    pendientes = Producto.objects.filter(
+        borrado_logico=False, tipo_producto=TipoProducto.ELABORADO,
+        composicion__isnull=True)
+    vendidos = _vendido_desde(desde)
+    productos = (pendientes.select_related('id_rubro').annotate(
+        veces_vendido=Count('renglones_venta', filter=vendidos),
+        unidades_vendidas=Coalesce(
+            Sum('renglones_venta__cantidad', filter=vendidos),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=3))),
+        facturado=Coalesce(
+            Sum('renglones_venta__subtotal', filter=vendidos),
+            Value(0, output_field=DecimalField(max_digits=14, decimal_places=2))),
+    ).order_by('-facturado', '-unidades_vendidas', '-precio_venta', '-pk')[:top])
+    base = _base_publica(request)
+    return JsonResponse({
+        'total_pendientes': pendientes.count(), 'dias': dias,
+        'productos': [{
+            'id': p.pk, 'nombre': str(p), 'rubro': p.id_rubro.nombre_rubro,
+            'veces_vendido': p.veces_vendido,
+            'unidades_vendidas': str(p.unidades_vendidas),
+            'facturado': str(p.facturado), 'precio_costo': str(p.precio_costo),
+            'precio_venta': str(p.precio_venta), 'url': _url_del_producto(base, p),
+        } for p in productos]})
+
+
+def _motivo_de_margen(producto, piso, sin_receta):
+    """``(motivo, utilidad)``; motivo ``None`` si el margen está bien."""
+    from decimal import Decimal
+
+    from stock.models import TipoProducto
+
+    cero = Decimal('0')
+    costo = producto.precio_costo or cero
+    utilidad = producto.utilidad_porcentaje
+    con_costo_propio = producto.tipo_producto in (TipoProducto.REVENTA,
+                                                  TipoProducto.PRODUCIDO)
+    if costo <= cero and (con_costo_propio or sin_receta):
+        # Sin costo no hay margen que mirar: lo que diga la ganancia de
+        # este producto es mentira hasta que alguien lo cargue.
+        return 'SIN_COSTO', utilidad
+    if costo > cero and producto.precio_venta <= costo:
+        return 'A_PERDIDA', utilidad
+    if utilidad is not None and utilidad < piso:
+        return 'MARGEN_BAJO', utilidad
+    return None, utilidad
+
+
+@de_servicio
+@require_GET
+def productos_margen_bajo(request):
+    """Lo que se vende sin costo, a pérdida o con el margen por el piso.
+
+    El margen es sobre el costo CON IVA (``Producto.utilidad_porcentaje``),
+    que es como se fija el precio en el local. Primero lo que se movió en
+    los últimos 30 días: un margen caído en algo que no rota puede esperar.
+    """
+    from stock.models import TIPOS_VENDIBLES, Producto, TipoProducto
+
+    piso = _entero(request, 'piso', 15, 0, 500)
+    top = _entero(request, 'top', 15, 1, TOPE)
+    desde = timezone.localdate() - timedelta(days=DIAS_DE_ROTACION)
+    base = _base_publica(request)
+    consulta = (Producto.objects
+                .filter(borrado_logico=False,
+                        tipo_producto__in=sorted(TIPOS_VENDIBLES))
+                .select_related('id_rubro').prefetch_related('composicion'))
+    filas = []
+    for producto in _con_movimiento_reciente(consulta, desde):
+        sin_receta = (producto.tipo_producto == TipoProducto.ELABORADO
+                      and not producto.composicion.all())
+        motivo, utilidad = _motivo_de_margen(producto, piso, sin_receta)
+        if motivo is None:
+            continue
+        filas.append({
+            'id': producto.pk, 'nombre': str(producto),
+            'rubro': producto.id_rubro.nombre_rubro,
+            'tipo': producto.tipo_producto, 'motivo': motivo,
+            'precio_costo': str(producto.precio_costo),
+            'precio_venta': str(producto.precio_venta),
+            'utilidad_porcentaje': None if utilidad is None else str(utilidad),
+            'se_movio_hace_poco': bool(producto.reciente),
+            'url': _url_del_producto(base, producto),
+            '_orden': (0 if producto.reciente else 1,
+                       MOTIVOS_DE_MARGEN.index(motivo),
+                       utilidad if utilidad is not None else 0),
+        })
+    filas.sort(key=lambda f: f['_orden'])
+    for fila in filas:
+        del fila['_orden']
+    return JsonResponse({'piso': piso, 'dias': DIAS_DE_ROTACION,
+                         'total': len(filas), 'productos': filas[:top]})
+
+
+@de_servicio
+@require_GET
+def productos_conteo_rapido(request):
+    """La «misión conteo de 5 minutos»: qué contar hoy y nada más.
+
+    Lo que tiene stock propio, figura en cero (o en negativo) y sin embargo
+    se sigue vendiendo: o el conteo del arranque nunca se hizo, o se vende
+    sin descargar. Se cuentan de a cinco por día; el local no se para.
+    """
+    from django.db.models import Count, DecimalField, F, Q, Sum, Value
+    from django.db.models.functions import Coalesce
+
+    from stock.models import Producto, TipoProducto
+
+    dias = _entero(request, 'dias', DIAS_DE_ROTACION, 1, 90)
+    top = _entero(request, 'top', 5, 1, TOPE)
+    hoy = timezone.localdate()
+    desde = hoy - timedelta(days=dias)
+    cantidad = DecimalField(max_digits=12, decimal_places=3)
+    vendidos = _vendido_desde(desde)
+    productos = (Producto.objects
+                 .filter(borrado_logico=False,
+                         tipo_producto__in=(TipoProducto.REVENTA,
+                                            TipoProducto.PRODUCIDO))
+                 .select_related('id_rubro', 'id_marca')
+                 .annotate(vencido_en_lotes=Coalesce(
+                     Sum('lotes__stock_lote',
+                         filter=Q(lotes__stock_lote__gt=0,
+                                  lotes__fecha_vencimiento__lt=hoy)),
+                     Value(0, output_field=cantidad)))
+                 .annotate(stock_apto=F('stock_actual') - F('vencido_en_lotes'))
+                 .filter(stock_apto__lte=0)
+                 .annotate(
+                     veces_vendido=Count('renglones_venta', filter=vendidos),
+                     unidades_vendidas=Coalesce(
+                         Sum('renglones_venta__cantidad', filter=vendidos),
+                         Value(0, output_field=cantidad)))
+                 .order_by('-unidades_vendidas', '-veces_vendido',
+                           'nombre_producto'))
+    base = _base_publica(request)
+    filas = list(productos[:top])
+    return JsonResponse({
+        'dias': dias, 'total': productos.count(),
+        'productos': [{
+            'id': p.pk, 'nombre': str(p), 'rubro': p.id_rubro.nombre_rubro,
+            'codigo_barras': p.codigo_barras,
+            'stock_actual': str(p.stock_actual),
+            'unidades_vendidas': str(p.unidades_vendidas),
+            'veces_vendido': p.veces_vendido,
+            'se_vendio': bool(p.veces_vendido),
+            'url': _url_del_producto(base, p),
+        } for p in filas]})
+
+
+@de_servicio
+@require_GET
+def productos_sin_clasificar(request):
+    """Lo que quedó en «Sin Clasificar» u «Otros Rubros» al migrar.
+
+    Un producto sin rubro de verdad no se encuentra en el mostrador, no
+    entra en ningún informe por rubro y no hereda la rebaja por
+    vencimiento del rubro. La comparación es por clave normalizada, así
+    «otros rubros» y «Otros Rubros» son el mismo.
+    """
+    from nucleo.restricciones import ClaveNormalizada
+    from nucleo.validaciones import clave_normalizada
+    from stock.models import Producto
+
+    top = _entero(request, 'top', 20, 1, TOPE)
+    desde = timezone.localdate() - timedelta(days=DIAS_DE_ROTACION)
+    claves = [clave_normalizada(nombre) for nombre in RUBROS_SIN_CLASIFICAR]
+    consulta = (Producto.objects.filter(borrado_logico=False)
+                .select_related('id_rubro', 'id_marca')
+                .annotate(rubro_normalizado=ClaveNormalizada('id_rubro__nombre_rubro'))
+                .filter(rubro_normalizado__in=claves))
+    base = _base_publica(request)
+    filas = sorted(_con_movimiento_reciente(consulta, desde),
+                   key=lambda p: (0 if p.reciente else 1, p.nombre_producto))
+    return JsonResponse({
+        'total': len(filas), 'rubros': list(RUBROS_SIN_CLASIFICAR),
+        'productos': [{
+            'id': p.pk, 'codigo_barras': p.codigo_barras,
+            'nombre': p.nombre_producto,
+            'rubro_actual': p.id_rubro.nombre_rubro,
+            'marca': p.id_marca.nombre_marca, 'tiene_foto': bool(p.imagen),
+            'se_movio_hace_poco': bool(p.reciente),
+            'url': _url_del_producto(base, p),
+        } for p in filas[:top]]})
+
+
+# ===========================================================================
+#  SUGERENCIAS DE MEJORA DEL CATÁLOGO (Etapa 2)
+# ===========================================================================
+@de_servicio
+@require_POST
+def proponer_sugerencia(request):
+    """Deja una propuesta de mejora en la bandeja, para que la apruebe una
+    persona (DD-84: la automatización no cambia el catálogo por su cuenta).
+
+    Cuerpo: ``{"producto", "tipo", "motivo", "propuesta"}``. Un reintento
+    con la misma propuesta no la deja dos veces: la huella la reconoce y
+    devuelve 200 con la que ya estaba esperando.
+    """
+    from seguridad.servicios import instantanea, registrar_auditoria
+    from stock import sugerencias
+    from stock.models import Producto
+
+    try:
+        datos = json_seguro.del_pedido(request)
+        producto_id = json_seguro.campo(datos, 'producto', int, 'El producto ("producto")')
+        tipo = json_seguro.campo(datos, 'tipo', str, 'El tipo ("tipo")', '')
+        motivo = json_seguro.campo(datos, 'motivo', str, 'El motivo ("motivo")', '')
+        propuesta = json_seguro.campo(datos, 'propuesta', dict, 'La propuesta ("propuesta")', {})
+    except json_seguro.PedidoMalArmado as error:
+        return _error(' '.join(error.messages), 400)
+    if producto_id is None:
+        return _error('El cuerpo lleva "producto", "tipo", "motivo" y "propuesta".', 400)
+    producto = Producto.objects.filter(pk=producto_id, borrado_logico=False).first()
+    if producto is None:
+        return _error('Ese producto no existe o está dado de baja.', 404)
+    try:
+        sugerencia, nueva = sugerencias.proponer(producto, tipo, motivo, propuesta)
+    except ValidationError as error:
+        return _error(' '.join(error.messages), 400)
+    if nueva:
+        registrar_auditoria(
+            None, 'ALTA', 'SUGERENCIA DE CATALOGO', instancia=sugerencia,
+            nuevo=instantanea(sugerencia), modulo='STOCK',
+            detalle=f'Una automatización propuso {sugerencia.get_tipo_sugerencia_display().lower()} '
+                    f'en "{producto}": {sugerencia.motivo}')
+    from django.urls import reverse
+
+    return JsonResponse({
+        'id': sugerencia.pk, 'tipo': sugerencia.tipo_sugerencia,
+        'producto': producto.pk, 'motivo': sugerencia.motivo,
+        'propuesta': sugerencia.propuesta, 'ya_estaba': not nueva,
+        'pendientes': sugerencias.pendientes().count(),
+        'url': _base_publica(request) + reverse('stock:sugerencias'),
+    }, status=201 if nueva else 200)

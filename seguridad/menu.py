@@ -57,6 +57,8 @@ GRUPOS = [
         ('ruta:stock:producciones', ('Producción', 'bi-fire',
                                      'registrar_produccion')),
         ('ruta:stock:ofertas', ('Ofertas', 'bi-tags', 'imprimir_ofertas')),
+        ('ruta:stock:sugerencias', ('Sugerencias de mejora', 'bi-magic',
+                                    'editar_producto')),
     ]),
     ('Compras y Gastos', 'bi-bag', [
         ('ruta:compras:compras', ('Compras', 'bi-receipt-cutoff',

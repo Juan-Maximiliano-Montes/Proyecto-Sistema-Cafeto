@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% load cafeto %}
+{% block titulo %}Cafeto · Sugerencias de mejora{% endblock %}
+
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <span class="eyebrow"><i class="bi bi-boxes me-1"></i>Stock</span>
+        <h1 class="titulo-pantalla mb-0">Sugerencias de mejora</h1>
+        <p class="bajada">Lo que la automatización encontró revisando el catálogo. Nada se cambió todavía: mirá cada una y decidí vos.</p>
+    </div>
+</div>
+
+{% if total %}
+{% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Tipo de sugerencia' %}
+
+<div class="grilla">
+{% for s in filas %}
+    <article class="tarjeta">
+        <div class="tarjeta-cabeza">
+            <div class="min-w-0">
+                <h2 class="tarjeta-titulo">{{ s.id_producto.nombre_producto }}</h2>
+                <p class="tarjeta-sub">{{ s.id_producto.id_marca }} · {{ s.id_producto.id_rubro }}</p>
+            </div>
+            <span class="insignia insignia-marca">{{ s.get_tipo_sugerencia_display }}</span>
+        </div>
+        <dl class="tarjeta-datos">
+            <dt>Hoy</dt><dd>{{ s.valor_actual }}</dd>
+            <dt>Se propone</dt><dd><strong>{{ s.valor_propuesto }}</strong></dd>
+            <dt>Por qué</dt><dd>{{ s.motivo }}</dd>
+        </dl>
+        <p class="small text-tenue mb-2">Propuesta el {{ s.fecha_creacion|date:"d/m/Y H:i" }}</p>
+        <div class="d-flex flex-wrap gap-2">
+        {% if s.tipo_sugerencia == 'RECETA' %}
+            <a href="{{ url_productos }}?busqueda={{ s.id_producto.nombre_producto|urlencode }}" class="btn btn-sm btn-primary"><i class="bi bi-journal-plus me-1" aria-hidden="true"></i>Ir a cargar la receta</a>
+        {% else %}
+            <form method="post" action="{% url 'stock:aplicar_sugerencia' s.pk %}"
+                  data-titulo="¿Aplicamos el cambio?"
+                  data-aceptar="Sí, aplicar"
+                  data-confirmar="{{ s.id_producto }}: pasa de «{{ s.valor_actual }}» a «{{ s.valor_propuesto }}». Queda registrado que lo aprobaste vos.">
+                {% csrf_token %}<input type="hidden" name="tipo" value="{{ tipo }}">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Aplicar</button>
+            </form>
+        {% endif %}
+            <form method="post" action="{% url 'stock:descartar_sugerencia' s.pk %}"
+                  data-titulo="¿Descartamos la sugerencia?"
+                  data-aceptar="Sí, descartar"
+                  data-confirmar="El producto queda como está y esta sugerencia deja de aparecer acá.">
+                {% csrf_token %}<input type="hidden" name="tipo" value="{{ tipo }}">
+                <button type="submit" class="btn btn-sm btn-secundario">Descartar</button>
+            </form>
+        </div>
+    </article>
+{% empty %}
+    <div class="vacio tarjeta"><i class="bi bi-funnel"></i>No hay sugerencias de este tipo.</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="vacio tarjeta">
+    <i class="bi bi-emoji-smile"></i>
+    No hay sugerencias esperando: el catálogo está al día.
+</div>
+{% endif %}
+{% endblock %}

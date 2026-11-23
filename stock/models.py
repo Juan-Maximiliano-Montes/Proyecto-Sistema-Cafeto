@@ -1,6 +1,6 @@
 """Módulo Stock e Inventario.
 
-Nueve tablas:
+Diez tablas:
 
     RUBROS                  agrupación comercial (Cafetería, Minisuper)
     MARCAS                  la marca bajo la que se vende un producto
@@ -12,6 +12,8 @@ Nueve tablas:
     AJUSTES_STOCK           conteos, mermas y traspasos, con autorización
     DETALLES_AJUSTE         sus renglones
     PRODUCCIONES            las tandas de lo que se fabrica en el local
+    SUGERENCIAS_CATALOGO    las mejoras que una automatización propone y
+                            que aprueba (o descarta) una persona
 
 Los cinco TIPOS de producto y qué admite cada uno
 -------------------------------------------------
@@ -1565,3 +1567,132 @@ class Produccion(LibroInmutable, models.Model):
     def __str__(self):
         return (f'{_cantidad(self.cantidad)} × {self.id_producto} '
                 f'({self.fecha_produccion:%d/%m %H:%M})')
+
+
+# ===========================================================================
+#  SUGERENCIAS DE MEJORA DEL CATÁLOGO
+# ===========================================================================
+#  La bandeja de la mejora continua (Etapa 2). Una automatización mira el
+#  catálogo heredado y PROPONE: "este producto parece de Lácteos", "éste se
+#  vendió 14 veces sin receta", "éste hace un año que no se mueve". No
+#  cambia nada. El cambio lo aplica una persona desde «Sugerencias de
+#  mejora», con el mismo `full_clean()` y las mismas reglas que si lo
+#  editara a mano, y queda en el Registro de Actividad con su nombre.
+#
+#  Mismo patrón que `compras.FacturaRecibida`: estado PENDIENTE hasta que
+#  alguien la resuelve, y una huella con UNIQUE parcial para que n8n pueda
+#  reintentar todas las noches sin llenar la bandeja de repetidas.
+class TipoSugerencia(models.TextChoices):
+    RUBRO = 'RUBRO', 'Cambiar rubro'
+    MARCA = 'MARCA', 'Completar marca'
+    RECETA = 'RECETA', 'Cargar receta'
+    PRECIO = 'PRECIO', 'Revisar precio'
+    BAJA_INACTIVO = 'BAJA_INACTIVO', 'Dar de baja (sin movimiento)'
+
+
+class EstadoSugerencia(models.TextChoices):
+    PENDIENTE = 'PENDIENTE', 'Para revisar'
+    ACEPTADA = 'ACEPTADA', 'Aplicada'
+    DESCARTADA = 'DESCARTADA', 'Descartada'
+
+
+ORIGEN_AUTOMATIZACION = 'AUTOMATIZACION'
+
+
+class SugerenciaCatalogo(models.Model):
+    """Una mejora propuesta sobre un producto, a la espera de una persona.
+
+    ``propuesta`` es lo que se haría, en datos y no en prosa
+    (``{"rubro": "Almacén"}``, ``{"precio_venta": "3500.00"}``), y
+    ``motivo`` es por qué, en castellano, para que quien aprueba entienda
+    de dónde salió sin tener que confiar a ciegas.
+
+    ``huella`` es el SHA-256 de (producto, tipo, propuesta): mientras la
+    sugerencia esté PENDIENTE no entra otra igual. Una vez resuelta sí,
+    porque si la realidad volvió a cambiar vale preguntar de nuevo.
+    """
+
+    id_sugerencia = models.AutoField('ID', primary_key=True)
+    tipo_sugerencia = models.CharField(
+        'Qué se propone', max_length=15, choices=TipoSugerencia.choices)
+    id_producto = models.ForeignKey(
+        Producto, on_delete=models.RESTRICT, db_column='id_producto',
+        related_name='sugerencias', verbose_name='Producto')
+    origen = models.CharField('Quién la propuso', max_length=20,
+                              default=ORIGEN_AUTOMATIZACION)
+    motivo = models.CharField('Por qué', max_length=200)
+    propuesta = models.JSONField('Lo que se propone', default=dict, blank=True)
+    huella = models.CharField('Huella', max_length=64)
+    estado_sugerencia = models.CharField(
+        'Estado', max_length=10, choices=EstadoSugerencia.choices,
+        default=EstadoSugerencia.PENDIENTE)
+    fecha_creacion = models.DateTimeField('Propuesta el', default=timezone.now)
+    id_usuario_resolucion = models.ForeignKey(
+        'seguridad.Usuario', on_delete=models.RESTRICT,
+        db_column='id_usuario_resolucion', null=True, blank=True,
+        related_name='sugerencias_resueltas', verbose_name='Resolvió')
+    fecha_resolucion = models.DateTimeField('Resuelta', null=True, blank=True)
+
+    class Meta:
+        db_table = 'sugerencias_catalogo'
+        verbose_name = 'Sugerencia de catálogo'
+        verbose_name_plural = 'Sugerencias de catálogo'
+        ordering = ['tipo_sugerencia', 'fecha_creacion']
+        constraints = [
+            CheckEnBase(
+                check=CheckSQL(
+                    'tipo_sugerencia IN %s AND estado_sugerencia IN %s AND '
+                    "trim(motivo) <> ''"
+                    % (_en(TipoSugerencia.values), _en(EstadoSugerencia.values))),
+                name='ck_sugerencias_dominios'),
+            CheckEnBase(
+                check=CheckSQL(
+                    "((estado_sugerencia = 'PENDIENTE') = (id_usuario_resolucion IS NULL)) AND "
+                    '((id_usuario_resolucion IS NULL) = (fecha_resolucion IS NULL)) AND '
+                    '(fecha_resolucion IS NULL OR fecha_resolucion >= fecha_creacion)'),
+                name='ck_sugerencias_resolucion'),
+            # Idempotencia: n8n puede reintentar sin duplicar jamás.
+            models.UniqueConstraint(
+                fields=['huella'],
+                condition=models.Q(estado_sugerencia='PENDIENTE'),
+                name='uq_sugerencias_pendiente'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_tipo_sugerencia_display()} · {self.id_producto}'
+
+    @property
+    def pendiente(self):
+        return self.estado_sugerencia == EstadoSugerencia.PENDIENTE
+
+    @property
+    def valor_actual(self):
+        """Lo que el producto tiene HOY, para mostrarlo al lado de lo
+        propuesto: sin eso, aprobar es firmar en blanco."""
+        producto = self.id_producto
+        if self.tipo_sugerencia == TipoSugerencia.RUBRO:
+            return producto.id_rubro.nombre_rubro
+        if self.tipo_sugerencia == TipoSugerencia.MARCA:
+            return producto.id_marca.nombre_marca
+        if self.tipo_sugerencia == TipoSugerencia.PRECIO:
+            return _cantidad(producto.precio_venta)
+        if self.tipo_sugerencia == TipoSugerencia.RECETA:
+            renglones = producto.composicion.count()
+            return (f"{pluralizar(renglones, 'insumo')} en la receta"
+                    if renglones else 'Sin receta')
+        return 'Vigente'
+
+    @property
+    def valor_propuesto(self):
+        """Lo mismo, del lado de la propuesta."""
+        datos = self.propuesta if isinstance(self.propuesta, dict) else {}
+        if self.tipo_sugerencia == TipoSugerencia.RUBRO:
+            return str(datos.get('rubro') or '')
+        if self.tipo_sugerencia == TipoSugerencia.MARCA:
+            return str(datos.get('marca') or '')
+        if self.tipo_sugerencia == TipoSugerencia.PRECIO:
+            return _cantidad(datos.get('precio_venta') or 0)
+        if self.tipo_sugerencia == TipoSugerencia.RECETA:
+            insumos = datos.get('insumos') or []
+            return ', '.join(str(i) for i in insumos) if insumos else 'A definir'
+        return 'Dado de baja'

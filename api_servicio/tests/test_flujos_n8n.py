@@ -174,3 +174,96 @@ class AlineacionConDjangoTest(LeerFlujos, SimpleTestCase):
         self.assertEqual(off['options']['batching']['batch']['batchSize'], 1)
         self.assertIn('User-Agent', {h['name'] for h in off['headerParameters']['parameters']})
         self.assertIn("replace(/^http:/, 'https:')", nodos['¿Tiene foto?']['parameters']['jsCode'])
+
+
+class FlujosDeMejoraContinuaTest(LeerFlujos, SimpleTestCase):
+    """Los tres flujos de la Etapa 2 (DD-84: proponen, no cambian).
+
+    El nocturno de rubros es el único que escribe, y escribe en la bandeja
+    de SUGERENCIAS: nada del catálogo cambia sin que una persona lo
+    apruebe. Los otros dos sólo leen y mandan un mensaje.
+    """
+
+    def test_el_semanal_mira_recetas_y_margenes_en_un_solo_mensaje(self):
+        flujo = self.flujos['Cafeto · Recetas y márgenes (semanal)']
+        nodos = self.nodos(flujo)
+        self.assertEqual(nodos['Lunes 09:00']['parameters']['rule']['interval'][0]['expression'],
+                         '0 9 * * 1')
+        self.assertEqual(nodos['Elaborados sin receta']['parameters']['url'],
+                         '={{ $env.CAFETO_URL }}/api/servicio/productos/sin-receta/')
+        self.assertEqual(nodos['Productos con margen caído']['parameters']['url'],
+                         '={{ $env.CAFETO_URL }}/api/servicio/productos/margen-bajo/')
+        orden = ['Lunes 09:00', 'Elaborados sin receta', 'Productos con margen caído',
+                 'Armar el mensaje', 'Mandar por WhatsApp']
+        for actual, siguiente in zip(orden, orden[1:]):
+            self.assertEqual(self.siguientes(flujo, actual), [siguiente])
+        # Un solo mensaje con las dos cosas: el top de recetas con lo que
+        # facturó y los márgenes caídos.
+        codigo = nodos['Armar el mensaje']['parameters']['jsCode']
+        self.assertIn("$('Elaborados sin receta')", codigo)
+        self.assertIn('facturado', codigo)
+        self.assertIn('SIN_COSTO', codigo)
+        self.assertIn('utilidad_porcentaje', codigo)
+
+    def test_la_mision_de_conteo_sale_de_lunes_a_sabado_antes_de_abrir(self):
+        flujo = self.flujos['Cafeto · Misión conteo rápido (diario)']
+        nodos = self.nodos(flujo)
+        self.assertEqual(nodos['Lunes a sábado 8:30']['parameters']['rule']['interval'][0]['expression'],
+                         '30 8 * * 1-6')
+        self.assertEqual(nodos['Lo que conviene contar hoy']['parameters']['url'],
+                         '={{ $env.CAFETO_URL }}/api/servicio/productos/conteo-rapido/')
+        orden = ['Lunes a sábado 8:30', 'Lo que conviene contar hoy',
+                 'Armar la misión', 'Mandar por WhatsApp']
+        for actual, siguiente in zip(orden, orden[1:]):
+            self.assertEqual(self.siguientes(flujo, actual), [siguiente])
+        # Sin nada que contar no se manda un mensaje vacío.
+        self.assertIn('return []', nodos['Armar la misión']['parameters']['jsCode'])
+
+    def test_el_nocturno_de_rubros_propone_y_no_cambia_nada(self):
+        flujo = self.flujos['Cafeto · Sugerir rubros (nocturno)']
+        nodos = self.nodos(flujo)
+        self.assertEqual(nodos['Cada noche 3:30']['parameters']['rule']['interval'][0]['expression'],
+                         '30 3 * * *')
+        orden = ['Cada noche 3:30', 'Productos sin clasificar', 'Uno por producto',
+                 'Categorías en Open Food Facts', 'Proponer el rubro', 'Dejar la sugerencia']
+        for actual, siguiente in zip(orden, orden[1:]):
+            self.assertEqual(self.siguientes(flujo, actual), [siguiente])
+        # Lo único que escribe es la bandeja de sugerencias.
+        final = nodos['Dejar la sugerencia']['parameters']
+        self.assertEqual(final['url'],
+                         '={{ $env.CAFETO_URL }}/api/servicio/productos/sugerencias/')
+        self.assertEqual(final['method'], 'POST')
+        self.assertIn('JSON.stringify', final['jsonBody'])
+        for nodo in flujo['nodes']:
+            url = nodo.get('parameters', {}).get('url', '')
+            if '$env.CAFETO_URL' in url and nodo['parameters'].get('method') == 'POST':
+                self.assertIn('/sugerencias/', url)
+
+    def test_los_rubros_del_local_estan_en_las_palabras_clave(self):
+        codigo = self.nodos(
+            self.flujos['Cafeto · Sugerir rubros (nocturno)'])['Proponer el rubro']['parameters']['jsCode']
+        for rubro in ('Almacén', 'Bebidas con Alcohol', 'Bebidas sin Alcohol',
+                      'Limpieza', 'Lácteos', 'Perfumería', 'Kiosco',
+                      'Panadería', 'Fiambrería'):
+            self.assertIn(rubro, codigo)
+        self.assertIn("tipo: 'RUBRO'", codigo)
+
+    def test_open_food_facts_se_consulta_con_cuidado(self):
+        """De a uno, con pausa, con User-Agent y sin cortar el flujo si falla."""
+        off = self.nodos(self.flujos['Cafeto · Sugerir rubros (nocturno)'])[
+            'Categorías en Open Food Facts']['parameters']
+        self.assertTrue(off['options']['response']['response']['neverError'])
+        self.assertEqual(off['options']['batching']['batch']['batchSize'], 1)
+        self.assertIn('User-Agent', {h['name'] for h in off['headerParameters']['parameters']})
+        self.assertNotIn('Authorization',
+                         {h['name'] for h in off['headerParameters']['parameters']})
+
+    def test_los_parametros_viajan_aparte_de_la_direccion(self):
+        """La dirección es la ruta que publica Django, sin ``?`` pegado."""
+        for nombre in ('Cafeto · Recetas y márgenes (semanal)',
+                       'Cafeto · Misión conteo rápido (diario)',
+                       'Cafeto · Sugerir rubros (nocturno)'):
+            for nodo in self.flujos[nombre]['nodes']:
+                url = nodo.get('parameters', {}).get('url', '')
+                if '$env.CAFETO_URL' in url:
+                    self.assertNotIn('?', url, f'{nombre} · {nodo["name"]}')

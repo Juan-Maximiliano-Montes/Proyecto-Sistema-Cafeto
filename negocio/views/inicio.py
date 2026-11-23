@@ -35,6 +35,7 @@ AVISOS = {
     'RECONTEOS': ('bi-cash-coin', 'ventas:turnos', '?estado=recontados'),
     'CAJA_A_REVISAR': ('bi-cash-stack', 'ventas:turnos', '?estado=a_revisar'),
     'FACTURAS_RECIBIDAS': ('bi-inbox', 'compras:compras', ''),
+    'SUGERENCIAS_CATALOGO': ('bi-magic', 'stock:sugerencias', ''),
     'CORREOS_REPETIDOS': ('bi-people', 'fidelizacion:clientes_lista', ''),
     'SEGURIDAD': ('bi-shield-exclamation', 'seguridad:actividad', '#alertas'),
 }
