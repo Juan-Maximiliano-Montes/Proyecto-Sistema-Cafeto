@@ -68,6 +68,7 @@
 
 {% if cuarentena %}
 <h2 class="subtitulo h5">En cuarentena <span class="insignia insignia-peligro">{{ errores }}</span></h2>
+{% if congelados %}<p class="small text-secondary"><i class="bi bi-info-circle me-1"></i>Ninguna de estas filas se importó, y quedan con el motivo que tenían al confirmar. Bajalas, corregilas en el Excel y volvé a subirlo: ahí se revisan de nuevo.</p>{% endif %}
 <div class="tarjeta p-0 overflow-hidden mb-4">
     <div class="table-responsive">
     <table class="table align-middle mb-0">

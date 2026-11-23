@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load cafeto %}
+{% load static cafeto %}
 {% block titulo %}Cafeto · Sugerencias de mejora{% endblock %}
 
 {% block contenido %}
@@ -7,20 +7,57 @@
     <div>
         <span class="eyebrow"><i class="bi bi-boxes me-1"></i>Stock</span>
         <h1 class="titulo-pantalla mb-0">Sugerencias de mejora</h1>
-        <p class="bajada">Lo que la automatización encontró revisando el catálogo. Nada se cambió todavía: mirá cada una y decidí vos.</p>
+        <p class="bajada">Lo que la automatización encontró revisando el catálogo. Nada se cambió todavía: mirá cada una y decidí vos. Si varias son obvias, tildalas y aplicalas juntas.</p>
     </div>
 </div>
 
 {% if total %}
 {% include 'parciales/_filtro_estado.html' with etiqueta_filtro='Tipo de sugerencia' %}
 
+{% comment %}
+Aplicación de a varias: el formulario envuelve a las tarjetas, así cada
+casilla tildada viaja en el mismo POST. Sin JavaScript sigue andando (la
+casilla se tilda a mano y el botón manda lo marcado); con JavaScript se
+suman "tildar todas" y el conteo en la confirmación.
+{% endcomment %}
+<form method="post" action="{% url 'stock:aplicar_sugerencias' %}" class="js-masiva"
+      data-titulo="¿Aplicamos las que marcaste?" data-aceptar="Sí, aplicar"
+      data-cola="Cada cambio pasa por las validaciones de siempre y queda registrado a tu nombre. Si alguna no se puede aplicar, te avisa y las demás entran igual."
+      data-confirmar="Se aplican las sugerencias que marcaste, una por una. Cada cambio pasa por las validaciones de siempre y queda registrado a tu nombre. Si alguna no se puede aplicar, te avisa y las demás entran igual.">
+    {% csrf_token %}<input type="hidden" name="tipo" value="{{ tipo }}">
+
+    <div class="tarjeta barra-masiva mb-3">
+        <div class="form-check mb-0">
+            <input class="form-check-input js-todas" type="checkbox" id="todasLasSugerencias">
+            <label class="form-check-label" for="todasLasSugerencias">Marcar las {{ filas|length }} que se ven</label>
+        </div>
+        <span class="small text-tenue js-cuenta" role="status" aria-live="polite"></span>
+        {% comment %}Sin "disabled" en el HTML: si JavaScript no corriera,
+        un botón que nace apagado no se encendería nunca. Lo apaga
+        sugerencias.js mientras no haya nada marcado, y el backend contesta
+        igual "no marcaste ninguna" si llega vacío.{% endcomment %}
+        <button type="submit" class="btn btn-sm btn-primary ms-auto js-aplicar-marcadas">
+            <i class="bi bi-check2-all me-1" aria-hidden="true"></i>Aplicar seleccionadas
+        </button>
+    </div>
+
 <div class="grilla">
 {% for s in filas %}
     <article class="tarjeta">
         <div class="tarjeta-cabeza">
-            <div class="min-w-0">
-                <h2 class="tarjeta-titulo">{{ s.id_producto.nombre_producto }}</h2>
-                <p class="tarjeta-sub">{{ s.id_producto.id_marca }} · {{ s.id_producto.id_rubro }}</p>
+            <div class="min-w-0 d-flex gap-2">
+                {% if s.tipo_sugerencia != 'RECETA' %}
+                <div class="form-check mt-1">
+                    {# stringformat:"d": con USE_THOUSAND_SEPARATOR un pk de 1234 se escribiría "1.234" y dejaría de ser un id. #}
+                    <input class="form-check-input js-marca" type="checkbox" name="sugerencias"
+                           value="{{ s.pk|stringformat:"d" }}" id="sugerencia{{ s.pk|stringformat:"d" }}"
+                           aria-label="Marcar la sugerencia de {{ s.id_producto.nombre_producto }}">
+                </div>
+                {% endif %}
+                <div class="min-w-0">
+                    <h2 class="tarjeta-titulo">{% if s.tipo_sugerencia != 'RECETA' %}<label class="mb-0" for="sugerencia{{ s.pk|stringformat:"d" }}">{{ s.id_producto.nombre_producto }}</label>{% else %}{{ s.id_producto.nombre_producto }}{% endif %}</h2>
+                    <p class="tarjeta-sub">{{ s.id_producto.id_marca }} · {{ s.id_producto.id_rubro }}</p>
+                </div>
             </div>
             <span class="insignia insignia-marca">{{ s.get_tipo_sugerencia_display }}</span>
         </div>
@@ -34,27 +71,22 @@
         {% if s.tipo_sugerencia == 'RECETA' %}
             <a href="{{ url_productos }}?busqueda={{ s.id_producto.nombre_producto|urlencode }}" class="btn btn-sm btn-primary"><i class="bi bi-journal-plus me-1" aria-hidden="true"></i>Ir a cargar la receta</a>
         {% else %}
-            <form method="post" action="{% url 'stock:aplicar_sugerencia' s.pk %}"
-                  data-titulo="¿Aplicamos el cambio?"
-                  data-aceptar="Sí, aplicar"
-                  data-confirmar="{{ s.id_producto }}: pasa de «{{ s.valor_actual }}» a «{{ s.valor_propuesto }}». Queda registrado que lo aprobaste vos.">
-                {% csrf_token %}<input type="hidden" name="tipo" value="{{ tipo }}">
-                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Aplicar</button>
-            </form>
+            <button type="submit" class="btn btn-sm btn-primary" formaction="{% url 'stock:aplicar_sugerencia' s.pk %}"
+                    data-titulo="¿Aplicamos el cambio?" data-aceptar="Sí, aplicar"
+                    data-confirmar="{{ s.id_producto }}: pasa de &quot;{{ s.valor_actual }}&quot; a &quot;{{ s.valor_propuesto }}&quot;. Queda registrado que lo aprobaste vos.">
+                <i class="bi bi-check2 me-1" aria-hidden="true"></i>Aplicar
+            </button>
         {% endif %}
-            <form method="post" action="{% url 'stock:descartar_sugerencia' s.pk %}"
-                  data-titulo="¿Descartamos la sugerencia?"
-                  data-aceptar="Sí, descartar"
-                  data-confirmar="El producto queda como está y esta sugerencia deja de aparecer acá.">
-                {% csrf_token %}<input type="hidden" name="tipo" value="{{ tipo }}">
-                <button type="submit" class="btn btn-sm btn-secundario">Descartar</button>
-            </form>
+            <button type="submit" class="btn btn-sm btn-secundario" formaction="{% url 'stock:descartar_sugerencia' s.pk %}"
+                    data-titulo="¿Descartamos la sugerencia?" data-aceptar="Sí, descartar"
+                    data-confirmar="El producto queda como está y esta sugerencia deja de aparecer acá.">Descartar</button>
         </div>
     </article>
 {% empty %}
     <div class="vacio tarjeta"><i class="bi bi-funnel"></i>No hay sugerencias de este tipo.</div>
 {% endfor %}
 </div>
+</form>
 {% else %}
 <div class="vacio tarjeta">
     <i class="bi bi-emoji-smile"></i>
@@ -62,3 +94,5 @@
 </div>
 {% endif %}
 {% endblock %}
+
+{% block scripts %}{% if total %}<script src="{% static 'cafeto/js/sugerencias.js' %}"></script>{% endif %}{% endblock %}

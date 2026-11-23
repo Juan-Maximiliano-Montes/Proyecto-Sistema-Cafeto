@@ -28,6 +28,15 @@ class LeerFlujos:
     def cron(self, flujo, nombre):
         return self.nodos(flujo)[nombre]['parameters']['rule']['interval'][0]['expression']
 
+    def rubros(self, codigo):
+        """Los rubros de PALABRAS, en el orden en que están escritos.
+
+        El orden no es decorativo: desempata entre dos palabras igual de
+        específicas (ver el comentario del nodo)."""
+        import re
+
+        return re.findall(r"^  '([^']+)': \[", codigo, re.M)
+
     def codigo(self, flujo, nombre):
         """El jsCode del nodo sin los comentarios: lo que de verdad corre.
 
@@ -232,6 +241,21 @@ class FlujosDeMejoraContinuaTest(LeerFlujos, SimpleTestCase):
         # Sin nada que contar no se manda un mensaje vacío.
         self.assertIn('return []', nodos['Armar la misión']['parameters']['jsCode'])
 
+    def test_las_cantidades_de_la_mision_salen_en_formato_argentino(self):
+        """``unidades_vendidas`` llega como decimal de PostgreSQL.
+
+        Escrito tal cual, el mensaje decía "salieron 98.000 en 30 días": en
+        la Argentina eso se lee 98 mil unidades de un producto que en
+        realidad vendió 98. Van en es-AR y sin los ceros de más (98, 22,
+        12,6).
+        """
+        codigo = self.codigo(self.flujos['Cafeto · Misión conteo rápido (diario)'],
+                             'Armar la misión')
+        self.assertIn("toLocaleString('es-AR'", codigo)
+        self.assertIn('maximumFractionDigits: 3', codigo)
+        # El valor crudo ya no se pega al texto.
+        self.assertNotIn("+ p.unidades_vendidas +", codigo)
+
     def test_el_nocturno_de_rubros_propone_y_no_cambia_nada(self):
         flujo = self.flujos['Cafeto · Sugerir rubros (nocturno)']
         nodos = self.nodos(flujo)
@@ -256,9 +280,33 @@ class FlujosDeMejoraContinuaTest(LeerFlujos, SimpleTestCase):
             self.flujos['Cafeto · Sugerir rubros (nocturno)'])['Proponer el rubro']['parameters']['jsCode']
         for rubro in ('Almacén', 'Bebidas con Alcohol', 'Bebidas sin Alcohol',
                       'Limpieza', 'Lácteos', 'Perfumería', 'Kiosco',
-                      'Panadería', 'Fiambrería'):
+                      'Panadería', 'Fiambrería', 'Cafetería'):
             self.assertIn(rubro, codigo)
         self.assertIn("tipo: 'RUBRO'", codigo)
+
+    def test_lo_de_sandwicheria_gana_a_fiambreria(self):
+        """«BAGEL MULTICEREAL JAMON Y QUESO» es de Cafetería, no un fiambre.
+
+        'bagel' y 'jamon' tienen las mismas cinco letras y una sola palabra,
+        así que el sort —estable— no las desempata: las desempata el orden
+        del objeto PALABRAS. Con Fiambrería primero, el bagel se proponía
+        como Fiambrería porque el nombre dice "jamon", y lo mismo pasaba con
+        los tostados, los panini y los pebetes.
+        """
+        codigo = self.codigo(self.flujos['Cafeto · Sugerir rubros (nocturno)'],
+                             'Proponer el rubro')
+        for palabra in ('bagel', 'sandwich', 'tostado', 'panini', 'pebete'):
+            self.assertIn(f"'{palabra}'", codigo, palabra)
+        rubros = self.rubros(codigo)
+        self.assertLess(rubros.index('Cafetería'), rubros.index('Fiambrería'), rubros)
+        self.assertLess(rubros.index('Cafetería'), rubros.index('Panadería'), rubros)
+        # Y el rubro propuesto tiene que EXISTIR en el sistema: una
+        # sugerencia de un rubro que no está vigente no se puede aplicar
+        # (``stock.sugerencias._aplicar_rubro`` no inventa rubros).
+        from importlib import import_module
+
+        semilla = import_module('stock.migrations.0003_datos_iniciales')
+        self.assertIn('Cafetería', [nombre for nombre, _ in semilla.RUBROS])
 
     def test_open_food_facts_se_consulta_con_cuidado(self):
         """De a uno, con pausa, con User-Agent y sin cortar el flujo si falla."""
@@ -317,15 +365,13 @@ class ContratoConElBackendTest(LeerFlujos, SimpleTestCase):
         cortado no coincide con ninguno vigente: la sugerencia quedaría
         imposible de aplicar.
         """
-        import re
-
         from stock.models import Rubro
 
         largo = Rubro._meta.get_field('nombre_rubro').max_length
         codigo = self.codigo(self.flujos['Cafeto · Sugerir rubros (nocturno)'],
                              'Proponer el rubro')
-        rubros = re.findall(r"^  '([^']+)': \[", codigo, re.M)
-        self.assertGreaterEqual(len(rubros), 9)
+        rubros = self.rubros(codigo)
+        self.assertGreaterEqual(len(rubros), 10)
         for rubro in rubros:
             self.assertLessEqual(len(rubro), largo, rubro)
 

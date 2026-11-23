@@ -184,6 +184,54 @@ class ExportacionDeFacilVirtualTest(TestCase):
         self.confirmar(solo_validas=False)
         self.assertEqual(Producto.objects.count(), 4)
 
+    def test_la_cuarentena_queda_congelada_al_confirmar_las_validas(self):
+        """La fila repetida DENTRO del Excel sigue en cuarentena después de
+        importar la primera.
+
+        Pasaba en la planilla real de Fácil Virtual (fila 1.764, las pilas):
+        dos renglones con el MISMO código de barras y distinto precio. El
+        primero entra; el segundo queda en cuarentena por repetido. Al
+        confirmar, el importador volvía a evaluar la cuarentena contra la
+        base, encontraba el producto que acababa de dar de alta el primer
+        renglón y leía el segundo como un "Cambio" de precio: salía de la
+        cuarentena, desaparecía del Excel para corregir y nadie se enteraba
+        de que ese artículo nunca entró.
+        """
+        pantalla = self.subir([self.fila('8999002671962', 'PILAS AA X 2', precio=1000),
+                               self.fila('8999002671962', 'PILAS ENERGIZER AA', precio=1800)])
+        self.assertEqual((pantalla.context['errores'], pantalla.context['listas_total']), (1, 1))
+        despues = self.confirmar()
+        self.assertEqual(Producto.objects.count(), 1)
+        # Sigue en cuarentena, con su motivo original, y no como un "Cambio".
+        self.assertEqual(despues.context['errores'], 1)
+        self.assertEqual(despues.context['listas_total'], 0)
+        quedo = despues.context['cuarentena'][0]
+        self.assertFalse(quedo.ok)
+        self.assertEqual(quedo.accion, '')
+        self.assertIn('está repetido', ' '.join(quedo.errores))
+        self.assertContains(despues, 'Quedó 1 fila en cuarentena')
+        # Y sale completa en el Excel para corregir.
+        excel = self.client.get(reverse('importar_errores', args=['productos']))
+        from openpyxl import load_workbook
+        filas = list(load_workbook(io.BytesIO(excel.content)).active.iter_rows(values_only=True))
+        self.assertEqual(len(filas), 2)
+        self.assertIn('PILAS ENERGIZER AA', filas[1])
+        self.assertIn('está repetido', filas[1][-1])
+        # El precio del que entró no se tocó con el del renglón repetido.
+        self.assertEqual(Producto.objects.get().precio_venta, D('1000'))
+
+    def test_el_archivo_corregido_vuelve_a_evaluar_la_cuarentena(self):
+        """Congelar la cuarentena no la vuelve eterna: subir una planilla
+        nueva arranca el circuito de cero."""
+        self.subir([self.fila('1001', 'CARAMELOS SURTIDOS', precio=1000),
+                    self.fila('1002', 'JUGO SIN PRECIO', precio=0)])
+        self.assertEqual(self.confirmar().context['errores'], 1)
+        corregida = self.client.post(self.url, {'archivo': xlsx(
+            [FACIL_VIRTUAL, self.fila('1002', 'JUGO DE NARANJA', precio=900)])}, follow=True)
+        self.assertEqual(corregida.context['errores'], 0,
+                         [r.errores for r in corregida.context['cuarentena']])
+        self.assertEqual(corregida.context['altas'], 1)
+
     def test_la_cuarentena_no_devuelve_formulas(self):
         """DD-103: lo que vino de la planilla subida vuelve a otra planilla;
         una celda que empieza con +, - o @ sale como texto (con el apóstrofo

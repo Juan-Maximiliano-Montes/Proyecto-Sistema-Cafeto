@@ -247,6 +247,37 @@ class TraduccionDeAuditoriaTest(BaseMaestros):
             valor_legible(Rubro, 'fecha_modificacion', '2026-10-05T17:45:00'),
             '05/10/2026 17:45')
 
+    def test_la_hora_de_la_foto_sale_en_la_hora_del_local(self):
+        """La foto guarda UTC; la pantalla muestra la hora de Salta.
+
+        ``instantanea()`` escribe lo que devuelve ``isoformat()``, y Django
+        guarda los ``DateTimeField`` en UTC: una venta de las 17:45 queda
+        como "2026-10-05T20:45:00+00:00". Mostrando el texto tal cual, el
+        modal decía 20:45 —tres horas de más— mientras la columna "Fecha y
+        hora" del mismo modal, que la formatea Django, decía 17:45.
+        """
+        for crudo in ('2026-10-05T20:45:00+00:00',
+                      '2026-10-05T20:45:00.123456+00:00',
+                      '2026-10-05T20:45:00Z'):
+            self.assertEqual(
+                valor_legible(Rubro, 'fecha_modificacion', crudo),
+                '05/10/2026 17:45', crudo)
+        # Con el desplazamiento de acá ya puesto, no se corre de nuevo.
+        self.assertEqual(
+            valor_legible(Rubro, 'fecha_modificacion', '2026-10-05T17:45:00-03:00'),
+            '05/10/2026 17:45')
+        # Un DateField no tiene hora: no hay nada que convertir (si se
+        # convirtiera, el 1.º de mes pasaría a ser el último del anterior).
+        self.assertEqual(
+            valor_legible(Rubro, 'fecha_modificacion', '2026-10-01'), '01/10/2026')
+
+    def test_un_numero_largo_no_se_lee_como_una_fecha(self):
+        """Por acá pasa cualquier texto de la foto, códigos de barras
+        incluidos: "20261005" es un código, no el 5 de octubre."""
+        for crudo in ('20261005', '7790895000997', '2026', 'Panadería'):
+            self.assertEqual(
+                valor_legible(Rubro, 'descripcion_rubro', crudo), crudo, crudo)
+
     def test_un_alta_lo_dice(self):
         _, resumen = comparar(None, {'id_rubro': 1, 'nombre_rubro': 'Café'})
         self.assertIn('alta', resumen)
@@ -313,6 +344,35 @@ class PantallaActividadTest(BaseActividad):
         self.assertContains(respuesta, 'Pastelería')
         # La etiqueta, no el nombre de la columna.
         self.assertNotContains(respuesta, 'nombre_rubro')
+
+    def test_el_modal_se_puede_abrir_en_pantalla_completa(self):
+        """El detalle de una venta no entra en un modal de 800 px."""
+        respuesta = self.client.get(self.url)
+        self.assertContains(respuesta, 'js-pantalla-completa')
+        self.assertContains(respuesta, 'Ver en pantalla completa')
+        self.assertContains(respuesta, 'cafeto/js/actividad.js')
+
+    def test_una_lista_anidada_se_dibuja_a_lo_ancho_y_no_en_un_tercio(self):
+        """Los renglones de una venta salen de las dos columnas.
+
+        Antes iban dentro de la celda "Antes" o "Después" —un tercio del
+        ancho— cada uno con su propia barra horizontal, encima de la de la
+        tabla grande: comparar un antes con un después pedía correr dos
+        barras a la vez.
+        """
+        rubro = Rubro.objects.create(nombre_rubro='Despensa de prueba')
+        renglones = [{'id_rubro': rubro.pk, 'nombre_rubro': rubro.nombre_rubro}]
+        foto = {'id_rubro': rubro.pk, 'nombre_rubro': rubro.nombre_rubro}
+        registro = self.asentar(
+            'MODIFICACION DE VENTA',
+            anterior={**foto, 'renglones': renglones},
+            nuevo={**foto, 'renglones': renglones + renglones})
+        respuesta = self.client.get(
+            reverse('seguridad:ficha_actividad', args=[registro.pk]))
+        self.assertContains(respuesta, 'celda-anidada')
+        self.assertContains(respuesta, 'class="anidados"')
+        # La subtabla ya no trae su propio .table-responsive.
+        self.assertNotContains(respuesta, 'table-responsive"><table class="table table-sm table-borderless')
 
     def _consultas_del_listado(self):
         from django.db import connection

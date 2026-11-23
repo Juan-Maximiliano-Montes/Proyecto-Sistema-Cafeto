@@ -1,7 +1,14 @@
 {% comment %}
 Un valor de la foto de auditoría. Si es una lista (los renglones o los
 pagos de una venta), va como tabla interna; si no, tal cual.
-{% endcomment %}{% if valor.es_subtabla %}<div class="table-responsive"><table class="table table-sm table-borderless small mb-0 subtabla-actividad">
+
+La tabla interna NO lleva su propio ``.table-responsive``: anidado dentro
+de una celda angosta daba una barra horizontal por subtabla, encima de la
+de la tabla grande. Quien compara un antes con un después tenía que correr
+dos barras a la vez. Ahora el ancho lo pone ``.anidados`` del template de
+la ficha —que saca estas tablas de las dos columnas— y las celdas parten
+el texto en varias líneas en lugar de estirarse.
+{% endcomment %}{% if valor.es_subtabla %}<div class="subtabla-marco"><table class="table table-sm table-borderless small mb-0 subtabla-actividad">
 <thead><tr>{% for columna in valor.columnas %}<th class="fw-normal text-secondary text-nowrap">{{ columna }}</th>{% endfor %}</tr></thead>
 <tbody>{% for fila in valor.filas %}<tr>{% for dato in fila %}<td>{{ dato }}</td>{% endfor %}</tr>{% endfor %}</tbody>
-</table></div>{% else %}{{ valor }}{% endif %}
+</table></div>{% else %}<span class="valor-actividad">{{ valor }}</span>{% endif %}

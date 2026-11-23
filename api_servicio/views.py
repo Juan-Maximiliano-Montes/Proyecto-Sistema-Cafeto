@@ -260,7 +260,6 @@ def precargar_compra(request):
     Opcionales: ``origen`` (WHATSAPP, CORREO u OTRO) y ``remitente`` (el
     número o la dirección de donde vino). Un reintento con la misma factura
     no la deja dos veces: devuelve la que ya estaba esperando (200)."""
-    from django.conf import settings
     from django.urls import reverse
 
     from compras import facturas
@@ -281,8 +280,7 @@ def precargar_compra(request):
                             detalle=f'Llegó por {factura.get_origen_factura_display()} la factura '
                                     f'"{factura.resumen_factura}": queda para revisar y confirmar.')
     ruta = reverse('compras:recepcion') + f'?factura={factura.pk}'
-    base = ((getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').strip()
-            or request.build_absolute_uri('/')).rstrip('/')
+    base = _base_publica(request)
     return JsonResponse({**resumen, 'id': factura.pk, 'url': base + ruta, 'registrada': False,
                          'en_bandeja': True, 'ya_estaba': not nueva,
                          'pendientes': facturas.pendientes().count()},
@@ -400,12 +398,77 @@ def _entero(request, clave, defecto, minimo, maximo):
         return defecto
 
 
+#  Los nombres de servicio de docker-compose.yml: adentro de la red de Docker
+#  resuelven, afuera no existen. n8n le pega a la API por ``http://web:8000``,
+#  así que cuando el enlace lo arma un flujo, el host del pedido ES uno de
+#  éstos.
+#
+#  La lista es cerrada a propósito. Descartar "cualquier nombre sin punto"
+#  sería más amplio, pero de más: el sistema corre en un NAS del local que
+#  puede llamarse ``cafeto`` y resolverse por la red interna, y ése es un
+#  enlace que SÍ abre desde el celular de la dueña. Si mañana se renombra un
+#  contenedor en docker-compose.yml, se agrega acá.
+HOSTS_DE_DOCKER = {'web', 'db', 'n8n', 'waha', 'adminer', 'nginx'}
+
+
+def _partir_host(host):
+    """``"web:8000"`` -> ``("web", "8000")``; ``"[::1]:8000"`` -> ``("::1", "8000")``."""
+    nombre = (host or '').strip().lower()
+    if nombre.startswith('['):
+        cierre = nombre.find(']')
+        if cierre > 0:
+            puerto = nombre[cierre + 1:].lstrip(':')
+            return nombre[1:cierre], puerto
+        return nombre[1:], ''
+    cabeza, dos_puntos, cola = nombre.rpartition(':')
+    if dos_puntos and cola.isdigit():
+        return cabeza, cola
+    return nombre, ''
+
+
+def _es_alcanzable(host):
+    """¿Ese nombre lo puede abrir alguien que no esté dentro de Docker?"""
+    nombre = _partir_host(host)[0]
+    return bool(nombre) and nombre not in HOSTS_DE_DOCKER
+
+
 def _base_publica(request):
-    """La dirección con la que se arma el enlace que viaja por WhatsApp."""
+    """La dirección con la que se arma el enlace que viaja por WhatsApp.
+
+    Manda ``CAFETO_URL_PUBLICA``: es la misma variable con la que se arman
+    el enlace de autorización a distancia (``ventas.views.autorizaciones``),
+    el de recuperación de clave y las fotos de la app móvil. Si está, no se
+    mira nada más.
+
+    Sin ella se usaba el host del pedido, y ahí aparecía el problema: el
+    flujo «Recetas y márgenes» lo dispara n8n DESDE Docker, contra
+    ``http://web:8000``, así que a la dueña le llegaba por WhatsApp
+    ``http://web:8000/stock/productos/412/editar/`` —un nombre que no
+    resuelve ni en el celular ni en el navegador de la caja—. Un enlace que
+    no abre es peor que no mandar enlace: parece que el sistema está caído.
+
+    Así que el host del pedido se usa salvo que sea uno de los nombres de
+    servicio de Docker; en ese caso se cae a los nombres que el propio
+    sistema declara como suyos (``DJANGO_ALLOWED_HOSTS``) y, en última
+    instancia, a ``localhost`` con el puerto del pedido, que al menos abre
+    en la máquina donde corre el sistema.
+    """
     from django.conf import settings
 
-    return ((getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').strip()
-            or request.build_absolute_uri('/')).rstrip('/')
+    configurada = (getattr(settings, 'CAFETO_URL_PUBLICA', '') or '').strip()
+    if configurada:
+        return configurada.rstrip('/')
+
+    esquema = 'https' if request.is_secure() else 'http'
+    host = request.get_host()
+    if _es_alcanzable(host):
+        return f'{esquema}://{host}'.rstrip('/')
+    for declarado in getattr(settings, 'ALLOWED_HOSTS', None) or []:
+        candidato = str(declarado).lstrip('.')
+        if candidato != '*' and _es_alcanzable(candidato):
+            return f'{esquema}://{candidato}'
+    puerto = _partir_host(host)[1]
+    return f'{esquema}://localhost:{puerto}' if puerto else f'{esquema}://localhost'
 
 
 def _url_del_producto(base, producto):

@@ -120,6 +120,39 @@ class Resultado:
         return not self.errores
 
 
+# ---------------------------------------------------------------------------
+#  Cuarentena congelada
+# ---------------------------------------------------------------------------
+#  Al confirmar las filas válidas, las de la cuarentena se guardan TAL COMO
+#  QUEDARON y no se vuelven a evaluar.
+#
+#  Volver a evaluarlas mentía: una fila que quedó afuera porque su código de
+#  barras estaba repetido DENTRO del Excel (la fila 1.764 de las pilas) pasa
+#  a encontrar en PostgreSQL al producto que acaba de dar de alta la primera
+#  fila, y la segunda vuelta la lee como un "Cambio" de precio. Así salía de
+#  la cuarentena, desaparecía del Excel para corregir y nadie se enteraba de
+#  que ese artículo nunca entró.
+#
+#  La cuarentena se recalcula recién cuando se sube un archivo corregido:
+#  ahí entra una planilla nueva y el circuito empieza de cero.
+def congelar(resultados):
+    """Las filas que quedaron en cuarentena, listas para la sesión (JSON)."""
+    return [{'numero': r.numero, 'datos': r.datos, 'accion': r.accion,
+             'descripcion': r.descripcion,
+             'errores': list(r.errores), 'avisos': list(r.avisos)}
+            for r in resultados if not r.ok]
+
+
+def descongelar(congeladas):
+    """Lo guardado por ``congelar`` de vuelta como ``Resultado``."""
+    return [Resultado(numero=c.get('numero'), datos=c.get('datos') or {},
+                      accion=c.get('accion') or '',
+                      descripcion=c.get('descripcion') or '',
+                      errores=list(c.get('errores') or []),
+                      avisos=list(c.get('avisos') or []))
+            for c in congeladas or []]
+
+
 class Importador:
     """Base de los importadores de cada módulo."""
 

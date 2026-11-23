@@ -340,3 +340,94 @@ class ProponerSugerenciaTest(Base):
     def test_las_sugerencias_aceptan_los_cinco_tipos(self):
         esperados = {'RUBRO', 'MARCA', 'RECETA', 'PRECIO', 'BAJA_INACTIVO'}
         self.assertEqual(set(TipoSugerencia.values), esperados)
+
+
+@override_settings(CAFETO_N8N_TOKEN=TOKEN)
+class DireccionPublicaTest(TestCase):
+    """El enlace que sale por WhatsApp tiene que ABRIR en un celular.
+
+    Los flujos nocturnos los dispara n8n desde Docker, contra
+    ``http://web:8000``: ése es el ``Host`` del pedido. Armando el enlace
+    con el host del pedido, el aviso de «Recetas y márgenes» llegaba como
+    ``http://web:8000/stock/productos/412/editar/`` —un nombre que sólo
+    existe dentro de la red de Docker— y no abría en ninguna parte.
+    """
+
+    def pedir(self, nombre, host, seguro=False, **parametros):
+        url = reverse(f'api_servicio:{nombre}')
+        return self.client.get(
+            url, parametros, HTTP_AUTHORIZATION=f'Bearer {TOKEN}',
+            HTTP_HOST=host, secure=seguro)
+
+    def setUp(self):
+        self.admin = f.usuario('30222190', 'Administrador')
+        self.prov = f.proveedor()
+        f.producto('Café con leche', tipo='ELABORADO', precio='2000',
+                   costo='400', rubro_nombre='Cafetería')
+
+    def una_url(self, respuesta):
+        return respuesta.json()['productos'][0]['url']
+
+    @override_settings(CAFETO_URL_PUBLICA='https://cafeto.ejemplo.com',
+                       ALLOWED_HOSTS=['*'])
+    def test_manda_la_url_publica_configurada(self):
+        """Es la misma variable que usan el enlace de autorización a
+        distancia y el de recuperación de clave."""
+        url = self.una_url(self.pedir('productos_sin_receta', 'web:8000'))
+        self.assertTrue(url.startswith('https://cafeto.ejemplo.com/stock/'), url)
+
+    @override_settings(CAFETO_URL_PUBLICA='https://cafeto.ejemplo.com/',
+                       ALLOWED_HOSTS=['*'])
+    def test_la_barra_final_no_se_duplica(self):
+        url = self.una_url(self.pedir('productos_sin_receta', 'web:8000'))
+        self.assertNotIn('.com//', url)
+
+    @override_settings(CAFETO_URL_PUBLICA='', ALLOWED_HOSTS=['*'])
+    def test_sin_configurar_nada_no_devuelve_el_host_interno_de_docker(self):
+        url = self.una_url(self.pedir('productos_sin_receta', 'web:8000'))
+        self.assertNotIn('web:8000', url)
+        self.assertTrue(url.startswith('http://localhost:8000/stock/'), url)
+
+    @override_settings(CAFETO_URL_PUBLICA='',
+                       ALLOWED_HOSTS=['cafeto.ejemplo.com', 'web'])
+    def test_sin_configurar_nada_sirve_el_nombre_que_declara_el_sistema(self):
+        """``DJANGO_ALLOWED_HOSTS`` ya dice con qué nombres se llega al
+        sistema desde afuera: se usa el primero que no sea de Docker."""
+        url = self.una_url(self.pedir('productos_sin_receta', 'web:8000'))
+        self.assertTrue(url.startswith('http://cafeto.ejemplo.com/stock/'), url)
+
+    @override_settings(CAFETO_URL_PUBLICA='', ALLOWED_HOSTS=['*'])
+    def test_un_pedido_de_una_persona_sigue_usando_su_propio_host(self):
+        """Lo que entra por el navegador o por el túnel no se toca.
+
+        Sólo se descartan los nombres de servicio de Docker: un nombre de
+        una sola palabra puede ser el NAS del local (``cafeto``), y ése es
+        un enlace que sí abre.
+        """
+        for host, esperado in (('cafeto.ejemplo.com', 'https://cafeto.ejemplo.com/stock/'),
+                               ('cafeto', 'https://cafeto/stock/'),
+                               ('192.168.0.12:8000', 'https://192.168.0.12:8000/stock/')):
+            url = self.una_url(self.pedir('productos_sin_receta', host, seguro=True))
+            self.assertTrue(url.startswith(esperado), f'{host}: {url}')
+
+    @override_settings(CAFETO_URL_PUBLICA='https://cafeto.ejemplo.com',
+                       ALLOWED_HOSTS=['*'])
+    def test_todas_las_direcciones_de_salida_salen_de_la_misma_funcion(self):
+        """Los cuatro diagnósticos, la bandeja y la factura pre-cargada."""
+        for nombre in ('productos_sin_receta', 'productos_margen_bajo',
+                       'productos_conteo_rapido', 'productos_sin_clasificar'):
+            datos = self.pedir(nombre, 'web:8000').json()
+            for producto in datos.get('productos', []):
+                self.assertTrue(
+                    producto['url'].startswith('https://cafeto.ejemplo.com/'),
+                    f'{nombre}: {producto["url"]}')
+
+    def test_ningun_enlace_se_arma_con_el_host_del_pedido_a_mano(self):
+        """``_base_publica`` es el único camino: un ``build_absolute_uri``
+        suelto vuelve a traer el ``http://web:8000`` de Docker."""
+        from pathlib import Path
+
+        from api_servicio import views
+
+        fuente = Path(views.__file__).read_text(encoding='utf-8')
+        self.assertNotIn('build_absolute_uri', fuente)

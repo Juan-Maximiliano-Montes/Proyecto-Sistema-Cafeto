@@ -10,7 +10,7 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
-from nucleo.importar import CLAVE_SESION, IMPORTADORES
+from nucleo.importar import CLAVE_SESION, IMPORTADORES, congelar, descongelar
 from seguridad.servicios import registrar_acceso_denegado, registrar_auditoria
 from nucleo.textos import pluralizar, segun
 
@@ -40,6 +40,22 @@ def _denegado(request):
     return redirect('home')
 
 
+def _resultados(importador, pendiente):
+    """Lo que hay para mostrar de la planilla pendiente.
+
+    Mientras no se confirmó nada, se evalúa la planilla entera contra la
+    base. Una vez confirmadas las filas válidas, lo único que queda es la
+    cuarentena, y esa se devuelve CONGELADA: con el estado y el motivo que
+    tenía cuando se confirmó (``nucleo.importar.congelar``). Volver a
+    evaluarla sacaba filas de la cuarentena por lo que acababa de entrar en
+    la misma importación.
+    """
+    congeladas = pendiente.get('cuarentena')
+    if congeladas is not None:
+        return descongelar(congeladas), True
+    return importador.revisar(pendiente['filas']), False
+
+
 def importar(request, clave):
     importador = _importador(request, clave)
     if importador is None:
@@ -62,7 +78,8 @@ def importar(request, clave):
     pendiente = request.session.get(clave_sesion)
     contexto = {'importador': importador, 'pendiente': pendiente}
     if pendiente:
-        resultados = importador.revisar(pendiente['filas'])
+        resultados, congelados = _resultados(importador, pendiente)
+        contexto['congelados'] = congelados
         cuarentena = [r for r in resultados if not r.ok]
         listas = [r for r in resultados if r.ok]
         contexto.update({
@@ -121,10 +138,15 @@ def confirmar(request, clave):
         detalle=detalle)
     if afuera:
         # La cuarentena queda a la vista para bajarla, corregirla y resubirla.
+        # Se guarda CONGELADA: estas filas no entraron, y volver a evaluarlas
+        # contra la base ya cambiada por esta misma importación sacaba de la
+        # cuarentena —y del Excel para corregir— a las que estaban repetidas
+        # dentro del propio Excel.
         numeros = {r.numero for r in afuera}
         request.session[clave_sesion] = {
             'archivo': pendiente['archivo'],
             'filas': [f for f in pendiente['filas'] if f.get('_fila') in numeros],
+            'cuarentena': congelar(afuera),
             'importadas': altas + cambios}
         messages.success(
             request, f'Listo: {resumen}. '
@@ -145,7 +167,7 @@ def errores(request, clave):
     if not pendiente:
         messages.info(request, 'No hay ninguna planilla pendiente.')
         return redirect('importar', clave=clave)
-    resultados = [r for r in importador.revisar(pendiente['filas']) if not r.ok]
+    resultados = [r for r in _resultados(importador, pendiente)[0] if not r.ok]
     if not resultados:
         messages.info(request, 'No quedó ninguna fila con error.')
         return redirect('importar', clave=clave)

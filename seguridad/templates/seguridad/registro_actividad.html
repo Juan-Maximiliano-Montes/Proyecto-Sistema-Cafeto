@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% comment %}
 Registro de Actividad: LOG_AUDITORIA en modo lectura.
 
@@ -144,12 +145,21 @@ editar estaría prometiendo algo imposible.
 
 {% include 'parciales/_paginador.html' %}
 
+{% comment %}
+El detalle de un asiento puede traer una venta entera (sus renglones y sus
+pagos) en dos columnas, antes y después: a 800 px no entra. El botón de
+pantalla completa lo abre de lado a lado sin salir de la pantalla.
+{% endcomment %}
 <div class="modal fade" id="modalActividad" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-actividad">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i><span class="js-titulo-remoto">Detalle</span></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                <button type="button" class="btn btn-sm btn-secundario btn-icono ms-auto me-2 js-pantalla-completa"
+                        title="Ver en pantalla completa" aria-label="Ver en pantalla completa" aria-pressed="false">
+                    <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn-close m-0" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body js-remoto"></div>
             <div class="modal-footer">
@@ -160,3 +170,5 @@ editar estaría prometiendo algo imposible.
 </div>
 
 {% endblock %}
+
+{% block scripts %}<script src="{% static 'cafeto/js/actividad.js' %}"></script>{% endblock %}

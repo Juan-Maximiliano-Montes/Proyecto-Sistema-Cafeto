@@ -44,6 +44,8 @@ urlpatterns += [
     path('produccion/', produccion.producciones, name='producciones'),
     # Sugerencias de mejora del catálogo (las aprueba una persona)
     path('sugerencias/', sugerencias.sugerencias, name='sugerencias'),
+    path('sugerencias/aplicar-seleccionadas/', sugerencias.aplicar_seleccionadas,
+         name='aplicar_sugerencias'),
     path('sugerencias/<int:pk>/aplicar/', sugerencias.aplicar, name='aplicar_sugerencia'),
     path('sugerencias/<int:pk>/descartar/', sugerencias.descartar, name='descartar_sugerencia'),
 ]

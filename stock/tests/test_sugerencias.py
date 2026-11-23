@@ -344,6 +344,128 @@ class PantallaTest(Base):
         self.assertContains(pantalla, 'Ir a cargar la receta')
         self.assertContains(pantalla, 'busqueda=Caf')
 
+    def test_la_pantalla_ofrece_marcar_varias_y_aplicarlas_juntas(self):
+        otro = f.producto('Pan lactal', prov=self.prov)
+        self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        self.proponer('PRECIO', {'precio_venta': '2500'}, producto=otro)
+        f.entrar(self.client, self.admin)
+        pantalla = self.client.get(reverse('stock:sugerencias'))
+        self.assertContains(pantalla, 'Aplicar seleccionadas')
+        self.assertContains(pantalla, 'name="sugerencias"', count=2)
+        self.assertContains(pantalla, reverse('stock:aplicar_sugerencias'))
+
+    def test_la_receta_no_se_puede_marcar(self):
+        """La receta la carga una persona: no hay nada que aplicar en masa."""
+        cafe = f.producto('Café con leche', tipo='ELABORADO', precio='2000',
+                          costo='400', rubro_nombre='Cafetería')
+        self.proponer('RECETA', {'insumos': ['Café']}, producto=cafe)
+        f.entrar(self.client, self.admin)
+        pantalla = self.client.get(reverse('stock:sugerencias'))
+        self.assertNotContains(pantalla, 'name="sugerencias"')
+
+
+class AplicarVariasTest(Base):
+    """"Aplicar seleccionadas": cada una con su validación y su asiento."""
+
+    def setUp(self):
+        super().setUp()
+        self.pan = f.producto('Pan lactal', prov=self.prov, precio='1000', costo='600')
+        f.entrar(self.client, self.admin)
+        self.url = reverse('stock:aplicar_sugerencias')
+
+    def test_aplica_todas_las_marcadas_y_audita_cada_una(self):
+        from seguridad.models import LogAuditoria
+
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        precio, _ = self.proponer('PRECIO', {'precio_venta': '2500'}, producto=self.pan)
+        respuesta = self.client.post(
+            self.url, {'sugerencias': [rubro.pk, precio.pk]}, follow=True)
+        self.assertEqual(Producto.objects.get(pk=self.leche.pk).id_rubro, self.lacteos)
+        self.assertEqual(Producto.objects.get(pk=self.pan.pk).precio_venta, D('2500'))
+        self.assertContains(respuesta, '2 sugerencias aplicadas')
+        for una in (rubro, precio):
+            una.refresh_from_db()
+            self.assertEqual(una.estado_sugerencia, EstadoSugerencia.ACEPTADA)
+            self.assertEqual(una.id_usuario_resolucion, self.admin)
+        asientos = LogAuditoria.objects.filter(
+            tabla_afectada='sugerencias_catalogo',
+            operacion_realizada='APLICACION DE SUGERENCIA DE CATALOGO')
+        self.assertEqual(asientos.count(), 2)
+        for asiento in asientos:
+            self.assertIn('producto', asiento.registro_nuevo)
+            self.assertEqual(asiento.id_usuario, self.admin)
+
+    def test_la_que_falla_no_se_lleva_a_las_demas(self):
+        """Lo que hace segura la aplicación en masa: una sugerencia imposible
+        se informa y sigue pendiente; las otras entran igual."""
+        imposible, _ = self.proponer('RUBRO', {'rubro': 'Nada De Nada'})
+        buena, _ = self.proponer('PRECIO', {'precio_venta': '2500'}, producto=self.pan)
+        respuesta = self.client.post(
+            self.url, {'sugerencias': [imposible.pk, buena.pk]}, follow=True)
+        self.assertContains(respuesta, 'No hay un rubro vigente')
+        self.assertContains(respuesta, '1 sugerencia aplicada')
+        imposible.refresh_from_db()
+        self.assertTrue(imposible.pendiente)
+        buena.refresh_from_db()
+        self.assertEqual(buena.estado_sugerencia, EstadoSugerencia.ACEPTADA)
+        self.assertEqual(Producto.objects.get(pk=self.pan.pk).precio_venta, D('2500'))
+        self.assertEqual(Producto.objects.get(pk=self.leche.pk).id_rubro.nombre_rubro,
+                         'Minisuper')
+
+    def test_sin_marcar_nada_no_hace_nada(self):
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        respuesta = self.client.post(self.url, {}, follow=True)
+        self.assertContains(respuesta, 'No marcaste ninguna')
+        rubro.refresh_from_db()
+        self.assertTrue(rubro.pendiente)
+
+    def test_una_basura_en_el_formulario_no_rompe(self):
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        respuesta = self.client.post(
+            self.url, {'sugerencias': ['x', '', '99999', str(rubro.pk), str(rubro.pk)]},
+            follow=True)
+        self.assertEqual(respuesta.status_code, 200)
+        rubro.refresh_from_db()
+        self.assertEqual(rubro.estado_sugerencia, EstadoSugerencia.ACEPTADA)
+        # El id repetido se aplica una sola vez; el que no existe se informa.
+        self.assertContains(respuesta, '1 sugerencia aplicada')
+        self.assertContains(respuesta, 'Esa sugerencia no existe')
+
+    def test_mas_de_cien_no_entran_de_una(self):
+        from stock.views.sugerencias import LIMITE_MASIVO
+
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        respuesta = self.client.post(
+            self.url, {'sugerencias': [str(n) for n in range(1, LIMITE_MASIVO + 2)]},
+            follow=True)
+        self.assertContains(respuesta, f'De a {LIMITE_MASIVO} como máximo')
+        rubro.refresh_from_db()
+        self.assertTrue(rubro.pendiente)
+
+    def test_el_get_no_aplica_nada(self):
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        rubro.refresh_from_db()
+        self.assertTrue(rubro.pendiente)
+
+    def test_sin_el_permiso_no_aplica_nada(self):
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        f.entrar(self.client, f.usuario('30333103', 'Operador'))
+        self.client.post(self.url, {'sugerencias': [rubro.pk]})
+        rubro.refresh_from_db()
+        self.assertTrue(rubro.pendiente)
+        self.assertEqual(Producto.objects.get(pk=self.leche.pk).id_rubro.nombre_rubro,
+                         'Minisuper')
+
+    def test_vuelve_a_la_pestana_desde_la_que_se_aplico(self):
+        rubro, _ = self.proponer('RUBRO', {'rubro': 'Lácteos'})
+        respuesta = self.client.post(self.url, {'sugerencias': [rubro.pk], 'tipo': 'PRECIO'})
+        self.assertEqual(respuesta['Location'],
+                         reverse('stock:sugerencias') + '?tipo=PRECIO')
+
+
+class MenuTest(Base):
+
     def test_el_menu_la_ofrece_a_quien_edita_productos(self):
         from seguridad import menu
 

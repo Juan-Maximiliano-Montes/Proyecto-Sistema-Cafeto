@@ -287,6 +287,42 @@ code, .codigo { color: var(--c-marca); background: transparent; }
 #modalConfirmar { z-index: 1080; }
 .modal-backdrop ~ .modal-backdrop { z-index: 1075; }
 .grafico-datos { overflow-x: auto; }
+
+/* ---------- Registro de Actividad: el detalle de un asiento ----------
+   Las dos fotos (antes y después) van lado a lado, y una de ellas puede
+   traer los renglones y los pagos de una venta entera. Las reglas de acá
+   son para que eso se lea SIN barra horizontal: la columna del campo
+   acotada, el resto repartido en partes iguales, los textos largos
+   partidos en varias líneas, y las listas anidadas a lo ancho del modal
+   (.anidados) en lugar de apretadas en un tercio. */
+.tabla-actividad { table-layout: fixed; width: 100%; }
+.tabla-actividad :is(th, td) { overflow-wrap: anywhere; vertical-align: top; }
+.tabla-actividad .col-campo { width: 13rem; }
+.tabla-actividad .valor-actividad { display: inline-block; max-width: 100%; }
+.celda-anidada { padding-top: .8rem !important; padding-bottom: .8rem !important; }
+.rotulo-anidado { margin-bottom: .5rem; font-weight: 600; }
+.anidados { display: grid; gap: .75rem; }
+.anidado { min-width: 0; border: 1px solid var(--c-divisor); border-radius: .6rem; padding: .5rem .65rem; }
+.anidado > .eyebrow { display: block; margin-bottom: .25rem; }
+.subtabla-marco { min-width: 0; overflow-x: auto; }
+.subtabla-actividad { table-layout: auto; }
+.subtabla-actividad :is(th, td) { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+/* Con el modal en pantalla completa hay ancho para las dos fotos de la
+   lista anidada una al lado de la otra; en un modal chico, apiladas. */
+@media (min-width: 992px) {
+    .modal-fullscreen .anidados { grid-template-columns: 1fr 1fr; }
+    .modal-fullscreen .tabla-actividad .col-campo { width: 16rem; }
+}
+.modal-actividad.modal-fullscreen .modal-content { border-radius: 0; }
+
+/* Barra de selección múltiple (Sugerencias de mejora): la casilla «todas»,
+   el conteo y el botón en una línea; en el celular, apiladas. */
+.barra-masiva { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1rem; }
+.barra-masiva .js-cuenta { font-variant-numeric: tabular-nums; }
+@media (max-width: 575.98px) {
+    .barra-masiva { align-items: stretch; }
+    .barra-masiva .js-aplicar-marcadas { margin-left: 0 !important; width: 100%; }
+}
 .fila-destacada > * { background: var(--c-marca-suave) !important; }
 .table-numero { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .table :is(th, td).col-centro { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }

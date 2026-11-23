@@ -22,7 +22,9 @@ Tres traducciones, en este orden:
    identificado se sabe a qué tabla apunta y se trae el ``__str__`` de la
    fila: "La Morenita" en vez de 2.
 3. **De valor crudo a valor legible.** ``true`` pasa a "Sí", ``null`` a un
-   guión, y una fecha ISO al formato de acá.
+   guión, y una fecha ISO al formato de acá **y a la hora de acá**: Django
+   guarda los datetime en UTC, así que la foto trae "20:45+00:00" para algo
+   que pasó a las 17:45.
 
 Y sobre todo: se marca **qué cambió**. Una modificación de quince campos en
 la que sólo se tocó el precio tiene que mostrar ese precio resaltado, no
@@ -191,14 +193,64 @@ def valor_legible(modelo, columna, valor, padre=None):
     return valor
 
 
-def _fecha_legible(texto):
-    """"2026-10-05T17:45:00" -> "05/10/2026 17:45". None si no es fecha."""
-    for formato, salida in (('%Y-%m-%dT%H:%M:%S', '%d/%m/%Y %H:%M'),
-                            ('%Y-%m-%d', '%d/%m/%Y')):
+#  Los formatos con los que ``isoformat()`` escribe una fecha en la foto. Se
+#  piden EXACTOS (y no se usa ``fromisoformat``, que desde Python 3.11 acepta
+#  también el formato básico) porque acá pasa cualquier texto: un código de
+#  barras como "20261005" se leería como el 5 de octubre.
+_FORMATOS_DE_FECHA = (('%Y-%m-%dT%H:%M:%S', '%d/%m/%Y %H:%M'),
+                      ('%Y-%m-%d', '%d/%m/%Y'))
+
+
+def _desplazamiento(texto):
+    """El ``+00:00``, el ``-03:00`` o la ``Z`` del final, como ``timedelta``.
+
+    ``None`` si la hora vino sin zona: ahí no hay nada que convertir.
+    """
+    cola = texto[19:]
+    if cola[:1] == '.':                  # los microsegundos no dicen la zona
+        cola = cola.lstrip('.0123456789')
+    if cola in ('Z', 'z'):
+        return datetime.timedelta(0)
+    if len(cola) in (5, 6) and cola[0] in '+-':
         try:
-            return datetime.datetime.strptime(texto[:19], formato).strftime(salida)
+            horas, minutos = int(cola[1:3]), int(cola[-2:])
+        except ValueError:
+            return None
+        return (-1 if cola[0] == '-' else 1) * datetime.timedelta(
+            hours=horas, minutes=minutos)
+    return None
+
+
+def _en_hora_local(momento, texto):
+    """La hora de la foto, en la zona del local.
+
+    Django guarda los ``DateTimeField`` en UTC, así que ``instantanea()``
+    escribe en el JSONB "2026-10-05T20:45:00+00:00" para una venta de las
+    17:45. Cortando el texto en el caracter 19 —como se hacía— el Registro
+    de Actividad mostraba las 20:45: tres horas de más en cada fecha
+    interna del snapshot, mientras la columna "Fecha y hora" del mismo
+    modal, que la formatea Django, mostraba la correcta. Dos horas
+    distintas para el mismo hecho, en la misma pantalla.
+    """
+    from django.utils import timezone
+
+    desplazamiento = _desplazamiento(texto)
+    if desplazamiento is None:
+        return momento                   # sin zona: se muestra tal como vino
+    return timezone.localtime(
+        momento.replace(tzinfo=datetime.timezone(desplazamiento)))
+
+
+def _fecha_legible(texto):
+    """"2026-10-05T20:45:00+00:00" -> "05/10/2026 17:45". None si no es fecha."""
+    for formato, salida in _FORMATOS_DE_FECHA:
+        try:
+            momento = datetime.datetime.strptime(texto[:19], formato)
         except ValueError:
             continue
+        if formato.endswith('%S'):
+            momento = _en_hora_local(momento, texto)
+        return momento.strftime(salida)
     return None
 
 
@@ -214,6 +266,18 @@ class Fila:
     @property
     def destacada(self):
         return self.cambio != 'igual'
+
+    @property
+    def tiene_subtabla(self):
+        """La fila trae una lista anidada (los renglones o los pagos).
+
+        Una subtabla de ocho columnas no entra en un tercio del ancho del
+        modal: el template la saca de las dos columnas y la dibuja a lo
+        ancho, el antes arriba del después, así se lee sin barra
+        horizontal.
+        """
+        return getattr(self.antes, 'es_subtabla', False) or getattr(
+            self.despues, 'es_subtabla', False)
 
 
 def comparar(anterior, nuevo):

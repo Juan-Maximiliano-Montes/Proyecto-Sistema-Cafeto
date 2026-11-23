@@ -48,6 +48,41 @@
     function textoDeCantidad(valor) {
         return String(Math.round(valor * 1000) / 1000);
     }
+    //  Una cantidad es un número positivo y nada más: ni «-2», ni «2+3», ni
+    //  «1e3», ni letras. La validación del renglón (más abajo, en el change)
+    //  ya rechazaba todo eso y devolvía el campo a lo que había, pero recién
+    //  al salir del campo: mientras se tipeaba, «-5» o «2e3» quedaban a la
+    //  vista como si fueran una cantidad, y el signo menos tentaba a cargar
+    //  una devolución por el mostrador (para eso está Anular, que pide
+    //  autorización). Se frena en el teclado, en la tecla misma.
+    //
+    //  El punto y la coma SÍ pasan: media docena de productos van por peso y
+    //  el teclado numérico manda uno o la otra según la computadora.
+    //
+    //  Todo lo que NO es un dígito ni un separador decimal: el signo menos,
+    //  el más, la «e» de la notación científica y cualquier letra.
+    var NO_ES_CANTIDAD = /[^\d.,]/;
+    var NO_ES_CANTIDAD_G = /[^\d.,]/g;
+    function soloCantidad(campo) {
+        campo.addEventListener('keydown', function (evento) {
+            //  Con Ctrl o Meta son atajos (copiar, pegar, deshacer), y una
+            //  tecla de nombre largo es una de control (Backspace, Tab, las
+            //  flechas): no se tocan.
+            if (evento.ctrlKey || evento.metaKey || evento.altKey) { return; }
+            if (evento.key == null || evento.key.length !== 1) { return; }
+            if (NO_ES_CANTIDAD.test(evento.key)) { evento.preventDefault(); }
+        });
+        //  Lo que entra sin pasar por keydown —pegar, arrastrar, el dictado
+        //  del celular— se limpia acá, conservando dónde está el cursor.
+        campo.addEventListener('input', function () {
+            var limpio = campo.value.replace(NO_ES_CANTIDAD_G, '');
+            if (limpio === campo.value) { return; }
+            var cursor = campo.selectionStart;
+            var quitados = campo.value.length - limpio.length;
+            campo.value = limpio;
+            try { campo.setSelectionRange(cursor - quitados, cursor - quitados); } catch (e) { /* no es de texto */ }
+        });
+    }
     //  El ticket a medio armar vuelve del navegador: una cantidad que quedó
     //  inservible de antes (un "NaN" de una versión anterior, algo editado a
     //  mano en el almacenamiento) no arrastra el error a esta sesión.
@@ -312,6 +347,7 @@
             var cant = el('input', 'form-control form-control-sm text-center'); cant.style.width = '5rem';
             cant.inputMode = info.fraccionable ? 'decimal' : 'numeric';
             cant.value = item.cantidad; cant.setAttribute('aria-label', 'Cantidad');
+            soloCantidad(cant);
             var mas = el('button', 'btn btn-sm btn-secundario btn-icono', '+'); mas.type = 'button';
             var unidad = el('span', 'small text-tenue', info.unidad || '');
             var desc = el('button', 'btn btn-sm btn-secundario ms-auto'); desc.type = 'button'; desc.title = 'Descuento';

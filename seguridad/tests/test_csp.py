@@ -81,10 +81,12 @@ class PlantillasSinJavaScriptEnLineaTest(SimpleTestCase):
 class SugerenciasDeMejoraSinJavaScriptEnLineaTest(TestCase):
     """La pantalla nueva de «Sugerencias de mejora», ya servida (DD-109).
 
-    Las dos acciones (Aplicar y Descartar) piden confirmación con un modal,
-    y ese modal lo arma ``cafeto.js`` leyendo ``data-confirmar``: no hay
-    ``onclick`` ni ``<script>`` en línea que la CSP estricta bloquee y deje
-    el botón sin confirmación.
+    Las acciones (Aplicar, Descartar y Aplicar seleccionadas) piden
+    confirmación con un modal, y ese modal lo arma ``cafeto.js`` leyendo
+    ``data-confirmar``: no hay ``onclick`` ni ``<script>`` en línea que la
+    CSP estricta bloquee y deje el botón sin confirmación. El archivo
+    ``sugerencias.js`` sí está, servido desde ``/static/`` como todos: eso
+    es lo que ``script-src 'self'`` permite.
     """
 
     PLANTILLA = Path(__file__).resolve().parents[2] / 'stock' / 'templates' / 'stock' / 'sugerencias.html'
@@ -111,7 +113,12 @@ class SugerenciasDeMejoraSinJavaScriptEnLineaTest(TestCase):
         self.assertNotIn('javascript:', cuerpo)
 
     def test_la_confirmacion_va_por_dato_y_no_por_script(self):
+        import re
+
         texto = self.PLANTILLA.read_text(encoding='utf-8')
         self.assertIn('data-confirmar=', texto)
-        self.assertNotIn('<script', texto)
         self.assertIsNone(PlantillasSinJavaScriptEnLineaTest.MANEJADOR.search(texto))
+        # Ningún <script> con código adentro: sólo con src (un archivo de
+        # /static/, que es lo que la CSP estricta deja correr).
+        for etiqueta in re.findall(r'<script\b[^>]*>', texto):
+            self.assertIn('src=', etiqueta, etiqueta)
