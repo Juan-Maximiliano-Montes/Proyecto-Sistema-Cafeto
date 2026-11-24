@@ -8,11 +8,71 @@ autorización; la dueña, los números del día.
 Los números y los avisos los arma ``negocio.panel``, que también usa el
 panel de la app móvil: acá se les pone el ícono y el enlace de la web.
 """
+from datetime import timedelta
+from decimal import Decimal
+
+from django.db.models import Sum
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from negocio import panel
+
+
+def _pulso_ventas_7_dias(hoy):
+    """Serie diaria de los últimos 7 días (hoy incluido) para el mini-gráfico
+    de la tarjeta Reportes en Inicio. Una sola consulta agregada, sin tocar
+    ``negocio.panel`` (que comparte contrato con la app móvil)."""
+    from ventas.models import Venta
+
+    desde = hoy - timedelta(days=6)
+    por_dia = {
+        fila['fecha_venta']: fila['total'] or Decimal('0')
+        for fila in (
+            Venta.objects
+            .filter(fecha_venta__range=(desde, hoy), estado_venta='COMPLETADA')
+            .values('fecha_venta')
+            .annotate(total=Sum('total_venta'))
+        )
+    }
+    dias_cortos = ('Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom')
+    serie = []
+    maximo = Decimal('0')
+    total_semana = Decimal('0')
+    for offset in range(7):
+        fecha = desde + timedelta(days=offset)
+        monto = por_dia.get(fecha, Decimal('0'))
+        if monto > maximo:
+            maximo = monto
+        total_semana += monto
+        serie.append({
+            'fecha': fecha,
+            'etiqueta': 'Hoy' if offset == 6 else dias_cortos[fecha.weekday()],
+            'monto': monto,
+            'es_hoy': offset == 6,
+        })
+
+    barras = []
+    for idx, item in enumerate(serie):
+        if maximo > 0 and item['monto'] > 0:
+            alto = max(5, round(float(item['monto'] / maximo) * 40))
+        else:
+            alto = 3
+        x = 4 + idx * 30
+        barras.append({
+            **item,
+            'x': x,
+            'y': 46 - alto,
+            'alto': alto,
+            'cx': x + 11,
+            'con_ventas': item['monto'] > 0,
+        })
+
+    return {
+        'barras': barras,
+        'total': total_semana,
+        'hay_datos': maximo > 0,
+    }
 
 # A dónde lleva cada indicador del panel en la web, y si va destacado.
 DESTINO_DEL_INDICADOR = {
@@ -82,7 +142,17 @@ def inicio(request):
         avisos.append((aviso['tipo'], icono, aviso['texto'],
                        reverse(nombre_url) + sufijo))
 
+    puesta_en_marcha = None
+    if puede('editar_parametros'):
+        from negocio.models import ParametrosNegocio
+        estado_local = ParametrosNegocio.vigentes().estado_configuracion()
+        if estado_local['pendiente']:
+            puesta_en_marcha = estado_local
+
+    pulso_ventas = _pulso_ventas_7_dias(hoy) if puede('ver_reportes') else None
+
     return render(request, 'negocio/inicio.html', {
         'acciones': acciones, 'indicadores': indicadores, 'avisos': avisos,
+        'puesta_en_marcha': puesta_en_marcha, 'pulso_ventas': pulso_ventas,
         'turno': turno, 'caja': caja, 'hoy': hoy,
     })

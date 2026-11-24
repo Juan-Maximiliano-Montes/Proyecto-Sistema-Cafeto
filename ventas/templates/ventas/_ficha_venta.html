@@ -2,6 +2,9 @@
 {% if venta.anulada %}
 <div class="aviso aviso-error mb-3" role="status"><i class="bi bi-x-octagon-fill"></i><span><strong>Venta anulada</strong> el {{ venta.fecha_anulacion|date:"d/m/Y H:i" }}{% if venta.id_usuario_solicitante_id != venta.id_usuario_anulacion_id %}: la pidió {{ venta.id_usuario_solicitante }} y la autorizó {{ venta.id_usuario_anulacion }}{% else %} por {{ venta.id_usuario_anulacion }}{% endif %}. Motivo: {{ motivo_anulacion }}. El stock, el efectivo del cajón y los puntos ya volvieron (lo cobrado con tarjeta, QR o transferencia se revierte en el posnet o el banco). No suma en los totales.</span></div>
 {% endif %}
+<div class="d-flex justify-content-end mb-2">
+    <a class="btn btn-sm btn-secundario" href="{% url 'ventas:ticket' venta.pk %}" target="_blank" rel="noopener"><i class="bi bi-printer me-1" aria-hidden="true"></i>Ver / imprimir ticket</a>
+</div>
 <dl class="ficha mb-3">
     <dt>Estado</dt><dd>{% if venta.anulada %}<span class="insignia insignia-peligro">Anulada</span>{% else %}<span class="insignia insignia-exito">Completada</span>{% endif %}</dd>
     <dt>Fecha</dt><dd>{{ venta.fecha_venta|date:"d/m/Y" }} {{ venta.hora_venta|time:"H:i" }}</dd>

@@ -3,39 +3,91 @@
 {% block titulo %}Cafeto · Elegí tu clave{% endblock %}
 
 {% block pantalla %}
-<main class="acceso">
+<main class="acceso iris-login">
+    <section class="iris-login-foto" aria-label="Cafeto Las Lomitas">
+        <img class="iris-login-img"
+             src="{% static 'cafeto/marca/cafeto-fachada.jpg' %}"
+             alt="Fachada de Cafeto Las Lomitas en Ruta Nacional 51 Km. 17"
+             width="1264"
+             height="848"
+             fetchpriority="high">
+        <div class="iris-login-scrim" aria-hidden="true"></div>
+
+        <div class="iris-login-notch-wrap">
+            <div class="iris-login-notch">
+                <img class="iris-login-notch-logo"
+                     src="{% static 'cafeto/marca/cafeto-icono-ambar.svg' %}"
+                     alt=""
+                     aria-hidden="true"
+                     width="20"
+                     height="20">
+                <span class="iris-login-notch-dot" aria-hidden="true"></span>
+                <span class="iris-login-notch-txt">Ruta 51 Km. 17 · Campo Quijano · NAS Local</span>
+            </div>
+        </div>
+
+        <div class="iris-login-pie-foto">
+            <span class="iris-login-eyebrow">Ruta Nacional 51 Km. 17 · Campo Quijano, Salta</span>
+            <strong class="iris-login-lugar">Cafeto Las Lomitas</strong>
+        </div>
+    </section>
+
     <div class="acceso-caja">
-        <img class="acceso-logo logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="Cafeto Las Lomitas">
-        <img class="acceso-logo logo-para-claro" src="{% static 'cafeto/marca/cafeto-isologotipo-positivo.svg' %}" alt="Cafeto Las Lomitas">
+        <div class="iris-login-top">
+            <img class="iris-login-marca logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
+            <img class="iris-login-marca logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
+            <button type="button" class="iris-login-tema" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
+                <i class="bi bi-circle-half" aria-hidden="true"></i>
+                <span class="iris-tema-a-claro">Claro</span>
+                <span class="iris-tema-a-oscuro">Oscuro</span>
+            </button>
+        </div>
 
         <div class="card">
             {% if invalido %}
             <h1 class="titulo-pantalla mb-2">Este enlace ya no sirve</h1>
             <p class="text-secondary">Puede que haya vencido, que ya lo hayas usado o que esté incompleto (a veces el correo corta los enlaces largos).</p>
-            <a href="{% url 'seguridad:olvide_clave' %}" class="btn btn-primary w-100"><i class="bi bi-envelope me-1"></i>Pedir un enlace nuevo</a>
-            <a href="{% url 'seguridad:login' %}" class="d-block text-center small mt-3">Volver al ingreso</a>
+            <a href="{% url 'seguridad:olvide_clave' %}" class="btn btn-primary btn-xl w-100 iris-login-submit"><i class="bi bi-envelope me-1" aria-hidden="true"></i>Pedir un enlace nuevo</a>
+            <a href="{% url 'seguridad:login' %}" class="olvido-clave d-block text-center mt-3">Volver al ingreso</a>
             {% else %}
             <h1 class="titulo-pantalla mb-1">{% if proposito == 'activar' %}¡Bienvenido, {{ persona.nombre }}!{% else %}Elegí tu clave nueva{% endif %}</h1>
             <p class="text-secondary mb-1">Tu usuario es <strong>{{ persona.nombre_usuario }}</strong> (también podés entrar con tu DNI).</p>
             <p class="small text-secondary mb-4">Mínimo 8 caracteres, que no sea sólo números ni se parezca a tu nombre o tu DNI.</p>
-            {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
+            {% if form.non_field_errors %}<div class="aviso aviso-error"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i><span>{{ form.non_field_errors|striptags }}</span></div>{% endif %}
             <form method="post" novalidate>
                 {% csrf_token %}
                 <input type="text" name="username" value="{{ persona.nombre_usuario }}" autocomplete="username" hidden>
                 <div class="mb-3">
                     <label class="form-label" for="{{ form.clave_nueva.id_for_label }}">{{ form.clave_nueva.label }}</label>
-                    {{ form.clave_nueva }}
+                    <div class="iris-clave-wrap">
+                        {{ form.clave_nueva }}
+                        <button type="button" class="iris-clave-ojo" data-iris-ver-clave aria-label="Mostrar u ocultar clave nueva" aria-pressed="false" title="Mostrar u ocultar clave">
+                            <i class="bi bi-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
                     {% if form.clave_nueva.errors %}<p class="error-campo">{{ form.clave_nueva.errors|striptags }}</p>{% endif %}
                 </div>
                 <div class="mb-4">
                     <label class="form-label" for="{{ form.clave_repetir.id_for_label }}">{{ form.clave_repetir.label }}</label>
-                    {{ form.clave_repetir }}
+                    <div class="iris-clave-wrap">
+                        {{ form.clave_repetir }}
+                        <button type="button" class="iris-clave-ojo" data-iris-ver-clave aria-label="Mostrar u ocultar repetición de clave" aria-pressed="false" title="Mostrar u ocultar clave">
+                            <i class="bi bi-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
                     {% if form.clave_repetir.errors %}<p class="error-campo">{{ form.clave_repetir.errors|striptags }}</p>{% endif %}
                 </div>
-                <button type="submit" class="btn btn-primary btn-xl w-100" data-requiere-red><i class="bi bi-check2 me-1"></i> Guardar mi clave</button>
+                <button type="submit" class="btn btn-primary btn-xl w-100 iris-login-submit" data-requiere-red><i class="bi bi-check2 me-1" aria-hidden="true"></i> Guardar mi clave</button>
             </form>
             {% endif %}
         </div>
+
+        <div class="iris-login-pie">
+            <span>Cafeto Las Lomitas · Gestión interna</span>
+            <span><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>Auditoría activa</span>
+        </div>
     </div>
+
+    <span class="sin-conexion" role="status"><i class="bi bi-wifi-off" aria-hidden="true"></i>Sin conexión con el sistema</span>
 </main>
 {% endblock %}

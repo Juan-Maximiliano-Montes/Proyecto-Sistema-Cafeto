@@ -35,6 +35,7 @@ urlpatterns = [
     path('mostrador/autorizacion/<int:pk>/pin/', autorizaciones.pin, name='pin_autorizacion'),
     path('mostrador/autorizacion/<int:pk>/cancelar/', autorizaciones.cancelar, name='cancelar_autorizacion'),
     path('autorizaciones/', autorizaciones.bandeja, name='autorizaciones'),
+    path('autorizaciones/pendientes/', autorizaciones.pendientes_json, name='pendientes_autorizacion'),
     path('autorizar/<str:token>/', autorizaciones.enlace, name='autorizar_a_distancia'),
     path('cambios/', cambios.cambios, name='cambios'),
     path('cambios/<int:pk>/comprobante/', cambios.comprobante_cambio, name='comprobante_cambio'),

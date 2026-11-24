@@ -30,8 +30,9 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
         {% if turno.quedo_de_otro_dia %}<div class="aviso aviso-aviso mb-2"><i class="bi bi-exclamation-triangle-fill"></i><span>La caja quedó abierta desde el {{ turno.fecha_apertura|date:"d/m" }}. Podés seguir vendiendo, pero conviene <a href="{% url 'ventas:caja' %}">cerrarla y abrir un turno nuevo</a> para que lo de hoy no se mezcle con lo de ese día.</span></div>{% endif %}
         <div class="herramientas mb-2">
             <div class="buscador">
-                <i class="bi bi-search"></i>
+                <i class="bi bi-search" aria-hidden="true"></i>
                 <input type="search" id="buscar" class="form-control form-control-lg" placeholder="Buscar producto…" autocomplete="off" autofocus aria-label="Buscar producto">
+                <kbd class="iris-keycap iris-buscador-kbd d-none d-lg-inline-flex" aria-hidden="true">F2</kbd>
             </div>
             <button type="button" class="btn btn-secundario btn-camara js-camara" data-destino="#buscar" hidden aria-label="Leer el código con la cámara"><i class="bi bi-camera" aria-hidden="true"></i></button>
         </div>
@@ -106,6 +107,16 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                     {% endfor %}
                 </div>
                 <div id="pagos" class="mt-2 d-flex flex-column gap-2"></div>
+                <div id="irisBilletes" class="iris-billetes mt-2" role="group" aria-label="Billetes rápidos de efectivo" hidden>
+                    <span class="iris-billetes-etiqueta">Billetes rápidos</span>
+                    <div class="iris-billetes-fila">
+                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="exacto" aria-pressed="false">Exacto</button>
+                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="2000" aria-pressed="false">$&nbsp;2.000</button>
+                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="5000" aria-pressed="false">$&nbsp;5.000</button>
+                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="10000" aria-pressed="false">$&nbsp;10.000</button>
+                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="20000" aria-pressed="false">$&nbsp;20.000</button>
+                    </div>
+                </div>
                 <button type="button" class="btn btn-link btn-sm p-0 mt-1 d-none" id="mixto"><i class="bi bi-plus-circle me-1"></i>Pagar con dos medios</button>
                 <div id="fiado" class="d-none mt-2">
                     <div class="aviso aviso-error mb-2 d-none" id="fiadoSinCliente" role="alert"><i class="bi bi-person-x-fill"></i><span>Para fiar hay que saber a quién: identificá al cliente del Club (o dalo de alta) antes de cobrar.</span></div>
@@ -143,7 +154,7 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             <button type="button" class="btn btn-primary btn-xl w-100" id="cobrar" disabled data-requiere-red>
                 <i class="bi bi-check2-circle me-1"></i>Cobrar
             </button>
-            <p class="small text-tenue text-center mb-0 mt-1 d-none d-lg-block"><kbd>F2</kbd> buscar · <kbd>F4</kbd> efectivo · <kbd>F9</kbd> cobrar</p>
+            <p class="small text-tenue text-center mb-0 mt-1 d-none d-lg-flex iris-atajos-pie"><kbd class="iris-keycap">F2</kbd> buscar · <kbd class="iris-keycap">F4</kbd> efectivo · <kbd class="iris-keycap">F9</kbd> cobrar</p>
         </div>
     </aside>
 </div>
@@ -264,9 +275,15 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 <i class="bi bi-check-circle-fill text-exito" style="font-size:3rem"></i>
                 <h2 class="titulo-pantalla mt-2 mb-0" id="tituloCobrado">¡Listo!</h2>
                 <p class="text-secondary mb-3" id="cobradoNumero"></p>
-                <div class="d-flex justify-content-around">
-                    <div><span class="eyebrow d-block">Total</span><span class="monto fs-3" id="cobradoTotal"></span></div>
-                    <div id="cobradoBloqueVuelto"><span class="eyebrow d-block">Vuelto</span><span class="monto visor-vuelto text-exito" id="cobradoVuelto"></span></div>
+                <div class="iris-cobrado-montos">
+                    <div class="iris-cobrado-caja">
+                        <span class="eyebrow d-block">Total cobrado</span>
+                        <span class="monto iris-cobrado-total" id="cobradoTotal"></span>
+                    </div>
+                    <div class="iris-cobrado-caja iris-cobrado-vuelto-caja" id="cobradoBloqueVuelto">
+                        <span class="eyebrow d-block">Vuelto a entregar</span>
+                        <span class="monto visor-vuelto text-exito" id="cobradoVuelto"></span>
+                    </div>
                 </div>
                 <p class="mt-3 mb-0 d-none" id="cobradoFiado"></p>
                 <p class="mt-3 mb-0 d-none" id="cobradoPuntos"></p>

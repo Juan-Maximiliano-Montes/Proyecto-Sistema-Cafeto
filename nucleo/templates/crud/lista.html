@@ -55,9 +55,10 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
 <form method="get" id="herramientas" class="herramientas" role="search" hx-boost="true">
     <input type="hidden" name="pagina" value="1">
     <div class="buscador">
-        <i class="bi bi-search"></i>
+        <i class="bi bi-search" aria-hidden="true"></i>
         <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
                placeholder="Buscar {{ cfg.plural }}…" aria-label="Buscar">
+        <kbd class="iris-keycap iris-buscador-kbd d-none d-lg-inline-flex" aria-hidden="true">F2</kbd>
     </div>
     {% for filtro, opciones, elegido in filtros %}
     <select name="{{ filtro.clave }}" class="form-select" aria-label="{{ filtro.etiqueta }}" data-auto-enviar>

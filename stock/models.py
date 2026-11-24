@@ -166,7 +166,7 @@ class Rubro(Maestra):
     def clean(self):
         super().clean()
         self.nombre_rubro = texto_de_catalogo(
-            self.nombre_rubro, 2, 40, 'El nombre del rubro')
+            self.nombre_rubro, 2, 40, 'El nombre del rubro', exige_letra=True)
         self.descripcion_rubro = texto_de_catalogo(
             self.descripcion_rubro, 1, 120, 'La descripción', obligatorio=False)
         exigir_nombre_unico(self, 'nombre_rubro', etiqueta='un rubro')
@@ -225,7 +225,7 @@ class Marca(Maestra):
     def clean(self):
         super().clean()
         self.nombre_marca = texto_de_catalogo(
-            self.nombre_marca, 2, 50, 'El nombre de la marca')
+            self.nombre_marca, 2, 50, 'El nombre de la marca', exige_letra=True)
         if self.pk and self.nombre_marca != MARCA_GENERICA and type(self).objects.filter(
                 pk=self.pk, nombre_marca=MARCA_GENERICA).exists():
             raise ValidationError({'nombre_marca': (
@@ -642,7 +642,8 @@ class Producto(ConSaldosDerivados, Maestra):
     def clean(self):
         super().clean()
         self.nombre_producto = texto_de_catalogo(
-            self.nombre_producto, 2, 100, 'El nombre del producto')
+            self.nombre_producto, 2, 100, 'El nombre del producto',
+            exige_letra=True)
         self.codigo_barras = validar_codigo_barras(self.codigo_barras)
         self.imagen = (self.imagen or '').strip() or None
         if self.imagen and not self.imagen.startswith(('https://', 'productos/')):

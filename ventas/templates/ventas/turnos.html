@@ -46,7 +46,7 @@
 
 <div class="tarjeta p-0 overflow-hidden">
     <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0 iris-tabla-turnos">
         <thead><tr><th>Caja</th><th>Apertura</th><th>Cierre</th><th class="table-numero">Esperado</th><th class="table-numero">Contado</th><th class="table-numero">Diferencia</th><th class="col-acciones"><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
         {% for t in filas %}
@@ -57,7 +57,7 @@
                 <td class="table-numero">{{ t.monto_esperado|pesos }}</td>
                 <td class="table-numero">{{ t.monto_final|pesos }}</td>
                 <td class="table-numero">{% if t.diferencia_caja is None %}—{% elif t.diferencia_caja == 0 %}<span class="text-exito">Justa</span>{% else %}<span class="{% if t.diferencia_caja < 0 %}text-peligro{% else %}text-marca{% endif %} fw-semibold">{{ t.diferencia_caja|diferencia_caja }}</span>{% if t.pendiente_de_revision %}<span class="d-block"><span class="insignia insignia-peligro">Pendiente de revisión</span></span>{% elif t.id_usuario_revision_id %}<span class="d-block small text-tenue">Revisada</span>{% endif %}{% endif %}</td>
-                <td class="col-acciones"><button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'ventas:ficha_turno' t.pk %}" data-modal="#modalTurno" data-titulo="{{ t.id_caja_registradora }} · {{ t.fecha_apertura|date:'d/m/Y' }}" title="Ver detalle"><i class="bi bi-eye"></i></button></td>
+                <td class="col-acciones"><button type="button" class="btn btn-sm btn-secundario iris-btn-accion" data-remoto="{% url 'ventas:ficha_turno' t.pk %}" data-modal="#modalTurno" data-titulo="{{ t.id_caja_registradora }} · {{ t.fecha_apertura|date:'d/m/Y' }}" title="Ver detalle" aria-label="Ver detalle de {{ t.id_caja_registradora }} del {{ t.fecha_apertura|date:'d/m/Y' }}"><i class="bi bi-eye" aria-hidden="true"></i></button></td>
             </tr>
         {% empty %}
             <tr><td colspan="7" class="vacio"><i class="bi bi-cash-stack"></i>No hay turnos con estos filtros.</td></tr>

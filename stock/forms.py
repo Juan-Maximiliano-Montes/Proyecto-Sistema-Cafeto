@@ -202,6 +202,12 @@ class ProductoForm(FormularioMaestro):
         self.fields['alicuota_iva'].widget.attrs['data-calculo'] = 'iva'
         self.fields['utilidad'].widget.attrs['data-calculo'] = 'utilidad'
         self.fields['precio_venta'].widget.attrs['data-calculo'] = 'precio'
+        self.fields['contenido'].widget.attrs.update({
+            'data-minimo': '0.001', 'data-decimales': '3'})
+        self.fields['dias_rebaja_vencimiento'].widget.attrs.update({
+            'data-minimo': '1', 'data-decimales': '0'})
+        self.fields['porcentaje_rebaja_vencimiento'].widget.attrs.update({
+            'data-minimo': '1', 'data-decimales': '2'})
         self.fields['precio_venta'].complemento = 'stock/_redondeo_precio.html'
         self.fields['codigo_barras'].complemento = 'stock/_generar_codigo.html'
         if self.instance and self.instance.pk:

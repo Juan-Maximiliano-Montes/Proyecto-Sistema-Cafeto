@@ -28,13 +28,13 @@
 </dl>
 {% if propio_abierto %}<p class="aviso aviso-info small"><i class="bi bi-eye-slash"></i><span>Es tu turno abierto: los importes se ven después de declarar lo contado (arqueo ciego).</span></p>{% endif %}
 {% if recaudacion %}
-<h6 class="subtitulo">Recaudación por medio de pago</h6>
-<div class="table-responsive mb-3">
-<table class="table table-sm align-middle mb-0">
-    <thead><tr><th>Medio</th><th class="table-numero">Ventas</th><th class="table-numero">Cobrado en ventas</th><th class="table-numero">Cambios</th><th class="table-numero">Cobros de cuentas corrientes</th><th class="table-numero">Total</th></tr></thead>
+<h6 class="subtitulo" id="tituloRecaudacionTurno">Recaudación por medio de pago</h6>
+<div class="table-responsive mb-3 iris-tabla-turno-wrap" tabindex="0" role="region" aria-labelledby="tituloRecaudacionTurno">
+<table class="table table-sm align-middle mb-0 iris-tabla-turno">
+    <thead><tr><th scope="col">Medio</th><th scope="col" class="table-numero">Ventas</th><th scope="col" class="table-numero">Cobrado en ventas</th><th scope="col" class="table-numero">Cambios</th><th scope="col" class="table-numero">Cobros de cuentas corrientes</th><th scope="col" class="table-numero">Total</th></tr></thead>
     <tbody>
     {% for r in recaudacion %}
-        <tr><td>{{ r.medio }}{% if r.fiado %}<span class="d-block small text-secondary">vendido al fiado: no entró</span>{% endif %}</td><td class="table-numero">{{ r.ventas }}</td><td class="table-numero">{{ r.cobrado|pesos }}</td><td class="table-numero">{{ r.cambios|pesos }}</td><td class="table-numero">{{ r.cuentas|pesos }}</td><td class="table-numero">{{ r.total|pesos }}</td></tr>
+        <tr><th scope="row">{{ r.medio }}{% if r.fiado %}<span class="d-block small text-secondary fw-normal">vendido al fiado: no entró</span>{% endif %}</th><td class="table-numero">{{ r.ventas }}</td><td class="table-numero">{{ r.cobrado|pesos }}</td><td class="table-numero">{{ r.cambios|pesos }}</td><td class="table-numero">{{ r.cuentas|pesos }}</td><td class="table-numero iris-turno-total">{{ r.total|pesos }}</td></tr>
     {% endfor %}
     </tbody>
 </table>

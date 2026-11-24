@@ -26,7 +26,7 @@ from django import forms
 from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 
-from nucleo.validaciones import nombre_de_persona
+from nucleo.validaciones import nombre_de_persona, texto_de_catalogo
 from seguridad.models import (
     MODULOS_EXCLUSIVOS_DEL_ADMINISTRADOR,
     Perfil,
@@ -326,13 +326,20 @@ class PerfilForm(forms.ModelForm):
             del self.fields['tope_descuento_porcentaje']
 
     def clean_nombre(self):
-        nombre = self.cleaned_data['nombre'].strip()
+        nombre = texto_de_catalogo(
+            self.cleaned_data.get('nombre'), 2, 20, 'El nombre del perfil',
+            exige_letra=True)
         existentes = Perfil.objects.filter(nombre__iexact=nombre)
         if self.instance.pk:
             existentes = existentes.exclude(pk=self.instance.pk)
         if existentes.exists():
             raise forms.ValidationError('Ya existe un perfil con ese nombre.')
         return nombre
+
+    def clean_descripcion(self):
+        return texto_de_catalogo(
+            self.cleaned_data.get('descripcion'), 1, 120, 'La descripción',
+            obligatorio=False)
 
 
 # ===========================================================================

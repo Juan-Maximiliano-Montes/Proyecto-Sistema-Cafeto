@@ -63,7 +63,7 @@
             <h2 class="subtitulo h4 mb-1">Abrir la caja</h2>
             <p class="text-secondary small">Contá el cambio con el que arrancás y cargalo.</p>
             <label class="form-label" for="{{ form_apertura.monto_inicial.id_for_label }}">{{ form_apertura.monto_inicial.label }}</label>
-            <div class="input-group input-group-lg mb-1">
+            <div class="input-group input-group-lg iris-monto-input-group mb-1">
                 <span class="input-group-text">$</span>
                 {{ form_apertura.monto_inicial }}
             </div>
@@ -166,7 +166,7 @@
                 </div>
                 <div>
                     <label class="form-label" for="{{ form_movimiento.monto.id_for_label }}">{{ form_movimiento.monto.label }}</label>
-                    <div class="input-group"><span class="input-group-text">$</span>{{ form_movimiento.monto }}</div>
+                    <div class="input-group iris-monto-input-group"><span class="input-group-text">$</span>{{ form_movimiento.monto }}</div>
                 </div>
                 <div>
                     <label class="form-label" for="{{ form_movimiento.concepto.id_for_label }}">{{ form_movimiento.concepto.label }}</label>
@@ -187,7 +187,7 @@
             <p class="small text-secondary mb-0">Contá el efectivo del cajón sin mirar el sistema. Te vamos a decir si coincide; si no coincide, podés volver a contar una vez.</p>
             <div>
                 <label class="form-label" for="{{ form_arqueo.monto_contado.id_for_label }}">{{ form_arqueo.monto_contado.label }}</label>
-                <div class="input-group input-group-lg"><span class="input-group-text">$</span>{{ form_arqueo.monto_contado }}</div>
+                <div class="input-group input-group-lg iris-monto-input-group"><span class="input-group-text">$</span>{{ form_arqueo.monto_contado }}</div>
             </div>
             <fieldset>
                 <legend class="form-label">{{ form_arqueo.modo.label }}</legend>
@@ -210,7 +210,7 @@
                 <p class="small text-secondary mb-0">Un control sin cerrar: contás el cajón, sale un comprobante para imprimir y seguís vendiendo.</p>
                 <div>
                     <label class="form-label" for="{{ form_corte.monto_contado.id_for_label }}">{{ form_corte.monto_contado.label }}</label>
-                    <div class="input-group"><span class="input-group-text">$</span>{{ form_corte.monto_contado }}</div>
+                    <div class="input-group iris-monto-input-group"><span class="input-group-text">$</span>{{ form_corte.monto_contado }}</div>
                 </div>
                 <div>
                     <label class="form-label" for="{{ form_corte.observacion.id_for_label }}">{{ form_corte.observacion.label }}</label>

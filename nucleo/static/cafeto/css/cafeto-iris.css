@@ -1,0 +1,4882 @@
+/* ==========================================================================
+   Cafeto × iRiS · Capa aditiva de diseño (Shell global + tokens AA/AAA)
+   --------------------------------------------------------------------------
+   Se carga DESPUÉS de cafeto.css sin modificar el original (mantiene intactos
+   los contratos verificados por test_auditoria_visual y test_navegacion_parcial).
+
+   Fundamentos cerrados:
+     · iRiS Surround: chasis exterior (#0B0A19 / #121128) envolviendo el
+       lienzo redondeado (22px) con curvas cóncavas ("goteo") en las islas
+       soldadas y pestañas activas.
+     · glass: off · texture: flat · glow: 0 · bordes hairline de 1px.
+     · Usabilidad adulta: contraste AA/AAA, piso 14–15px (mínimo 12px en
+       etiquetas), controles táctiles cómodos, tabular-nums, foco ámbar 2.5px.
+     · 100% offline: cero CDN externos, usa Inter / Lora / Caveat locales.
+   ========================================================================== */
+
+/* ---------- 1. Tokens Cafeto × iRiS (Oscuro por defecto + Claro 1 clic) ---------- */
+:root,
+[data-tema="oscuro"] {
+    --iris-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --cf-chassis: #0B0A19;
+    --cf-canvas: #141329;
+    --cf-surface: #1E1D3B;
+    --cf-surface-2: #27264B;
+    --cf-line: #353466;
+    --cf-line-strong: #4F4D8A;
+    --cf-text: #F2F5FC;
+    --cf-muted: #BAC2DC;
+    --cf-subtle: #9BA4C4;
+    --cf-title: #F2E2A4;
+    --cf-accent: #FAB41F;
+    --cf-accent-hover: #E9A50F;
+    --cf-accent-soft: #2E2611;
+    --cf-on-accent: #121128;
+    --cf-ok: #4BE38D;
+    --cf-ok-bg: #15382B;
+    --cf-ok-border: #2F7D5C;
+    --cf-danger: #FF7B70;
+    --cf-danger-bg: #3E1D28;
+    --cf-danger-border: #823B4B;
+    --cf-warn: #F7D47A;
+    --cf-warn-bg: #3E2D0C;
+    --cf-warn-border: #8F6A1A;
+    --cf-info: #8AB4FF;
+    --cf-info-bg: #1A284A;
+    --cf-info-border: #3B5C9E;
+    --cf-rail-active-fg: #F2F5FC;
+    --cf-tab-fg: #F2F5FC;
+    --cf-kbd-bg: rgba(0, 0, 0, .28);
+    --cf-kbd-border: rgba(242, 245, 252, .28);
+    --cf-kbd-fg: #E2E8F0;
+
+    /* Sincronización con los tokens propios de Cafeto y Bootstrap */
+    --c-fondo: var(--cf-canvas);
+    --c-superficie: var(--cf-surface);
+    --c-superficie-activa: var(--cf-surface-2);
+    --c-borde: var(--cf-line);
+    --c-divisor: var(--cf-line);
+    --c-texto: var(--cf-text);
+    --c-texto-2: var(--cf-muted);
+    --c-texto-3: var(--cf-subtle);
+    --c-titulo: var(--cf-title);
+    --c-marca: var(--cf-accent);
+    --c-marca-hover: var(--cf-accent-hover);
+    --c-marca-suave: var(--cf-accent-soft);
+    --c-sobre-marca: var(--cf-on-accent);
+    --c-exito: var(--cf-ok);
+    --c-exito-fondo: var(--cf-ok-bg);
+    --c-exito-borde: var(--cf-ok-border);
+    --c-peligro: var(--cf-danger);
+    --c-peligro-fondo: var(--cf-danger-bg);
+    --c-peligro-borde: var(--cf-danger-border);
+    --c-aviso: var(--cf-warn);
+    --c-aviso-fondo: var(--cf-warn-bg);
+    --c-aviso-borde: var(--cf-warn-border);
+    --c-info: var(--cf-info);
+    --c-info-fondo: var(--cf-info-bg);
+    --c-info-borde: var(--cf-info-border);
+    --c-sombra: 0 12px 32px rgba(0, 0, 0, .42);
+}
+
+[data-tema="claro"] {
+    --cf-chassis: #121128;
+    --cf-canvas: #F4F1EA;
+    --cf-surface: #FFFFFF;
+    --cf-surface-2: #F6F3EB;
+    --cf-line: #DDD6C7;
+    --cf-line-strong: #C2B9A5;
+    --cf-text: #161616;
+    --cf-muted: #474D63;
+    --cf-subtle: #575E75;
+    --cf-title: #161616;
+    --cf-accent: #FAB41F;
+    --cf-accent-hover: #E9A50F;
+    --cf-accent-soft: #FFF3D6;
+    --cf-on-accent: #121128;
+    --cf-ok: #0F6B37;
+    --cf-ok-bg: #E7F7EE;
+    --cf-ok-border: #9FD9B8;
+    --cf-danger: #B3261E;
+    --cf-danger-bg: #FDECEC;
+    --cf-danger-border: #F2B5B0;
+    --cf-warn: #8A6100;
+    --cf-warn-bg: #FFF3D6;
+    --cf-warn-border: #E8C56E;
+    --cf-info: #224E9E;
+    --cf-info-bg: #EAF1FD;
+    --cf-info-border: #A9C1EC;
+    --cf-rail-active-fg: #161616;
+    --cf-tab-fg: #161616;
+    --cf-kbd-bg: #ECE7DC;
+    --cf-kbd-border: #B8B09E;
+    --cf-kbd-fg: #161616;
+
+    --c-fondo: var(--cf-canvas);
+    --c-superficie: var(--cf-surface);
+    --c-superficie-activa: var(--cf-surface-2);
+    --c-borde: var(--cf-line);
+    --c-divisor: var(--cf-line);
+    --c-texto: var(--cf-text);
+    --c-texto-2: var(--cf-muted);
+    --c-texto-3: var(--cf-subtle);
+    --c-titulo: var(--cf-title);
+    --c-marca: var(--cf-accent);
+    --c-marca-hover: var(--cf-accent-hover);
+    --c-marca-suave: var(--cf-accent-soft);
+    --c-sobre-marca: var(--cf-on-accent);
+    --c-exito: var(--cf-ok);
+    --c-exito-fondo: var(--cf-ok-bg);
+    --c-exito-borde: var(--cf-ok-border);
+    --c-peligro: var(--cf-danger);
+    --c-peligro-fondo: var(--cf-danger-bg);
+    --c-peligro-borde: var(--cf-danger-border);
+    --c-aviso: var(--cf-warn);
+    --c-aviso-fondo: var(--cf-warn-bg);
+    --c-aviso-borde: var(--cf-warn-border);
+    --c-info: var(--cf-info);
+    --c-info-fondo: var(--cf-info-bg);
+    --c-info-borde: var(--cf-info-border);
+    --c-sombra: 0 10px 28px rgba(18, 17, 40, .12);
+}
+
+/* ---------- 2. Base tipográfica adulta, foco visible y utilidades ---------- */
+body {
+    font-size: 0.9375rem; /* 15px piso cómodo para adultos */
+    line-height: 1.45;
+}
+
+body:has(> .app) {
+    background-color: var(--cf-chassis);
+}
+
+.eyebrow,
+.table thead th,
+thead.table-dark th {
+    font-size: 0.75rem; /* mínimo absoluto 12px */
+}
+
+/* En tema Claro, .text-marca amarillo claro sobre blanco baja contraste: usar ocre oscuro AA/AAA */
+[data-tema="claro"] .text-marca {
+    color: #8A6100 !important;
+}
+
+/* Foco visible ámbar de alto contraste (outline nativo para Forced Colors) */
+:where(a:any-link, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2.5px solid var(--cf-accent);
+    outline-offset: 2px;
+}
+
+main.pagina:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Skip link accesible para teclado */
+.iris-skip-link {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 2100;
+    padding: .55rem 1rem;
+    border-radius: 999px;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-weight: 700;
+    font-size: .875rem;
+    text-decoration: none;
+    box-shadow: var(--c-sombra);
+}
+
+.iris-skip-link:hover {
+    color: var(--cf-on-accent);
+}
+
+/* Teclas físicas (<kbd>) legibles y sin opacity tenue */
+.iris-keycap,
+#cobradoTicket kbd,
+#nuevaVenta kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 6px;
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--cf-kbd-border);
+    background: var(--cf-kbd-bg);
+    color: var(--cf-kbd-fg);
+    box-shadow: inset 0 -1.5px 0 rgba(0, 0, 0, .25);
+    opacity: 1;
+    flex-shrink: 0;
+}
+
+#cobradoTicket kbd,
+#nuevaVenta kbd {
+    margin-left: .3rem;
+}
+
+.iris-keycap-chassis {
+    background: rgba(255, 255, 255, .10);
+    border-color: rgba(242, 245, 252, .26);
+    color: #F2F5FC;
+}
+
+.iris-keycap-on-accent,
+#cobradoTicket kbd {
+    background: rgba(18, 17, 40, .14);
+    border-color: rgba(18, 17, 40, .32);
+    color: var(--cf-on-accent);
+    box-shadow: inset 0 -1.5px 0 rgba(18, 17, 40, .18);
+}
+
+/* Superficies iRiS planas (glass: off, glow: 0, hairline 1px) */
+.card,
+.tarjeta {
+    border-radius: 16px;
+}
+
+.card,
+.tarjeta:not(.tarjeta-accion):not(.tarjeta-destacada):not(.tarjeta-vencida) {
+    border-color: var(--cf-line);
+    background: var(--cf-surface);
+}
+
+.modal-content {
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    border: 1px solid var(--cf-line-strong);
+    border-radius: 18px;
+}
+
+.modal-backdrop.show {
+    background-color: #070612;
+    opacity: .66;
+}
+
+.tarjeta.tarjeta-accion {
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    border: 0;
+}
+
+.tarjeta.tarjeta-accion:hover {
+    background: var(--cf-accent-hover);
+    color: var(--cf-on-accent);
+}
+
+.tarjeta.tarjeta-destacada {
+    background: var(--cf-accent-soft);
+    border-color: var(--cf-warn-border);
+}
+
+.tarjeta.tarjeta-vencida {
+    background: var(--cf-danger-bg);
+    border-color: var(--cf-danger-border);
+}
+
+.herramientas {
+    border-radius: 16px;
+    border-color: var(--cf-line);
+    background: var(--cf-surface);
+}
+
+.form-control,
+.form-select {
+    border-radius: 12px;
+    border-color: var(--cf-line-strong);
+    background-color: var(--cf-surface-2);
+    font-size: 0.9375rem;
+}
+
+.form-select::picker-icon {
+    display: none;
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--cf-surface-2);
+    border-color: var(--cf-accent);
+    box-shadow: none;
+}
+
+/* Contraste de tarjetas dadas de baja (sin opacity ilegible) */
+.tarjeta.baja {
+    opacity: 0.82;
+    border-style: dashed;
+}
+
+/* ---------- 3. Chasis Surround iRiS (.app + .lateral + .contenido) ---------- */
+.app {
+    background: var(--cf-chassis);
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 10px 10px 10px 0;
+}
+
+/* Sin sesión dentro de .app (pantallas sueltas que no usan login) */
+.app:not(:has(> .lateral)) {
+    padding: 10px;
+}
+
+.contenido {
+    flex: 1;
+    min-width: 0;
+    background: var(--cf-canvas);
+    border-radius: 22px 0 22px 22px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - 20px);
+    overflow-x: clip;
+}
+
+.app:not(:has(> .lateral)) .contenido {
+    border-radius: 22px;
+}
+
+/* ---------- 4. Rail izquierdo iRiS (PC >= 1100px · siempre con texto en 1 línea) ---------- */
+.lateral {
+    width: 244px;
+    flex-shrink: 0;
+    background: var(--cf-chassis);
+    color: #DCE1F4;
+    border-right: 0;
+    padding: 4px 0 6px 10px;
+    height: calc(100dvh - 20px);
+    top: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.lateral > nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    padding: 4px 0 14px;
+}
+
+.lateral > nav::-webkit-scrollbar {
+    display: none;
+}
+
+.lateral-cabecera {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .35rem .65rem .6rem .45rem;
+}
+
+.lateral-marca {
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.lateral-marca img {
+    height: 36px;
+    width: auto;
+}
+
+/* El chasis del Rail es siempre oscuro: mostrar logo negativo en ambos temas */
+.lateral-marca .logo-para-oscuro {
+    display: block !important;
+}
+
+.lateral-marca .logo-para-claro {
+    display: none !important;
+}
+
+.iris-lateral-cerrar {
+    display: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    background: rgba(255, 255, 255, .08);
+    color: #F2F5FC;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.iris-lateral-cerrar:hover {
+    background: rgba(255, 255, 255, .16);
+}
+
+/* Buscador rápido visible (Ctrl+K) en el Rail */
+.iris-rail-buscar-wrap {
+    flex-shrink: 0;
+    padding: 0 10px .5rem 0;
+}
+
+.iris-rail-buscar {
+    width: 100%;
+    min-height: 38px;
+    padding: .45rem .7rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .07);
+    color: #E6EAF8;
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    text-align: left;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.iris-rail-buscar:hover {
+    background: rgba(255, 255, 255, .13);
+    border-color: rgba(250, 180, 31, .45);
+    color: #FFFFFF;
+}
+
+.iris-rail-buscar-texto {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Grupos y enlaces del Rail (conservando <details class="lateral-desplegable">) */
+.lateral-grupo {
+    padding: .2rem 0;
+}
+
+.lateral-grupo + .lateral-grupo {
+    border-top: 1px solid rgba(255, 255, 255, .08);
+}
+
+.lateral-desplegable > summary {
+    padding: .46rem .45rem .46rem .4rem;
+    margin-right: 8px;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #DCE1F4;
+    gap: .5rem;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+.lateral-desplegable > summary > span:not(.lateral-flecha-hit) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.lateral-desplegable > summary:hover {
+    background: rgba(255, 255, 255, .08);
+    color: #FFFFFF;
+}
+
+.lateral-desplegable > summary > .bi:first-child {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .08);
+    color: #DCE1F4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+.lateral-desplegable[data-actual] > summary {
+    color: #FFFFFF;
+    font-weight: 700;
+}
+
+.lateral-desplegable[data-actual] > summary > .bi:first-child {
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+}
+
+.lateral-flecha-hit {
+    margin-left: auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background-color 140ms ease;
+}
+
+.lateral-flecha {
+    margin-left: 0;
+    color: #BAC2DC;
+    font-size: 0.78rem;
+}
+
+.lateral-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .5rem .75rem .5rem .55rem;
+    margin: .12rem 10px .12rem 0;
+    border-radius: 12px;
+    color: #C8D0E8;
+    font-weight: 500;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+.lateral-desplegable > .lateral-link {
+    margin-left: .45rem;
+    padding-left: .6rem;
+}
+
+.lateral-link i {
+    font-size: 0.98rem;
+    width: 1.35rem;
+    flex: 0 0 1.35rem;
+    text-align: center;
+    color: #BAC2DC;
+}
+
+.lateral-link:hover {
+    background: rgba(255, 255, 255, .09);
+    color: #FFFFFF;
+}
+
+.lateral-link:hover i {
+    color: #FFFFFF;
+}
+
+/* Enlace activo soldado al lienzo con curvas cóncavas iRiS en PC */
+.lateral-link.activo {
+    background: var(--cf-canvas);
+    color: var(--cf-rail-active-fg);
+    font-weight: 700;
+    margin-right: 0;
+    padding-right: 1rem;
+    border-radius: 16px 0 0 16px;
+}
+
+.lateral-link.activo i {
+    color: var(--cf-accent);
+}
+
+[data-tema="claro"] .lateral-link.activo i {
+    color: #B07A00;
+}
+
+.lateral-link.activo:hover {
+    background: var(--cf-canvas);
+    color: var(--cf-rail-active-fg);
+}
+
+@media (min-width: 1100px) {
+    .lateral-link.activo::before,
+    .lateral-link.activo::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+    }
+
+    .lateral-link.activo::before {
+        top: -14px;
+        background: radial-gradient(circle at 0 0, transparent 14px, var(--cf-canvas) 14.5px);
+    }
+
+    .lateral-link.activo::after {
+        bottom: -14px;
+        background: radial-gradient(circle at 0 14px, transparent 14px, var(--cf-canvas) 14.5px);
+    }
+
+    /* Rail PC — Modo Compacto "Solo 9 áreas" (Opción B, fijable por el usuario) */
+    html[data-iris-rail="areas"] .lateral-grupo {
+        padding: .1rem 0;
+    }
+
+    html[data-iris-rail="areas"] .lateral-grupo + .lateral-grupo {
+        border-top: 0;
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable > .lateral-link {
+        display: none;
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable > summary {
+        position: relative;
+        padding: .44rem .45rem .44rem .4rem;
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[open] > summary .lateral-flecha {
+        transform: none;
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable > summary .lateral-flecha-hit:hover {
+        background: rgba(255, 255, 255, .16);
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary {
+        background: var(--cf-canvas);
+        color: var(--cf-rail-active-fg);
+        margin-right: 0;
+        padding-right: 12px;
+        border-radius: 18px 0 0 18px;
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary:hover {
+        background: var(--cf-canvas);
+        color: var(--cf-rail-active-fg);
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary .lateral-flecha {
+        color: var(--cf-rail-active-fg);
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary .lateral-flecha-hit:hover {
+        background: rgba(128, 128, 148, .22);
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary::before,
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        width: 16px;
+        height: 16px;
+        pointer-events: none;
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary::before {
+        top: -16px;
+        background: radial-gradient(circle at 0 0, transparent 16px, var(--cf-canvas) 16.5px);
+    }
+
+    html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary::after {
+        bottom: -16px;
+        background: radial-gradient(circle at 0 16px, transparent 16px, var(--cf-canvas) 16.5px);
+    }
+
+    html[data-iris-rail="areas"] .lateral-inicio-link.activo {
+        border-radius: 18px 0 0 18px;
+    }
+
+    html[data-iris-rail="areas"] .lateral-inicio-link.activo::before,
+    html[data-iris-rail="areas"] .lateral-inicio-link.activo::after {
+        width: 16px;
+        height: 16px;
+    }
+
+    html[data-iris-rail="areas"] .lateral-inicio-link.activo::before {
+        top: -16px;
+        background: radial-gradient(circle at 0 0, transparent 16px, var(--cf-canvas) 16.5px);
+    }
+
+    html[data-iris-rail="areas"] .lateral-inicio-link.activo::after {
+        bottom: -16px;
+        background: radial-gradient(circle at 0 16px, transparent 16px, var(--cf-canvas) 16.5px);
+    }
+}
+
+/* Inicio (ítem raíz sin <details>) con placa de ícono iRiS */
+.lateral-inicio-link {
+    padding: .48rem .75rem .48rem .4rem;
+    font-weight: 600;
+    color: #DCE1F4;
+}
+
+.lateral-inicio-link > .bi:first-child {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .08);
+    color: #DCE1F4;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+.lateral-inicio-link.activo > .bi:first-child {
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+}
+
+/* Pie del Rail izquierdo (Tema + F1 + Salir + NAS Local · siempre visible) */
+.lateral-pie {
+    flex-shrink: 0;
+    margin-top: 0;
+    padding: .65rem 10px .2rem 0;
+    border-top: 1px solid rgba(255, 255, 255, .12);
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+}
+
+.iris-rail-modo-btn {
+    width: 100%;
+    min-height: 34px;
+    padding: .35rem .65rem;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(255, 255, 255, .05);
+    color: #DCE1F4;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    cursor: pointer;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.iris-rail-modo-btn:hover {
+    background: rgba(255, 255, 255, .13);
+    border-color: rgba(250, 180, 31, .45);
+    color: #FFFFFF;
+}
+
+.iris-modo-a-completo {
+    display: none;
+}
+
+html[data-iris-rail="areas"] .iris-modo-a-areas {
+    display: none;
+}
+
+html[data-iris-rail="areas"] .iris-modo-a-completo {
+    display: inline;
+}
+
+html[data-iris-rail="areas"] .iris-rail-modo-btn {
+    border-color: rgba(250, 180, 31, .45);
+    background: rgba(250, 180, 31, .12);
+    color: #F2E2A4;
+}
+
+/* Popover flotante de sub-pantallas en modo "Solo 9 áreas" */
+.iris-area-popover {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    min-width: 248px;
+    max-width: min(300px, calc(100vw - 24px));
+    padding: .55rem;
+    border-radius: 16px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, .45);
+    z-index: 1065;
+}
+
+.iris-area-popover:not(:popover-open):not(.is-open) {
+    display: none;
+}
+
+.iris-area-popover:popover-open,
+.iris-area-popover.is-open {
+    display: block;
+    animation: irisPop 150ms var(--iris-ease);
+}
+
+.iris-area-popover-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .25rem .45rem .5rem;
+    margin-bottom: .35rem;
+    border-bottom: 1px solid var(--cf-line);
+}
+
+.iris-area-popover-titulo {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-accent);
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+[data-tema="claro"] .iris-area-popover-titulo {
+    color: #9A6700;
+}
+
+.iris-area-popover-cerrar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 0;
+    background: transparent;
+    color: var(--cf-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.iris-area-popover-cerrar:hover {
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+}
+
+.iris-area-popover-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.iris-area-popover-item {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .5rem .65rem;
+    border-radius: 11px;
+    color: var(--cf-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 140ms ease, color 140ms ease;
+}
+
+.iris-area-popover-item:hover {
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+}
+
+.iris-area-popover-item.is-active {
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-weight: 700;
+}
+
+.iris-area-popover-item i {
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.iris-rail-utilidades {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .4rem;
+}
+
+.iris-rail-btn {
+    min-height: 36px;
+    padding: .4rem .45rem;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, .10);
+    background: rgba(255, 255, 255, .07);
+    color: #F2F5FC;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .32rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.iris-rail-btn:hover {
+    background: rgba(255, 255, 255, .14);
+    border-color: rgba(255, 255, 255, .22);
+    color: #FFFFFF;
+}
+
+/* Dos ramas del rótulo de tema por CSS (sin parpadeo ni JS) */
+.iris-tema-a-oscuro {
+    display: none;
+}
+
+[data-tema="claro"] .iris-tema-a-claro {
+    display: none;
+}
+
+[data-tema="claro"] .iris-tema-a-oscuro {
+    display: inline;
+}
+
+.iris-rail-salir-form {
+    margin: 0;
+}
+
+.iris-rail-salir {
+    width: 100%;
+    min-height: 38px;
+    padding: .45rem .7rem;
+    border-radius: 12px;
+    border: 0;
+    background: transparent;
+    color: #FF7B70;
+    font-size: 0.875rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+}
+
+.iris-rail-salir:hover {
+    background: #3E1D28;
+    color: #FFA096;
+}
+
+.iris-rail-estado {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .15rem .55rem;
+    font-size: 0.75rem;
+    color: #BAC2DC;
+}
+
+.iris-rail-estado-punto {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4BE38D;
+    flex-shrink: 0;
+}
+
+.iris-rail-estado.sin-red .iris-rail-estado-punto {
+    background: #FF7B70;
+}
+
+.iris-rail-estado.sin-red {
+    color: #FF7B70;
+    font-weight: 600;
+}
+
+/* ---------- 5. Barra superior dual iRiS (Notch central + Isla derecha) ---------- */
+.barra {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: 0;
+    min-height: 46px;
+    background: transparent;
+    backdrop-filter: none;
+    border-bottom: 0;
+    pointer-events: none;
+}
+
+@media (min-width: 1100px) {
+    .barra {
+        display: grid;
+        grid-template-columns: minmax(140px, 1fr) minmax(0, auto) minmax(140px, 1fr);
+        align-items: start;
+    }
+
+    .iris-barra-izq {
+        grid-column: 1;
+    }
+
+    .iris-barra-izq .subtitulo {
+        display: inline-flex !important;
+        align-items: center;
+        min-height: 34px;
+        padding: .22rem .9rem;
+        border-radius: 999px;
+        background: var(--cf-chassis);
+        color: #F2E2A4;
+        border: 1px solid rgba(255, 255, 255, .10);
+        font-size: 0.875rem;
+        font-weight: 700;
+        line-height: 1.2;
+        letter-spacing: .01em;
+    }
+
+    .iris-barra-centro {
+        grid-column: 2;
+        justify-self: center;
+    }
+
+    .iris-barra-der {
+        grid-column: 3;
+        justify-self: stretch;
+    }
+}
+
+.iris-barra-izq {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: 8px 0 0 14px;
+    pointer-events: none;
+}
+
+.iris-barra-izq > * {
+    pointer-events: auto;
+}
+
+.iris-barra-izq .subtitulo {
+    font-size: 1.05rem;
+    color: var(--cf-title);
+}
+
+.iris-menu-btn {
+    display: none;
+    min-width: 38px;
+    min-height: 36px;
+    padding: 0 .65rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .09);
+    color: #F2F5FC;
+    font-size: 0.875rem;
+    font-weight: 700;
+    align-items: center;
+    gap: .4rem;
+}
+
+.iris-menu-btn:hover {
+    background: rgba(255, 255, 255, .18);
+    color: #FFFFFF;
+}
+
+/* NOTCH CENTRAL soldado al techo del lienzo */
+.iris-barra-centro {
+    position: relative;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    display: flex;
+    justify-content: center;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+.iris-notch {
+    position: relative;
+    background-color: var(--cf-chassis);
+    color: #F2F5FC;
+    border-radius: 0 0 22px 22px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    max-width: min(74vw, 740px);
+}
+
+.iris-notch::before,
+.iris-notch::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+}
+
+.iris-notch::before {
+    left: -22px;
+    background: radial-gradient(circle at 0 22px, transparent 22px, var(--cf-chassis) 22.5px);
+}
+
+.iris-notch::after {
+    right: -22px;
+    background: radial-gradient(circle at 22px 22px, transparent 22px, var(--cf-chassis) 22.5px);
+}
+
+.iris-notch-reposo {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: 5px 14px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* Cajas simétricas dentro del Notch (0 montos $ · arqueo ciego) */
+.barra .chips-cajas {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.barra .chips-cajas::-webkit-scrollbar {
+    display: none;
+}
+
+.barra .chip-caja {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    min-height: 32px;
+    padding: .25rem .7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .08);
+    color: #C4CCE4;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-decoration: none;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.barra .chip-caja:hover {
+    background: rgba(255, 255, 255, .16);
+    border-color: rgba(250, 180, 31, .65);
+    color: #FFFFFF;
+}
+
+.barra .chip-caja.abierta {
+    color: #F2F5FC;
+}
+
+.barra .chip-caja .iris-caja-ic {
+    font-size: 0.85rem;
+    color: #9BA4C4;
+    flex-shrink: 0;
+}
+
+.barra .chip-caja.abierta .iris-caja-ic {
+    color: #BAC2DC;
+}
+
+.barra .chip-caja.propia {
+    border-color: rgba(250, 180, 31, .65);
+    box-shadow: none;
+}
+
+.barra .chip-caja.propia .iris-caja-ic {
+    color: var(--cf-accent);
+}
+
+.iris-chip-este-equipo {
+    display: inline-flex;
+    align-items: center;
+    padding: .08rem .44rem;
+    border-radius: 999px;
+    background: rgba(250, 180, 31, .2);
+    border: 1px solid rgba(250, 180, 31, .52);
+    color: #FFE08A;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    flex-shrink: 0;
+}
+
+/* Estado 0 cajas abiertas: resaltar en ámbar cálido para notarlo al abrir a la mañana */
+.barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir),
+.barra .chip-caja.sin-abiertas {
+    background: #3E2D0C;
+    border-color: rgba(250, 180, 31, .62);
+    color: #FFE08A;
+}
+
+.barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir):hover,
+.barra .chip-caja.sin-abiertas:hover {
+    background: #4E3910;
+    border-color: var(--cf-accent);
+    color: #FFFFFF;
+}
+
+.barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .punto,
+.barra .chip-caja.sin-abiertas .punto {
+    border-color: var(--cf-accent);
+    background: rgba(250, 180, 31, .28);
+}
+
+.barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .iris-caja-ic,
+.barra .chip-caja.sin-abiertas .iris-caja-ic {
+    color: var(--cf-accent);
+}
+
+.barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .chip-caja-quien,
+.barra .chip-caja.sin-abiertas .chip-caja-quien {
+    color: #F7D47A;
+}
+
+.barra .chip-caja .punto {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1.5px solid #9BA4C4;
+    flex-shrink: 0;
+}
+
+.barra .chip-caja.abierta .punto {
+    background: #4BE38D;
+    border-color: #4BE38D;
+    box-shadow: none;
+}
+
+.barra .chip-caja-quien {
+    color: #BAC2DC;
+    font-weight: 500;
+}
+
+.barra .chip-caja.abierta .chip-caja-quien {
+    color: #DCE1F4;
+}
+
+.barra .chip-caja-elegir {
+    border-style: dashed;
+    border-color: rgba(250, 180, 31, .45);
+    color: #F2E2A4;
+    background: rgba(250, 180, 31, .08);
+}
+
+.barra .chip-caja-elegir:hover {
+    background: rgba(250, 180, 31, .18);
+    color: #FFFFFF;
+}
+
+.iris-notch-vacio {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #DCE1F4;
+    padding: .2rem .35rem;
+    white-space: nowrap;
+}
+
+.iris-notch-vacio .punto {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4BE38D;
+}
+
+/* Píldora de autorizaciones pendientes con pulso suave */
+.iris-auth-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    min-height: 30px;
+    padding: .25rem .7rem;
+    border-radius: 999px;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-decoration: none;
+    flex-shrink: 0;
+    animation: irisGentlePulse 2.4s ease-in-out infinite;
+}
+
+.iris-auth-pill:hover {
+    background: var(--cf-accent-hover);
+    color: var(--cf-on-accent);
+}
+
+@keyframes irisGentlePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(250, 180, 31, .5); }
+    50% { box-shadow: 0 0 0 6px rgba(250, 180, 31, 0); }
+}
+
+/* NOTIFICACIONES UNIFICADAS EN EL NOTCH (overlay absoluto: 0px salto) */
+.iris-notch-aviso {
+    width: 100%;
+    padding: 5px 8px;
+    box-sizing: border-box;
+}
+
+.iris-notch-aviso[hidden] {
+    display: none;
+}
+
+.iris-notch.tiene-aviso .iris-notch-reposo,
+.iris-notch:has(> .iris-notch-aviso:not([hidden])) .iris-notch-reposo {
+    display: none;
+}
+
+/* En avisos largos el Notch crece hacia abajo sobre el contenido (0px salto) */
+.iris-barra-centro:has(.iris-notch.tiene-aviso-largo),
+.iris-barra-centro:has(.iris-aviso-caja.es-largo) {
+    position: static;
+}
+
+.iris-notch.tiene-aviso-largo,
+.iris-notch:has(.iris-aviso-caja.es-largo) {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(540px, calc(100% - 24px));
+    max-width: none;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, .48);
+    z-index: 30;
+}
+
+.iris-aviso-caja {
+    position: relative;
+    overflow: hidden;
+    border-radius: 999px;
+    border: 1.5px solid #4BE38D;
+    background: #15142C;
+    color: #7CF2B0;
+    min-height: 34px;
+    padding: .3rem .5rem .3rem .85rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .65rem;
+    font-size: 0.875rem;
+    animation: irisPop 200ms var(--iris-ease);
+}
+
+.iris-aviso-caja.sin-anim-entrada {
+    animation: none;
+}
+
+.iris-aviso-caja.es-largo {
+    border-radius: 16px;
+    padding: .8rem .95rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: .65rem;
+}
+
+.iris-aviso-caja.tono-aviso {
+    background: #3E2D0C;
+    border-color: #FAB41F;
+    color: #FFFFFF;
+}
+
+.iris-aviso-caja.tono-info {
+    background: #1A284A;
+    border-color: #8AB4FF;
+    color: #F2F5FC;
+}
+
+/* Barrido de timer translúcido de altura completa (se frena al pasar el mouse) */
+.iris-aviso-timer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transform-origin: left center;
+    background: rgba(75, 227, 141, .17);
+    animation: irisNoticeShrink var(--iris-notice-ms, 5500ms) linear forwards;
+}
+
+.iris-aviso-caja.tono-aviso .iris-aviso-timer {
+    background: rgba(250, 180, 31, .20);
+}
+
+.iris-aviso-caja.tono-info .iris-aviso-timer {
+    background: rgba(138, 180, 255, .20);
+}
+
+.iris-aviso-caja:hover .iris-aviso-timer,
+.iris-aviso-caja.pausado .iris-aviso-timer {
+    animation-play-state: paused;
+}
+
+@keyframes irisNoticeShrink {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+.iris-aviso-cuerpo {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.iris-aviso-caja.es-largo .iris-aviso-cuerpo {
+    align-items: flex-start;
+}
+
+.iris-aviso-ic {
+    font-size: 1rem;
+    flex-shrink: 0;
+    color: #4BE38D;
+}
+
+.iris-aviso-caja.tono-aviso .iris-aviso-ic {
+    color: #FAB41F;
+}
+
+.iris-aviso-caja.tono-info .iris-aviso-ic {
+    color: #8AB4FF;
+}
+
+.iris-aviso-texto {
+    font-weight: 700;
+    line-height: 1.35;
+    min-width: 0;
+}
+
+.iris-aviso-caja:not(.es-largo) .iris-aviso-texto {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.iris-aviso-cerrar {
+    position: relative;
+    z-index: 1;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(0, 0, 0, .28);
+    color: #FFFFFF;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.iris-aviso-cerrar:hover {
+    background: rgba(0, 0, 0, .48);
+}
+
+.iris-aviso-pie {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding-top: .55rem;
+    border-top: 1px solid rgba(255, 255, 255, .15);
+}
+
+.iris-aviso-pista {
+    font-size: 0.75rem;
+    color: #DCE1F4;
+}
+
+.iris-aviso-entendido {
+    padding: .35rem .9rem;
+    border-radius: 999px;
+    border: 0;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.iris-aviso-entendido:hover {
+    background: var(--cf-accent-hover);
+}
+
+/* Mensajes inline promovidos al Notch: ocultar contenedor vacío (errores nunca se ocultan) */
+.mensajes.iris-mensajes-promovidos {
+    display: none;
+}
+
+.aviso[data-iris-promovido="1"] {
+    display: none !important;
+}
+
+/* ISLA DERECHA ULTRA-LIMPIA (Avatar + Nombre ▾) */
+.iris-barra-der {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+    pointer-events: none;
+}
+
+.iris-isla-derecha {
+    position: relative;
+    pointer-events: auto;
+    background-color: var(--cf-chassis);
+    color: #F2F5FC;
+    border-radius: 0 0 0 22px;
+    min-height: 44px;
+    padding: 5px 10px 5px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.iris-isla-derecha::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -22px;
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+    background: radial-gradient(circle at 0 22px, transparent 22px, var(--cf-chassis) 22.5px);
+}
+
+.iris-isla-derecha::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: -22px;
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+    background: radial-gradient(circle at 0 22px, transparent 22px, var(--cf-chassis) 22.5px);
+}
+
+/* Botón tema compacto en isla derecha (visible sólo cuando el Rail es drawer < 1100px) */
+.iris-tema-movil-btn {
+    display: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .09);
+    color: #F2F5FC;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.iris-tema-movil-btn:hover {
+    background: rgba(255, 255, 255, .18);
+    color: #FFFFFF;
+}
+
+.barra .usuario {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 34px;
+    padding: 3px 11px 3px 4px !important;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .10);
+    color: #F2F5FC;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.barra .usuario:hover,
+.barra .usuario[aria-expanded="true"] {
+    background: rgba(255, 255, 255, .18);
+    border-color: rgba(250, 180, 31, .55);
+    color: #FFFFFF;
+}
+
+.barra .usuario .avatar {
+    width: 26px;
+    height: 26px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    flex-shrink: 0;
+}
+
+.iris-usuario-nombre {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iris-usuario-flecha {
+    font-size: 0.72rem;
+    color: #BAC2DC;
+}
+
+/* Desplegable de cuenta */
+.iris-isla-derecha .dropdown-menu {
+    min-width: 248px;
+    margin-top: .5rem !important;
+    border-radius: 16px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    padding: .45rem;
+}
+
+.iris-perfil-cabecera {
+    padding: .55rem .75rem .65rem;
+    border-bottom: 1px solid var(--cf-line);
+    margin-bottom: .35rem;
+}
+
+.iris-isla-derecha .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .55rem .75rem;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--cf-text);
+}
+
+.iris-isla-derecha .dropdown-item:hover,
+.iris-isla-derecha .dropdown-item:focus {
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+}
+
+.iris-isla-derecha .dropdown-item .iris-keycap {
+    margin-left: auto;
+}
+
+/* ---------- 6. Lienzo interior y Sub-pestañas soldadas ("carpeta física real") ---------- */
+main.pagina {
+    padding: 1.05rem 1.5rem 2rem;
+    max-width: 1440px;
+    width: 100%;
+    margin: 0 auto;
+    flex: 1;
+}
+
+.iris-subnav-wrap {
+    margin-bottom: 0;
+}
+
+/* Tira transparente apoyada directo sobre --cf-canvas (sin cajita invertida) */
+.iris-subnav-fila {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 2px 6px 0 0;
+    background: transparent;
+    border: 0;
+}
+
+.iris-subtabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    padding-top: 2px;
+}
+
+.iris-subtab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .56rem .85rem .62rem;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--cf-muted);
+    background: transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-radius: 15px 15px 0 0;
+    text-decoration: none;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+.iris-subtab:hover {
+    color: var(--cf-text);
+    background: rgba(128, 128, 160, .12);
+}
+
+.iris-subtab i {
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+/* Pestaña activa en --cf-surface soldada a 0px al cuerpo de la carpeta con curvas de 14px */
+.iris-subtab.is-active {
+    background: var(--cf-surface);
+    color: var(--cf-tab-fg);
+    font-weight: 700;
+    z-index: 2;
+}
+
+.iris-subtab.is-active:hover {
+    background: var(--cf-surface);
+    color: var(--cf-tab-fg);
+}
+
+.iris-subtab.is-active i {
+    color: var(--cf-accent);
+}
+
+[data-tema="claro"] .iris-subtab.is-active i {
+    color: #A06D00;
+}
+
+.iris-subtab.is-active::before,
+.iris-subtab.is-active::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+}
+
+.iris-subtab.is-active::before {
+    left: -14px;
+    background: radial-gradient(circle at 0 0, transparent 14px, var(--cf-surface) 14.5px);
+}
+
+.iris-subtab.is-active::after {
+    right: -14px;
+    background: radial-gradient(circle at 14px 0, transparent 14px, var(--cf-surface) 14.5px);
+}
+
+.iris-subtab.is-first.is-active::before {
+    display: none;
+}
+
+.iris-subnav-meta {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-muted);
+    padding-bottom: .68rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Cuerpo de carpeta física: solo se eleva en --cf-surface cuando hay sub-pestañas arriba.
+   Sin z-index para NO crear un stacking context que atrape a los modales Bootstrap detrás del backdrop. */
+.iris-subnav-wrap + .iris-pantalla-cuerpo {
+    background: var(--cf-surface);
+    border-radius: 16px;
+    padding: 1.25rem 1.35rem 1.4rem;
+}
+
+[data-tema="claro"] .iris-subnav-wrap + .iris-pantalla-cuerpo {
+    box-shadow: 0 2px 10px rgba(18, 17, 40, .05);
+}
+
+@media (min-width: 840px) {
+    .iris-subnav-wrap:not(.is-compacto):has(.iris-subtab.is-first.is-active) + .iris-pantalla-cuerpo {
+        border-top-left-radius: 0;
+    }
+}
+
+/* Superficies secundarias dentro de la carpeta física (--cf-surface-2 para contraste nítido) */
+.iris-subnav-wrap + .iris-pantalla-cuerpo .tarjeta:not(.tarjeta-accion):not(.tarjeta-destacada):not(.tarjeta-vencida),
+.iris-subnav-wrap + .iris-pantalla-cuerpo .card,
+.iris-subnav-wrap + .iris-pantalla-cuerpo .herramientas {
+    background: var(--cf-surface-2);
+    --c-superficie: var(--cf-surface-2);
+}
+
+/* En modo compacto (Selector táctil), separar levemente del cuerpo de carpeta */
+.iris-subnav-wrap.is-compacto {
+    margin-bottom: .75rem;
+}
+
+/* Selector táctil adaptativo (oculto por defecto en PC cuando todo entra en 1 fila) */
+.iris-subnav-selector {
+    display: none;
+    width: 100%;
+    min-height: 46px;
+    padding: .5rem .8rem;
+    border-radius: 14px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    align-items: center;
+    justify-content: space-between;
+    gap: .65rem;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.iris-subnav-selector:hover {
+    border-color: var(--cf-accent);
+}
+
+.iris-subnav-selector-izq {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    min-width: 0;
+}
+
+.iris-subnav-area-pill {
+    padding: .18rem .55rem;
+    border-radius: 999px;
+    background: var(--cf-surface-2);
+    border: 1px solid var(--cf-line);
+    color: var(--cf-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.iris-subnav-selector-ic {
+    color: var(--cf-accent);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+[data-tema="claro"] .iris-subnav-selector-ic {
+    color: #A06D00;
+}
+
+.iris-subnav-selector-actual {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iris-subnav-selector-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .28rem .65rem;
+    border-radius: 999px;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-size: 0.75rem;
+    font-weight: 800;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Conmutación por desborde (ResizeObserver en cafeto-iris.js) */
+.iris-subnav-wrap.is-compacto .iris-subnav-fila {
+    display: none;
+}
+
+.iris-subnav-wrap.is-compacto .iris-subnav-selector {
+    display: flex;
+}
+
+/* ---------- 7. Diálogos nativos iRiS (F1 Atajos · Ctrl+K Paleta · Bottom Sheet) ---------- */
+dialog.iris-dialog {
+    padding: 0;
+    border: 1px solid var(--cf-line-strong);
+    border-radius: 22px;
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, .5);
+    max-width: min(580px, calc(100vw - 24px));
+    width: 100%;
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    overflow: hidden;
+}
+
+dialog.iris-dialog[open] {
+    display: flex;
+    flex-direction: column;
+    animation: irisPop 180ms var(--iris-ease);
+}
+
+dialog.iris-dialog:modal {
+    overscroll-behavior: contain;
+}
+
+dialog.iris-dialog::backdrop {
+    background: rgba(7, 6, 18, .66);
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
+.iris-dialog-cabecera {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: 1.1rem 1.25rem .9rem;
+    border-bottom: 1px solid var(--cf-line);
+}
+
+.iris-dialog-eyebrow {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--cf-accent);
+}
+
+[data-tema="claro"] .iris-dialog-eyebrow {
+    color: #9A6700;
+}
+
+.iris-dialog-titulo {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: .15rem 0 0;
+    color: var(--cf-title);
+}
+
+.iris-dialog-cerrar {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    min-height: 34px;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.iris-dialog-cerrar:hover {
+    border-color: var(--cf-accent);
+}
+
+.iris-dialog-cuerpo {
+    padding: 1.1rem 1.25rem 1.25rem;
+    overflow-y: auto;
+}
+
+/* Modal F1 Atajos */
+.iris-atajos-grilla {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .9rem;
+}
+
+.iris-atajos-grupo {
+    background: var(--cf-surface-2);
+    border: 1px solid var(--cf-line);
+    border-radius: 16px;
+    padding: .9rem 1rem;
+}
+
+.iris-atajos-grupo-titulo {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-accent);
+    margin: 0 0 .5rem;
+}
+
+[data-tema="claro"] .iris-atajos-grupo-titulo {
+    color: #9A6700;
+}
+
+.iris-atajos-lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.iris-atajos-lista li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .5rem 0;
+    border-bottom: 1px solid var(--cf-line);
+    font-size: 0.875rem;
+}
+
+.iris-atajos-lista li:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.iris-atajos-teclas {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    flex-shrink: 0;
+}
+
+/* Paleta Ctrl+K */
+dialog.iris-dialog-paleta {
+    max-width: min(650px, calc(100vw - 24px));
+    margin-top: min(10vh, 76px);
+    margin-bottom: auto;
+}
+
+.iris-paleta-buscador {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: .85rem 1.15rem;
+    border-bottom: 1px solid var(--cf-line);
+}
+
+.iris-paleta-buscador > i {
+    color: var(--cf-muted);
+    font-size: 1.05rem;
+}
+
+.iris-paleta-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--cf-text);
+    font-size: 1rem;
+    font-weight: 500;
+    outline: none;
+}
+
+.iris-paleta-input:focus-visible {
+    outline: none;
+}
+
+.iris-paleta-input::placeholder {
+    color: var(--cf-muted);
+}
+
+.iris-paleta-cuenta {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-muted);
+    margin: 0 0 .6rem;
+}
+
+.iris-paleta-grilla {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+}
+
+.iris-paleta-item {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .65rem .8rem;
+    border-radius: 13px;
+    border: 1px solid var(--cf-line);
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+    text-decoration: none;
+    text-align: left;
+    min-width: 0;
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.iris-paleta-item:hover,
+.iris-paleta-item.is-seleccionado {
+    border-color: var(--cf-accent);
+    background: var(--cf-accent-soft);
+    color: var(--cf-text);
+}
+
+.iris-paleta-item-ic {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(250, 180, 31, .16);
+    color: var(--cf-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+[data-tema="claro"] .iris-paleta-item-ic {
+    color: #9A6700;
+}
+
+.iris-paleta-item-txt {
+    min-width: 0;
+    flex: 1;
+}
+
+.iris-paleta-item-titulo {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iris-paleta-item-area {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--cf-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iris-paleta-vacio {
+    padding: 1.5rem .5rem;
+    text-align: center;
+    color: var(--cf-muted);
+}
+
+/* Bottom Sheet adaptativo de sub-pestañas */
+dialog.iris-dialog-sheet {
+    max-width: min(520px, 100vw);
+    border-radius: 24px 24px 0 0;
+    border-bottom: 0;
+    margin-top: auto;
+    margin-bottom: 0;
+    max-height: 82dvh;
+}
+
+.iris-sheet-lista {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.iris-sheet-item {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    min-height: 52px;
+    padding: .65rem .85rem;
+    border-radius: 14px;
+    border: 1px solid var(--cf-line);
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+    text-decoration: none;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.iris-sheet-item:hover {
+    border-color: var(--cf-accent);
+    color: var(--cf-text);
+}
+
+.iris-sheet-item.is-active {
+    background: var(--cf-accent);
+    border-color: var(--cf-accent);
+    color: var(--cf-on-accent);
+}
+
+.iris-sheet-item-ic {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(250, 180, 31, .16);
+    color: var(--cf-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+}
+
+[data-tema="claro"] .iris-sheet-item:not(.is-active) .iris-sheet-item-ic {
+    color: #9A6700;
+}
+
+.iris-sheet-item.is-active .iris-sheet-item-ic {
+    background: rgba(18, 17, 40, .15);
+    color: var(--cf-on-accent);
+}
+
+.iris-sheet-actual-tag {
+    margin-left: auto;
+    padding: .18rem .55rem;
+    border-radius: 999px;
+    background: rgba(18, 17, 40, .16);
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+@keyframes irisPop {
+    from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ---------- 8. Breakpoints Responsivos (PC / Tablet H / Tablet V / Celular) ---------- */
+
+/* Tablet Horizontal + Tablet Vertical + Celular (< 1100px): Rail pasa a drawer */
+@media (max-width: 1099.98px) {
+    .app {
+        padding: 8px;
+    }
+
+    .contenido {
+        border-radius: 0 0 22px 22px;
+    }
+
+    .lateral {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        height: 100dvh;
+        width: min(296px, 84vw);
+        padding: 12px 10px 12px 12px;
+        z-index: 1050;
+        transform: translateX(-100%);
+        transition: transform 200ms var(--iris-ease);
+    }
+
+    .lateral.abierta {
+        transform: translateX(0);
+        box-shadow: 0 20px 56px rgba(0, 0, 0, .55);
+    }
+
+    .lateral-link.activo {
+        margin-right: 0;
+        border-radius: 12px;
+    }
+
+    .iris-lateral-cerrar {
+        display: inline-flex;
+    }
+
+    .iris-rail-modo-btn {
+        display: none;
+    }
+
+    .velo {
+        position: fixed;
+        inset: 0;
+        background: rgba(7, 6, 18, .62);
+        z-index: 1045;
+        display: none;
+    }
+
+    .velo.visible {
+        display: block;
+    }
+
+    /* En Tablet el botón Menú vive en su isla izquierda soldada al techo;
+       las islas laterales nunca se achican y el Notch usa el espacio libre central sin solaparse. */
+    .iris-barra-izq,
+    .iris-barra-der {
+        flex: 0 0 auto;
+    }
+
+    .iris-barra-centro {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0 10px;
+    }
+
+    .iris-barra-izq {
+        padding: 0;
+        align-items: flex-start;
+    }
+
+    .iris-isla-izquierda {
+        position: relative;
+        pointer-events: auto;
+        background: var(--cf-chassis);
+        color: #F2F5FC;
+        border-radius: 0 0 22px 0;
+        min-height: 44px;
+        padding: 5px 12px 5px 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+    }
+
+    .iris-isla-izquierda::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: -22px;
+        width: 22px;
+        height: 22px;
+        pointer-events: none;
+        background: radial-gradient(circle at 22px 22px, transparent 22px, var(--cf-chassis) 22.5px);
+    }
+
+    .iris-isla-izquierda::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: -22px;
+        width: 22px;
+        height: 22px;
+        pointer-events: none;
+        background: radial-gradient(circle at 22px 22px, transparent 22px, var(--cf-chassis) 22.5px);
+    }
+
+    .iris-menu-btn {
+        display: inline-flex;
+    }
+
+    .iris-barra-izq .subtitulo {
+        color: #F2E2A4;
+        font-size: 0.95rem;
+    }
+
+    .iris-tema-movil-btn {
+        display: inline-flex;
+    }
+
+    .iris-notch {
+        max-width: 100%;
+    }
+
+    .iris-notch-reposo {
+        padding: 5px 10px;
+        gap: .35rem;
+    }
+
+    .barra .chips-cajas.desborda-chips {
+        padding-right: 1rem;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.1rem), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 1.1rem), transparent);
+    }
+
+    .barra .chip-caja {
+        padding: .2rem .52rem;
+        gap: .3rem;
+        font-size: 0.78rem;
+    }
+
+    .iris-chip-este-equipo {
+        padding: .04rem .34rem;
+    }
+
+    main.pagina {
+        padding: 1rem 1.15rem 1.5rem;
+    }
+}
+
+/* Tablet Vertical y Celular (< 840px): Sub-pestañas siempre en Selector + Bottom Sheet */
+@media (max-width: 839.98px) {
+    .iris-subnav-wrap {
+        margin-bottom: .75rem;
+    }
+
+    .iris-subnav-fila {
+        display: none;
+    }
+
+    .iris-subnav-selector {
+        display: flex;
+    }
+
+    .iris-atajos-grilla,
+    .iris-paleta-grilla {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Celular (< 640px): BARRA SUPERIOR UNIFICADA soldada al chasis (0 esquineros!) */
+@media (max-width: 639.98px) {
+    .app {
+        padding: 0 6px 6px;
+    }
+
+    .contenido {
+        border-radius: 0 0 22px 22px;
+        min-height: calc(100dvh - 6px);
+    }
+
+    .barra {
+        align-items: center;
+        gap: .35rem;
+        min-height: 48px;
+        padding: 0 6px;
+        background: var(--cf-chassis);
+        pointer-events: auto;
+    }
+
+    /* Curvas cóncavas limpias de 22px uniendo la barra unificada con el lienzo */
+    .barra::before,
+    .barra::after {
+        content: "";
+        position: absolute;
+        bottom: -22px;
+        width: 22px;
+        height: 22px;
+        pointer-events: none;
+    }
+
+    .barra::before {
+        left: 0;
+        background: radial-gradient(circle at 22px 22px, transparent 22px, var(--cf-chassis) 22.5px);
+    }
+
+    .barra::after {
+        right: 0;
+        background: radial-gradient(circle at 0 22px, transparent 22px, var(--cf-chassis) 22.5px);
+    }
+
+    .iris-barra-izq {
+        flex: 0 0 auto;
+    }
+
+    .iris-isla-izquierda,
+    .iris-notch,
+    .iris-isla-derecha {
+        background: transparent;
+        border-radius: 0;
+        padding: 0;
+        min-height: 40px;
+        max-width: 100%;
+    }
+
+    .iris-isla-izquierda::before,
+    .iris-isla-izquierda::after,
+    .iris-notch::before,
+    .iris-notch::after,
+    .iris-isla-derecha::before,
+    .iris-isla-derecha::after {
+        display: none;
+    }
+
+    .iris-barra-centro {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .iris-barra-der {
+        flex: 0 0 auto;
+    }
+
+    .iris-notch-reposo {
+        padding: 0 2px;
+        gap: .3rem;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .barra .chips-cajas {
+        max-width: 100%;
+        padding-right: 0;
+        gap: .28rem;
+        -webkit-mask-image: none;
+        mask-image: none;
+    }
+
+    .barra .chips-cajas.desborda-chips {
+        padding-right: 1rem;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.1rem), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 1.1rem), transparent);
+    }
+
+    .barra .chip-caja {
+        padding: .18rem .5rem;
+        gap: .28rem;
+        font-size: 0.75rem;
+        min-height: 28px;
+    }
+
+    .barra .chip-caja .punto {
+        width: 8px;
+        height: 8px;
+    }
+
+    .iris-chip-este-equipo {
+        display: none;
+    }
+
+    .iris-menu-btn {
+        padding: 0 .5rem;
+        min-width: 36px;
+        min-height: 36px;
+    }
+
+    .iris-menu-btn-texto {
+        display: none;
+    }
+
+    .iris-usuario-nombre {
+        display: none;
+    }
+
+    .barra .usuario {
+        padding: 3px 7px 3px 3px !important;
+    }
+
+    /* Aviso en el Notch en celular: baja limpio ocupando todo el ancho */
+    .iris-notch.tiene-aviso,
+    .iris-notch.tiene-aviso-largo,
+    .iris-notch:has(> .iris-notch-aviso:not([hidden])),
+    .iris-notch:has(.iris-aviso-caja.es-largo) {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        transform: none;
+        width: 100%;
+        background: var(--cf-chassis);
+        border-radius: 0 0 20px 20px;
+        box-shadow: 0 14px 36px rgba(0, 0, 0, .5);
+        z-index: 40;
+    }
+
+    .iris-barra-centro:has(.iris-notch.tiene-aviso),
+    .iris-barra-centro:has(.iris-notch-aviso:not([hidden])) {
+        position: static;
+    }
+
+    .iris-subnav-wrap + .iris-pantalla-cuerpo {
+        padding: .9rem .8rem 1.15rem;
+    }
+
+    main.pagina {
+        padding: .95rem .65rem 1.5rem;
+    }
+}
+
+@media (max-width: 479.98px) {
+    .barra .chip-caja .iris-caja-ic {
+        display: none;
+    }
+}
+
+/* ---------- 8b. Fase 2 · Login Cafeto × iRiS (foto real encerrada + Surround) ---------- */
+:root,
+[data-tema="oscuro"] {
+    --cf-login-frame: #0B0A19;
+    --cf-login-input: #1A1935;
+}
+
+[data-tema="claro"] {
+    --cf-login-frame: #F4F1EA;
+    --cf-login-input: #FFFFFF;
+}
+
+.acceso.iris-login {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 14px;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 12px;
+    background: var(--cf-login-frame);
+    overflow: hidden;
+}
+
+.iris-login-foto {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 22px;
+    overflow: hidden;
+    background: #0B0A19;
+    border: 1px solid rgba(255, 255, 255, .08);
+}
+
+[data-tema="claro"] .iris-login-foto {
+    border-color: var(--cf-line);
+}
+
+.iris-login-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 48%;
+}
+
+.iris-login-scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(11, 10, 25, .14) 0%, rgba(11, 10, 25, .05) 52%, rgba(11, 10, 25, .86) 100%);
+}
+
+/* Top Notch soldado al marco Surround sobre la foto encerrada */
+.iris-login-notch-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.iris-login-notch {
+    position: relative;
+    pointer-events: auto;
+    background: var(--cf-login-frame);
+    color: var(--cf-text);
+    border-radius: 0 0 20px 20px;
+    min-height: 36px;
+    padding: .3rem 1.05rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    max-width: calc(100% - 48px);
+}
+
+.iris-login-notch::before,
+.iris-login-notch::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
+}
+
+.iris-login-notch::before {
+    left: -20px;
+    background: radial-gradient(circle at 0 20px, transparent 20px, var(--cf-login-frame) 20.5px);
+}
+
+.iris-login-notch::after {
+    right: -20px;
+    background: radial-gradient(circle at 20px 20px, transparent 20px, var(--cf-login-frame) 20.5px);
+}
+
+.iris-login-notch-logo {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.iris-login-notch-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4BE38D;
+    flex-shrink: 0;
+}
+
+.iris-login-notch-txt {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.iris-login-pie-foto {
+    position: absolute;
+    left: 1.75rem;
+    right: 1.75rem;
+    bottom: 1.5rem;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    color: #FFFFFF;
+}
+
+.iris-login-eyebrow {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--cf-accent);
+}
+
+.iris-login-lugar {
+    font-family: 'Caveat', cursive;
+    font-size: clamp(2rem, 1.5rem + 1.4vw, 2.75rem);
+    font-weight: 700;
+    line-height: 1;
+    color: #FFFFFF;
+}
+
+/* Zona derecha: formulario plano directamente sobre el marco Surround */
+.acceso.iris-login .acceso-caja {
+    width: 430px;
+    max-width: 100%;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.4rem;
+}
+
+.iris-login-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+}
+
+.iris-login-marca {
+    height: 32px;
+    width: auto;
+}
+
+.iris-login-tema {
+    min-height: 34px;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-login-input);
+    color: var(--cf-text);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.iris-login-tema:hover {
+    border-color: var(--cf-accent);
+}
+
+.acceso.iris-login .acceso-caja .card {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    margin: auto 0;
+    border-radius: 0;
+}
+
+.acceso.iris-login .form-label {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--cf-muted);
+    margin-bottom: .35rem;
+}
+
+.acceso.iris-login .form-control {
+    background-color: var(--cf-login-input);
+    border-color: var(--cf-line-strong);
+    color: var(--cf-text);
+    min-height: 46px;
+    padding: .65rem .9rem;
+    border-radius: 13px;
+    font-size: 0.96rem;
+    font-weight: 600;
+}
+
+.acceso.iris-login .form-control:focus {
+    background-color: var(--cf-login-input);
+    border-color: var(--cf-accent);
+}
+
+.iris-clave-wrap {
+    position: relative;
+}
+
+.iris-clave-wrap .form-control {
+    padding-right: 3rem;
+}
+
+.iris-clave-ojo {
+    position: absolute;
+    top: 50%;
+    right: .45rem;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--cf-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.iris-clave-ojo:hover {
+    color: var(--cf-text);
+    background: rgba(128, 128, 160, .14);
+}
+
+.iris-login-submit {
+    min-height: 48px;
+    border-radius: 999px;
+    font-size: 0.96rem;
+    font-weight: 800;
+}
+
+.iris-login-pie {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding-top: .85rem;
+    border-top: 1px solid var(--cf-line);
+    font-size: 0.78rem;
+    color: var(--cf-muted);
+}
+
+/* Tablet Vertical (576px..899px): foto apilada arriba + formulario centrado abajo */
+@media (max-width: 899.98px) {
+    .acceso.iris-login {
+        flex-direction: column;
+        gap: 12px;
+        padding: 10px;
+        overflow-y: auto;
+    }
+
+    .iris-login-foto {
+        flex: 0 0 auto;
+        height: 210px;
+        width: 100%;
+    }
+
+    .iris-login-pie-foto {
+        left: 1.1rem;
+        right: 1.1rem;
+        bottom: .9rem;
+    }
+
+    .acceso.iris-login .acceso-caja {
+        width: 100%;
+        max-width: 460px;
+        margin: 0 auto;
+        flex: 1 0 auto;
+        padding: .35rem .5rem .75rem;
+    }
+}
+
+/* Celular (<= 575.98px): foto compacta arriba para que .acceso-caja .card arranque en y < 160px y Entrar entre completo */
+@media (max-width: 575.98px) {
+    .acceso.iris-login {
+        padding: 8px 10px 12px;
+        gap: 8px;
+    }
+
+    .iris-login-foto {
+        height: 68px;
+        border-radius: 16px;
+    }
+
+    .iris-login-notch-wrap {
+        display: none;
+    }
+
+    .iris-login-pie-foto {
+        left: .85rem;
+        right: .85rem;
+        bottom: .45rem;
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: space-between;
+    }
+
+    .iris-login-eyebrow {
+        display: none;
+    }
+
+    .iris-login-lugar {
+        font-size: 1.5rem;
+    }
+
+    .acceso.iris-login .acceso-caja {
+        padding: 0 .15rem;
+        gap: .6rem;
+        justify-content: flex-start;
+    }
+
+    .iris-login-marca {
+        height: 26px;
+    }
+
+    .acceso.iris-login .acceso-caja .card {
+        margin: 0;
+        padding: 0;
+    }
+
+    .acceso.iris-login .acceso-caja .card .mb-3 {
+        margin-bottom: .65rem !important;
+    }
+
+    .acceso.iris-login .acceso-caja .card .mb-4 {
+        margin-bottom: .85rem !important;
+    }
+
+    .acceso.iris-login .form-control {
+        min-height: 44px;
+        padding: .55rem .85rem;
+    }
+
+    .iris-login-submit {
+        min-height: 46px;
+        padding: .65rem 1rem;
+    }
+
+    .iris-login-pie {
+        margin-top: auto;
+        padding-top: .6rem;
+    }
+}
+
+/* ---------- 8c. Fase 3 · Pulido de pantallas prioritarias ---------- */
+
+/* --- 8c.1 Inicio: alertas críticas fijas + avisos secundarios contraídos en <details> --- */
+.iris-avisos-criticos {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.iris-avisos-criticos .aviso {
+    margin-bottom: 0;
+    border-radius: 14px;
+    padding: .75rem 1rem;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.iris-avisos-criticos .aviso:hover {
+    border-color: var(--cf-danger);
+}
+
+.iris-avisos-secundarios {
+    display: block;
+}
+
+.iris-avisos-resumen {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    min-height: 40px;
+    max-width: 100%;
+    padding: .42rem .95rem;
+    border-radius: 999px;
+    border: 1px solid var(--cf-warn-border);
+    background: var(--cf-warn-bg);
+    color: var(--cf-warn);
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.25;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.iris-avisos-resumen::-webkit-details-marker {
+    display: none;
+}
+
+.iris-avisos-resumen:hover {
+    border-color: var(--cf-accent);
+}
+
+[data-tema="claro"] .iris-avisos-resumen {
+    color: #6E4C00;
+}
+
+.iris-avisos-ic {
+    font-size: 0.95rem;
+    flex-shrink: 0;
+}
+
+.iris-avisos-cuenta {
+    font-variant-numeric: tabular-nums;
+}
+
+.iris-avisos-flecha {
+    font-size: 0.82rem;
+    flex-shrink: 0;
+    margin-left: .1rem;
+}
+
+details.iris-avisos-secundarios[open] > .iris-avisos-resumen .iris-avisos-flecha {
+    rotate: 180deg;
+}
+
+details.iris-avisos-secundarios::details-content {
+    interpolate-size: allow-keywords;
+    overflow: clip;
+    contain: layout;
+}
+
+details.iris-avisos-secundarios:not([open])::details-content {
+    block-size: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .iris-avisos-flecha {
+        transition: rotate 180ms ease;
+    }
+
+    details.iris-avisos-secundarios::details-content {
+        transition: block-size, content-visibility, display;
+        transition-duration: 240ms;
+        transition-timing-function: var(--iris-ease);
+        transition-behavior: allow-discrete;
+    }
+}
+
+.iris-avisos-grilla {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
+    padding-top: .65rem;
+}
+
+.iris-avisos-grilla .aviso {
+    margin-bottom: 0;
+    border-radius: 14px;
+    padding: .72rem .95rem;
+    height: 100%;
+    align-items: center;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.iris-avisos-grilla .aviso:hover {
+    border-color: var(--cf-accent);
+}
+
+@media (max-width: 767.98px) {
+    .iris-avisos-grilla {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Inicio · Jerarquía de accesos rápidos (solo 1° CTA ámbar sólido; resto superficie limpia + placa) */
+.grilla-atajos > .tarjeta-accion {
+    border: 1px solid var(--cf-line);
+    padding: 1.15rem 1.2rem;
+    gap: .35rem;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.grilla-atajos > .tarjeta-accion > i.bi {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    margin-bottom: .35rem;
+    flex-shrink: 0;
+}
+
+.grilla-atajos > .tarjeta-accion:first-child {
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    border-color: var(--cf-accent);
+}
+
+.grilla-atajos > .tarjeta-accion:first-child:hover {
+    background: var(--cf-accent-hover);
+    border-color: var(--cf-accent-hover);
+    color: var(--cf-on-accent);
+}
+
+.grilla-atajos > .tarjeta-accion:first-child > i.bi {
+    background: rgba(18, 17, 40, .14);
+    color: var(--cf-on-accent);
+}
+
+.grilla-atajos > .tarjeta-accion:first-child .small {
+    color: rgba(18, 17, 40, .82);
+    font-weight: 600;
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) {
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    border-color: var(--cf-line);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child):hover {
+    background: var(--cf-surface-2);
+    border-color: var(--cf-accent);
+    color: var(--cf-text);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) strong {
+    color: var(--cf-text);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) .small {
+    color: var(--cf-muted);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi {
+    background: var(--cf-accent-soft);
+    color: var(--cf-warn);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi-arrow-repeat {
+    background: var(--cf-info-bg);
+    color: var(--cf-info);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi-box-arrow-in-down {
+    background: var(--cf-ok-bg);
+    color: var(--cf-ok);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi-fire {
+    background: var(--cf-warn-bg);
+    color: var(--cf-warn);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi-trash3 {
+    background: var(--cf-danger-bg);
+    color: var(--cf-danger);
+}
+
+.grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi-clipboard-check {
+    background: #2A214A;
+    color: #C4B5FD;
+}
+
+[data-tema="claro"] .grilla-atajos > .tarjeta-accion:not(:first-child) > i.bi-clipboard-check {
+    background: #F1EBFF;
+    color: #6333C4;
+}
+
+@media (max-width: 575.98px) {
+    .grilla-atajos > .tarjeta-accion {
+        padding: .9rem;
+    }
+
+    .grilla-atajos > .tarjeta-accion > i.bi {
+        width: 38px;
+        height: 38px;
+        font-size: 1.15rem;
+        margin-bottom: .2rem;
+    }
+}
+
+/* Inicio · Tarjetas KPI */
+.grilla-resumen .tarjeta.kpi {
+    border: 1px solid var(--cf-line);
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.grilla-resumen .tarjeta.kpi:hover {
+    border-color: var(--cf-accent);
+}
+
+.grilla-resumen .tarjeta.kpi .valor {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Inicio · Mini-gráfico 7 días en la tarjeta Reportes (SVG puro, 0 KB JS) */
+.grilla-resumen .tarjeta.kpi.iris-kpi-pulso {
+    gap: .45rem;
+}
+
+.iris-pulso-cabecera {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.iris-pulso-total {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--cf-title);
+}
+
+.iris-pulso-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 76px;
+    overflow: visible;
+}
+
+.iris-pulso-base {
+    stroke: var(--cf-line-strong);
+    stroke-width: 1;
+}
+
+.iris-pulso-barra {
+    fill: color-mix(in srgb, var(--cf-info) 62%, var(--cf-surface-2));
+    transition: fill 150ms ease;
+}
+
+[data-tema="claro"] .iris-pulso-barra {
+    fill: #8EA9DB;
+}
+
+.iris-pulso-col.sin-venta .iris-pulso-barra {
+    fill: var(--cf-line);
+}
+
+.iris-pulso-col.es-hoy .iris-pulso-barra {
+    fill: var(--cf-accent);
+}
+
+[data-tema="claro"] .iris-pulso-col.es-hoy .iris-pulso-barra {
+    fill: #D49100;
+}
+
+.iris-pulso-dia {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 9.5px;
+    font-weight: 600;
+    fill: var(--cf-muted);
+}
+
+.iris-pulso-col.es-hoy .iris-pulso-dia {
+    fill: var(--cf-accent);
+    font-weight: 800;
+}
+
+[data-tema="claro"] .iris-pulso-col.es-hoy .iris-pulso-dia {
+    fill: #8A6100;
+}
+
+.kpi .detalle.iris-pulso-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .4rem;
+    margin-top: auto;
+    padding-top: .35rem;
+    border-top: 1px solid var(--cf-line);
+    color: var(--cf-accent);
+    font-weight: 700;
+    font-size: 0.875rem;
+}
+
+[data-tema="claro"] .kpi .detalle.iris-pulso-link {
+    color: #8A6100;
+}
+
+.kpi .detalle.iris-pulso-link i {
+    transition: transform 150ms ease;
+}
+
+.iris-kpi-pulso:hover .detalle.iris-pulso-link i {
+    transform: translateX(3px);
+}
+
+/* --- 8c.2 Mostrador: pulido adulto + badge de cantidad + billetes rápidos --- */
+.buscador {
+    position: relative;
+}
+
+.iris-buscador-kbd {
+    position: absolute;
+    right: .65rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+@media (min-width: 992px) {
+    .buscador:has(.iris-buscador-kbd) .form-control {
+        padding-right: 3.1rem;
+    }
+}
+
+.producto-boton {
+    position: relative;
+    border-radius: 16px;
+    padding: .95rem;
+    background: var(--cf-surface);
+    border: 1px solid var(--cf-line);
+    color: var(--cf-text);
+    gap: .35rem;
+    transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.iris-subnav-wrap + .iris-pantalla-cuerpo .producto-boton {
+    background: var(--cf-surface-2);
+}
+
+.producto-boton:hover:not(:disabled) {
+    border-color: var(--cf-accent);
+    background: var(--cf-surface-2);
+}
+
+.iris-subnav-wrap + .iris-pantalla-cuerpo .producto-boton:hover:not(:disabled) {
+    background: var(--cf-surface);
+}
+
+.producto-boton.en-ticket {
+    border-color: var(--cf-accent);
+    background: var(--cf-accent-soft) !important;
+    box-shadow: inset 0 0 0 1px var(--cf-accent);
+}
+
+.producto-boton.en-ticket .nombre {
+    padding-right: 2.35rem;
+}
+
+.iris-prod-cant {
+    position: absolute;
+    top: .55rem;
+    right: .55rem;
+    min-width: 28px;
+    height: 26px;
+    padding: 0 .45rem;
+    border-radius: 999px;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-size: 0.84rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.producto-boton .nombre {
+    font-size: 0.98rem;
+    font-weight: 700;
+    line-height: 1.28;
+    color: var(--cf-text);
+}
+
+.producto-boton .stock {
+    font-size: 0.84rem;
+    color: var(--cf-muted);
+}
+
+.producto-boton .precio {
+    font-size: 1.22rem;
+    font-weight: 800;
+    color: var(--cf-accent);
+    font-variant-numeric: tabular-nums;
+}
+
+[data-tema="claro"] .producto-boton .precio {
+    color: #8A6100;
+}
+
+.ticket {
+    top: 58px;
+}
+
+.ticket > .tarjeta {
+    padding: 1.1rem 1.15rem;
+}
+
+.ticket .renglon {
+    gap: .35rem .75rem;
+    padding: .75rem 0;
+    border-bottom: 1px dashed var(--cf-line);
+}
+
+.ticket .renglon .fw-semibold {
+    font-size: 0.96rem;
+}
+
+.ticket .renglon .monto {
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: var(--cf-title);
+}
+
+.ticket .renglon .btn-icono {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    border-radius: 10px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ticket .renglon input.form-control {
+    min-height: 38px;
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    border-radius: 10px;
+}
+
+.ticket .renglon .btn-secundario:not(.btn-icono),
+.ticket .renglon .btn-outline-danger {
+    min-width: 36px;
+    min-height: 38px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ticket .renglon.ultimo {
+    background: var(--cf-accent-soft);
+    border-left: 4px solid var(--cf-accent);
+    border-radius: 12px;
+    margin-left: 0;
+    padding: .72rem .75rem;
+}
+
+.ticket .total {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 800;
+    font-size: clamp(2rem, 3.1vw, 2.75rem);
+    letter-spacing: -0.02em;
+    color: var(--cf-title);
+}
+
+#pagos input[aria-label="Efectivo recibido"],
+#pagos input[aria-label="Monto con este medio"] {
+    min-height: 44px;
+    min-width: 9.25rem;
+    width: 9.25rem !important;
+    font-size: 1.15rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+#pagos .small.text-secondary {
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+#filaVuelto:not(.d-none) {
+    background: var(--cf-ok-bg);
+    border: 1px solid var(--cf-ok-border);
+    border-radius: 14px;
+    padding: .6rem .85rem;
+    align-items: center !important;
+}
+
+#filaVuelto > span:first-child {
+    color: var(--cf-ok) !important;
+    font-weight: 700;
+}
+
+.visor-vuelto {
+    font-family: 'Lora', Georgia, serif;
+    font-weight: 800;
+    font-size: clamp(1.85rem, 2.8vw, 2.5rem);
+    color: var(--cf-ok);
+}
+
+.js-medio {
+    min-height: 40px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.iris-billetes {
+    background: var(--cf-surface-2);
+    border: 1px solid var(--cf-line);
+    border-radius: 13px;
+    padding: .6rem .7rem;
+}
+
+.iris-billetes[hidden] {
+    display: none;
+}
+
+.iris-subnav-wrap + .iris-pantalla-cuerpo .iris-billetes {
+    background: var(--cf-surface);
+}
+
+.iris-billetes-etiqueta {
+    display: block;
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-muted);
+    margin-bottom: .45rem;
+}
+
+.iris-billetes-fila {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .45rem;
+}
+
+.iris-billete-btn {
+    min-height: 42px;
+    padding: .35rem .5rem;
+    border-radius: 11px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.iris-billete-btn[data-iris-billete="exacto"] {
+    grid-column: 1 / -1;
+    min-height: 42px;
+    font-size: 0.94rem;
+}
+
+.iris-billete-btn[aria-pressed="true"] {
+    background: var(--cf-accent-soft);
+    border-color: var(--cf-accent);
+    color: var(--cf-text);
+}
+
+/* Modal post-cobro: Total y Vuelto con jerarquía adulta */
+.iris-cobrado-montos {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .85rem;
+}
+
+.iris-cobrado-caja {
+    flex: 1 1 160px;
+    padding: .75rem 1rem;
+    border-radius: 16px;
+    background: var(--cf-surface-2);
+    border: 1px solid var(--cf-line);
+}
+
+.iris-cobrado-total {
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--cf-title);
+}
+
+.iris-cobrado-vuelto-caja {
+    background: var(--cf-ok-bg);
+    border: 1.5px solid var(--cf-ok-border);
+}
+
+.iris-cobrado-vuelto-caja .eyebrow {
+    color: var(--cf-ok);
+}
+
+/* --- 8c.2b Ergonomía adulta en Ventas, Caja y Turnos --- */
+.iris-kpi-ventas .tarjeta.kpi .valor {
+    font-size: clamp(1.55rem, 2.2vw, 2.05rem);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.iris-tabla-ventas td.monto {
+    font-size: 1.08rem;
+    font-weight: 700;
+    color: var(--cf-title);
+}
+
+.iris-tabla-ventas tr.text-secondary td.monto {
+    color: var(--cf-muted);
+}
+
+.iris-tabla-turnos td.table-numero {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.iris-btn-accion {
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+}
+
+.iris-monto-input-group .form-control {
+    min-height: 54px;
+    font-size: 1.45rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.iris-monto-input-group .input-group-text {
+    font-size: 1.3rem;
+    font-weight: 700;
+    padding-inline: .95rem;
+}
+
+/* Ficha de turno (#modalTurno): sin scroll horizontal en escritorio/tablet y tarjetas en móvil */
+.iris-tabla-turno-wrap {
+    container-type: inline-size;
+}
+
+.iris-tabla-turno thead th {
+    white-space: normal;
+    line-height: 1.2;
+    vertical-align: bottom;
+    padding: .5rem .45rem;
+}
+
+.iris-tabla-turno tbody th {
+    font-weight: 600;
+}
+
+.iris-tabla-turno :is(th, td) {
+    padding: .5rem .45rem;
+}
+
+.iris-tabla-turno :is(th, td).table-numero {
+    padding-right: .55rem;
+}
+
+.iris-tabla-turno :is(th, td).table-numero + :is(th, td):not(.table-numero) {
+    padding-left: .55rem;
+}
+
+.iris-tabla-turno .iris-turno-total {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--cf-title);
+}
+
+@container (width < 520px) {
+    .iris-tabla-turno,
+    .iris-tabla-turno tbody,
+    .iris-tabla-turno tr,
+    .iris-tabla-turno th,
+    .iris-tabla-turno td {
+        display: block;
+    }
+
+    .iris-tabla-turno thead {
+        display: none;
+    }
+
+    .iris-tabla-turno tbody tr {
+        border: 1px solid var(--cf-line);
+        border-radius: 12px;
+        padding: .55rem .75rem;
+        margin-bottom: .6rem;
+        background: var(--cf-surface-2);
+    }
+
+    .iris-tabla-turno tbody th[scope="row"] {
+        position: static;
+        border-bottom: 1px solid var(--cf-line);
+        padding: 0 0 .4rem;
+        margin-bottom: .35rem;
+        font-size: 0.96rem;
+        color: var(--cf-title);
+        box-shadow: none;
+        background: transparent;
+    }
+
+    .iris-tabla-turno tbody td {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: .75rem;
+        border: 0;
+        padding: .2rem 0;
+        text-align: right;
+    }
+
+    .iris-tabla-turno tbody td::before {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--cf-muted);
+        text-align: left;
+    }
+
+    .iris-tabla-turno tbody td:nth-child(2)::before { content: "Ventas"; }
+    .iris-tabla-turno tbody td:nth-child(3)::before { content: "Cobrado en ventas"; }
+    .iris-tabla-turno tbody td:nth-child(4)::before { content: "Cambios"; }
+    .iris-tabla-turno tbody td:nth-child(5)::before { content: "Cobros ctas. ctes."; }
+    .iris-tabla-turno tbody td:nth-child(6)::before { content: "Total"; }
+}
+
+#cobrar {
+    min-height: 52px;
+    border-radius: 14px;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.iris-atajos-pie {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: .35rem;
+}
+
+.barra-ticket {
+    border-radius: 16px;
+    min-height: 52px;
+    font-weight: 700;
+}
+
+/* --- 8c.3 CRUDs (lista.html) + badges --- */
+.herramientas {
+    padding: .8rem .95rem;
+    gap: .6rem;
+}
+
+.grilla > article.tarjeta {
+    display: flex;
+    flex-direction: column;
+    transition: border-color 150ms ease;
+}
+
+.grilla > article.tarjeta:hover {
+    border-color: var(--cf-line-strong);
+}
+
+.grilla > article.tarjeta .tarjeta-pie {
+    margin-top: auto;
+    padding-top: .75rem;
+    border-top: 1px solid var(--cf-line);
+}
+
+.tarjeta-datos dd {
+    font-variant-numeric: tabular-nums;
+}
+
+.insignia {
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: .22rem .62rem;
+}
+
+/* --- 8c.4 Sugerencias de mejora (#35) --- */
+.barra-masiva {
+    padding: .75rem 1rem;
+    border-color: var(--cf-line-strong);
+    border-radius: 14px;
+}
+
+.barra-masiva .form-check-input,
+.iris-sugerencia-card .form-check-input {
+    width: 1.2rem;
+    height: 1.2rem;
+    cursor: pointer;
+}
+
+.barra-masiva .js-cuenta:not(:empty) {
+    padding: .2rem .65rem;
+    border-radius: 999px;
+    background: var(--cf-surface);
+    border: 1px solid var(--cf-line);
+    color: var(--cf-text);
+    font-weight: 700;
+    font-size: 0.78rem;
+}
+
+.iris-sugerencia-card:has(.js-marca:checked) {
+    border-color: var(--cf-accent);
+    background: var(--cf-accent-soft) !important;
+}
+
+.iris-sugerencia-hoy {
+    color: var(--cf-muted);
+}
+
+.iris-sugerencia-propuesto strong {
+    color: var(--cf-ok);
+    font-weight: 700;
+}
+
+.iris-sugerencia-pie {
+    margin-top: auto;
+    padding-top: .75rem;
+    border-top: 1px solid var(--cf-line);
+}
+
+/* --- 8c.5 Reportes y tablas responsivas --- */
+.capsulas-reportes a.btn {
+    border-radius: 999px;
+    font-weight: 600;
+    padding: .38rem .85rem;
+}
+
+.tarjeta-informe {
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.informe-descarga-etiqueta {
+    font-weight: 600;
+    font-size: 0.9375rem;
+}
+
+.informe-descarga-boton {
+    border-radius: 11px;
+    font-weight: 600;
+}
+
+.informe-descarga-boton:hover {
+    border-color: var(--cf-accent);
+}
+
+.informe-filtros {
+    border-top: 1px solid var(--cf-line);
+}
+
+.grafico-datos > summary {
+    font-weight: 600;
+    color: var(--cf-muted);
+}
+
+.grafico-datos > summary:hover {
+    color: var(--cf-text);
+}
+
+.table-responsive.desborda .table tr > :first-child {
+    background-color: var(--c-superficie);
+}
+
+/* ---------- 8d. Notificación en vivo (acciones), Onboarding inicial y Guía ? Ayuda ---------- */
+.iris-aviso-acciones {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    flex-shrink: 0;
+}
+
+a.iris-aviso-entendido {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+a.iris-aviso-entendido:hover {
+    color: var(--cf-on-accent);
+}
+
+.iris-aviso-secundario {
+    padding: .35rem .8rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .28);
+    background: rgba(255, 255, 255, .10);
+    color: #FFFFFF;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.iris-aviso-secundario:hover {
+    background: rgba(255, 255, 255, .20);
+}
+
+/* Primer inicio · Puesta en marcha hacia Ajustes del local */
+.iris-onboarding {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem 1.25rem;
+    padding: 1.05rem 1.2rem;
+    border-radius: 16px;
+    background: var(--cf-surface);
+    border: 1px solid var(--cf-warn-border);
+    border-left: 4px solid var(--cf-accent);
+}
+
+.iris-onboarding-cuerpo {
+    flex: 1 1 20rem;
+    min-width: 0;
+}
+
+.iris-onboarding-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .3rem;
+}
+
+.iris-onboarding-eyebrow {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-warn);
+}
+
+[data-tema="claro"] .iris-onboarding-eyebrow {
+    color: #7D5700;
+}
+
+.iris-onboarding-pct {
+    padding: .15rem .58rem;
+    border-radius: 999px;
+    background: var(--cf-warn-bg);
+    border: 1px solid var(--cf-warn-border);
+    color: var(--cf-warn);
+    font-size: 0.75rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-tema="claro"] .iris-onboarding-pct {
+    color: #6E4C00;
+}
+
+.iris-onboarding-titulo {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--cf-title);
+    margin: 0 0 .25rem;
+}
+
+.iris-onboarding-texto {
+    font-size: 0.9rem;
+    color: var(--cf-muted);
+    margin: 0 0 .6rem;
+}
+
+.iris-onboarding-progreso {
+    display: block;
+    width: 100%;
+    max-width: 360px;
+    height: 8px;
+    border: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--cf-surface-2);
+    accent-color: var(--cf-accent);
+}
+
+.iris-onboarding-progreso::-webkit-progress-bar {
+    background: var(--cf-surface-2);
+    border-radius: 999px;
+}
+
+.iris-onboarding-progreso::-webkit-progress-value {
+    background: var(--cf-accent);
+    border-radius: 999px;
+}
+
+.iris-onboarding-progreso::-moz-progress-bar {
+    background: var(--cf-accent);
+    border-radius: 999px;
+}
+
+.iris-onboarding-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    flex-shrink: 0;
+}
+
+@media (max-width: 575.98px) {
+    .iris-onboarding-acciones {
+        width: 100%;
+    }
+
+    .iris-onboarding-acciones > * {
+        flex: 1 1 auto;
+    }
+}
+
+/* Modal ? Ayuda con tabs accesibles (guía tabs: indicador de forma en ::after sin cambiar dimensiones) */
+dialog.iris-dialog-ayuda {
+    max-width: min(640px, calc(100vw - 24px));
+}
+
+.iris-ayuda-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: .25rem;
+    padding: 0 1.25rem;
+    border-bottom: 1px solid var(--cf-line);
+    background: var(--cf-surface);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.iris-ayuda-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.iris-ayuda-tab {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-height: 44px;
+    padding: .55rem .9rem;
+    border: 0;
+    background: transparent;
+    color: var(--cf-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 140ms ease;
+}
+
+.iris-ayuda-tab:hover {
+    color: var(--cf-text);
+}
+
+.iris-ayuda-tab[aria-selected="true"] {
+    color: var(--cf-text);
+}
+
+.iris-ayuda-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    border-block-end: 3px solid var(--cf-accent);
+}
+
+.iris-ayuda-panel-inner {
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+}
+
+.iris-ayuda-resumen {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--cf-muted);
+    line-height: 1.5;
+}
+
+.iris-ayuda-pasos {
+    margin: 0;
+    padding-left: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+    color: var(--cf-text);
+    font-size: 0.9375rem;
+    line-height: 1.48;
+}
+
+.iris-ayuda-pasos li::marker {
+    color: var(--cf-accent);
+    font-weight: 800;
+}
+
+[data-tema="claro"] .iris-ayuda-pasos li::marker {
+    color: #8A6100;
+}
+
+.iris-ayuda-consejo {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    padding: .72rem .9rem;
+    border-radius: 13px;
+    background: var(--cf-info-bg);
+    border: 1px solid var(--cf-info-border);
+    color: var(--cf-text);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.iris-ayuda-consejo > i {
+    color: var(--cf-info);
+    font-size: 1rem;
+    margin-top: .1rem;
+    flex-shrink: 0;
+}
+
+.iris-ayuda-acciones {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .55rem;
+    padding-top: .35rem;
+    border-top: 1px solid var(--cf-line);
+}
+
+.iris-ayuda-roadmap {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+}
+
+.iris-ayuda-roadmap-item {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .75rem .85rem;
+    border-radius: 14px;
+    background: var(--cf-surface-2);
+    border: 1px solid var(--cf-line);
+}
+
+.iris-ayuda-roadmap-item.is-actual {
+    border-color: var(--cf-accent);
+    background: var(--cf-accent-soft);
+}
+
+.iris-ayuda-roadmap-num {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-weight: 800;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.iris-ayuda-roadmap-txt {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+}
+
+.iris-ayuda-roadmap-txt strong {
+    font-size: 0.92rem;
+    color: var(--cf-text);
+}
+
+.iris-ayuda-roadmap-txt span {
+    font-size: 0.82rem;
+    color: var(--cf-muted);
+}
+
+.iris-ayuda-roadmap-ir {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+    .iris-ayuda-roadmap-item {
+        flex-wrap: wrap;
+    }
+
+    .iris-ayuda-roadmap-ir {
+        width: 100%;
+    }
+}
+
+/* Recorrido y Práctica interactiva paso a paso (spotlight sin z-index invasivos) */
+@keyframes irisTourPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(250, 180, 31, .42); }
+    50% { box-shadow: 0 0 0 8px rgba(250, 180, 31, 0); }
+}
+
+.iris-tour-destacado {
+    outline: 3px solid var(--cf-accent) !important;
+    outline-offset: 4px;
+    border-radius: 14px;
+    scroll-margin-top: 96px;
+    animation: irisTourPulse 2.2s ease-in-out infinite;
+}
+
+.iris-tour-caja {
+    position: fixed;
+    z-index: 1090;
+    width: min(360px, calc(100vw - 24px));
+    padding: .95rem 1.05rem;
+    border-radius: 16px;
+    background: var(--cf-surface);
+    border: 1.5px solid var(--cf-accent);
+    color: var(--cf-text);
+    box-shadow: 0 20px 52px rgba(0, 0, 0, .55);
+}
+
+.iris-tour-caja[hidden] {
+    display: none;
+}
+
+.iris-tour-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .4rem;
+}
+
+.iris-tour-meta {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .45rem;
+    min-width: 0;
+}
+
+.iris-tour-paso {
+    font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cf-accent);
+}
+
+[data-tema="claro"] .iris-tour-paso {
+    color: #8A6100;
+}
+
+.iris-tour-seguro {
+    display: inline-flex;
+    align-items: center;
+    gap: .28rem;
+    padding: .12rem .5rem;
+    border-radius: 999px;
+    background: var(--cf-ok-bg);
+    border: 1px solid var(--cf-ok-border);
+    color: var(--cf-ok);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+[data-tema="claro"] .iris-tour-seguro {
+    color: #166534;
+}
+
+.iris-tour-cerrar {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--cf-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.iris-tour-cerrar:hover {
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+}
+
+.iris-tour-titulo {
+    font-family: 'Lora', Georgia, serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--cf-title);
+    margin: 0 0 .35rem;
+}
+
+.iris-tour-texto {
+    font-size: 0.875rem;
+    color: var(--cf-muted);
+    line-height: 1.45;
+    margin: 0 0 .75rem;
+}
+
+.iris-tour-espera {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .48rem .72rem;
+    margin-bottom: .75rem;
+    border-radius: 11px;
+    background: var(--cf-warn-bg);
+    border: 1px solid var(--cf-warn-border);
+    color: var(--cf-warn);
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.iris-tour-espera[hidden] {
+    display: none;
+}
+
+[data-tema="claro"] .iris-tour-espera {
+    color: #6E4C00;
+}
+
+.iris-tour-espera.is-ok {
+    background: var(--cf-ok-bg);
+    border-color: var(--cf-ok-border);
+    color: var(--cf-ok);
+}
+
+[data-tema="claro"] .iris-tour-espera.is-ok {
+    color: #166534;
+}
+
+.iris-tour-pie {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+.iris-tour-saltar {
+    text-decoration: none;
+    padding-inline: .45rem;
+    margin-left: auto;
+    font-weight: 600;
+}
+
+.iris-tour-saltar:hover {
+    color: var(--cf-text) !important;
+    text-decoration: underline;
+}
+
+@media (max-width: 639.98px) {
+    .iris-tour-caja {
+        left: 12px !important;
+        right: 12px !important;
+        top: auto !important;
+        bottom: 12px !important;
+        width: auto;
+    }
+}
+
+/* ---------- 8e. Visor modal nativo de Comprobantes y Tickets (80 mm) ---------- */
+dialog.iris-dialog-comprobante {
+    max-width: min(460px, calc(100vw - 24px));
+}
+
+.iris-comprobante-bandeja {
+    background: var(--cf-canvas);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 1rem 1.15rem;
+}
+
+.iris-comprobante-estado {
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    padding: 1.4rem .5rem;
+    color: var(--cf-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.iris-comprobante-estado[hidden] {
+    display: none;
+}
+
+/* Papel térmico fiel de 80 mm (siempre papel blanco y tinta negra, en modo claro y oscuro) */
+.iris-comprobante-papel {
+    width: 80mm;
+    max-width: 100%;
+    background: #FFFFFF;
+    color: #000000;
+    font: 12px/1.35 'Courier New', Courier, monospace;
+    padding: 4.5mm 4mm;
+    border-radius: 6px;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .32);
+    text-align: left;
+}
+
+.iris-comprobante-papel[hidden] {
+    display: none;
+}
+
+.iris-comprobante-papel h1 {
+    font: bold 15px/1.25 'Courier New', Courier, monospace;
+    text-align: center;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: #000000;
+}
+
+.iris-comprobante-papel .comercio {
+    text-align: center;
+    font-size: 11px;
+    color: #000000;
+}
+
+.iris-comprobante-papel .tipo {
+    border: 2px solid #000000;
+    text-align: center;
+    font-weight: bold;
+    font-size: 13px;
+    padding: 3px 2px;
+    margin: 6px 0 4px;
+    color: #000000;
+}
+
+.iris-comprobante-papel .tipo small {
+    display: block;
+    font-weight: normal;
+    font-size: 11px;
+}
+
+.iris-comprobante-papel .centro {
+    text-align: center;
+}
+
+.iris-comprobante-papel .linea {
+    border-top: 1px dashed #000000;
+    margin: 6px 0;
+}
+
+.iris-comprobante-papel .doble {
+    border-top: 3px double #000000;
+    margin: 6px 0;
+}
+
+.iris-comprobante-papel .seccion {
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 11px;
+    margin: 2px 0;
+}
+
+.iris-comprobante-papel table {
+    width: 100%;
+    border-collapse: collapse;
+    color: #000000;
+}
+
+.iris-comprobante-papel td,
+.iris-comprobante-papel th {
+    vertical-align: top;
+    padding: 1px 0;
+    text-align: left;
+    font-weight: normal;
+    border: 0;
+    color: #000000;
+}
+
+.iris-comprobante-papel .der {
+    text-align: right;
+    white-space: nowrap;
+    padding-left: 4px;
+}
+
+.iris-comprobante-papel .sangria {
+    padding-left: 2ch;
+}
+
+.iris-comprobante-papel .tenue {
+    font-size: 10.5px;
+}
+
+.iris-comprobante-papel .total td {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.iris-comprobante-papel .fuerte {
+    font-weight: bold;
+}
+
+.iris-comprobante-papel .destacado {
+    border: 1px solid #000000;
+    padding: 2px 3px;
+    margin: 3px 0;
+    font-weight: bold;
+}
+
+.iris-comprobante-papel .alerta {
+    border: 2px solid #000000;
+    text-align: center;
+    font-weight: bold;
+    padding: 3px;
+    margin: 6px 0;
+}
+
+.iris-comprobante-papel .alerta span {
+    display: block;
+    font-weight: normal;
+    font-size: 11px;
+}
+
+.iris-comprobante-papel .firmas {
+    margin-top: 10px;
+}
+
+.iris-comprobante-papel .firma {
+    margin-top: 30px;
+    border-top: 1px solid #000000;
+    text-align: center;
+    font-size: 10.5px;
+    padding-top: 2px;
+}
+
+.iris-comprobante-papel .firma span {
+    display: block;
+}
+
+.iris-comprobante-papel .pie {
+    font-size: 10px;
+    text-align: center;
+    margin-top: 10px;
+    color: #000000;
+}
+
+.iris-comprobante-pie {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem;
+    padding: .85rem 1.15rem;
+    border-top: 1px solid var(--cf-line);
+    background: var(--cf-surface);
+}
+
+.iris-comprobante-pie-der {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    margin-left: auto;
+}
+
+.iris-comprobante-pie form {
+    margin: 0;
+}
+
+/* Host oculto en pantalla, exclusivo para imprimir el comprobante 80 mm sin recortes */
+.iris-print-host {
+    display: none;
+}
+
+/* ---------- 8b. Select2 iRiS, controles de alto contraste, tarjetas y tablas ---------- */
+/* Anula width: 100% !important de cafeto.css:592 cuando Select2 monta el desplegable
+   en <body> o en .modal-content con position: absolute + left > 0 (evita scroll horizontal). */
+body > .select2-container--open,
+.modal-content > .select2-container--open,
+.select2-container--open:has(> .select2-dropdown) {
+    width: auto !important;
+    max-width: calc(100vw - 16px);
+}
+
+.select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+    background-color: var(--cf-surface-2);
+    border: 1px solid var(--cf-line-strong);
+    border-radius: 12px;
+    min-height: 40px;
+    color: var(--cf-text);
+    font-size: 0.9375rem;
+    box-sizing: border-box;
+    transition: border-color .15s ease;
+}
+
+.select2-container--default .select2-selection--single {
+    height: 40px;
+    padding: .3rem .55rem;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--default.select2-container--open .select2-selection--single,
+.select2-container--default.select2-container--focus .select2-selection--single,
+.select2-container--default.select2-container--open .select2-selection--multiple,
+.select2-container--default.select2-container--focus .select2-selection--multiple {
+    border-color: var(--cf-accent);
+    outline: none;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--cf-text);
+    line-height: 1.45;
+    padding-left: .2rem;
+    padding-right: 1.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+    color: var(--cf-subtle);
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 38px;
+    right: .45rem;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow b {
+    border-color: var(--cf-muted) transparent transparent transparent;
+}
+
+.select2-container--default.select2-container--open .select2-selection--single .select2-selection__arrow b {
+    border-color: transparent transparent var(--cf-accent) transparent;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__clear {
+    color: var(--cf-muted);
+    margin-right: .35rem;
+    font-weight: 700;
+}
+
+.select2-dropdown {
+    background: var(--cf-surface);
+    border: 1px solid var(--cf-line-strong);
+    color: var(--cf-text);
+    border-radius: 12px;
+    box-shadow: var(--c-sombra);
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.select2-search--dropdown {
+    padding: .5rem;
+}
+
+.select2-search--dropdown .select2-search__field {
+    background: var(--cf-surface-2);
+    border: 1px solid var(--cf-line-strong) !important;
+    color: var(--cf-text);
+    border-radius: 8px;
+    padding: .42rem .65rem;
+    font-size: 0.9375rem;
+}
+
+.select2-search--dropdown .select2-search__field:focus {
+    border-color: var(--cf-accent) !important;
+    outline: none;
+}
+
+.select2-results__option {
+    padding: .55rem .75rem;
+    font-size: 0.9375rem;
+    color: var(--cf-text);
+}
+
+.select2-container--default .select2-results__option--selected {
+    background: var(--cf-surface-2);
+    color: var(--cf-title);
+    font-weight: 600;
+}
+
+.select2-container--default .select2-results__option--highlighted.select2-results__option--selectable {
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    font-weight: 600;
+}
+
+/* Radios y checkboxes con contraste AA/AAA en Oscuro y Claro (WCAG 1.4.11) */
+.form-check-input {
+    width: 1.2em;
+    height: 1.2em;
+    margin-top: .16em;
+    background-color: var(--cf-surface-2);
+    border: 1.75px solid #8E8CC4;
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+
+[data-tema="claro"] .form-check-input {
+    background-color: #FFFFFF;
+    border-color: #7A7469;
+}
+
+.form-check-input:hover:not(:disabled) {
+    border-color: var(--cf-accent);
+}
+
+.form-check-input:focus {
+    box-shadow: none;
+    border-color: var(--cf-accent);
+}
+
+.form-check-input:focus-visible {
+    outline: 2.5px solid var(--cf-accent);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+.form-check-input:checked {
+    background-color: var(--cf-accent);
+    border-color: var(--cf-accent);
+}
+
+.form-check-input:checked[type="checkbox"] {
+    --bs-form-check-bg-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23121128' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+.form-check-input:checked[type="radio"] {
+    --bs-form-check-bg-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='2.2' fill='%23121128'/%3e%3c/svg%3e");
+}
+
+.form-check-input:indeterminate[type="checkbox"] {
+    background-color: var(--cf-accent);
+    border-color: var(--cf-accent);
+    --bs-form-check-bg-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23121128' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10h8'/%3e%3c/svg%3e");
+}
+
+.form-check-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.form-check-label {
+    cursor: pointer;
+}
+
+/* Cambios y devoluciones: desplegable "¿Vuelve al stock?" legible en una línea */
+.iris-cambios-reingresa-th {
+    white-space: nowrap;
+}
+
+.iris-cambios-reingresa {
+    min-width: 13.5rem;
+    white-space: nowrap;
+}
+
+/* Tarjetas: evitar cortes a mitad de palabra junto a badges largos (/permisos/, /ordenes/) */
+.tarjeta-cabeza {
+    flex-wrap: wrap;
+    row-gap: .4rem;
+}
+
+.tarjeta-cabeza > :first-child {
+    flex: 1 1 11rem;
+    min-width: 0;
+}
+
+.tarjeta-titulo,
+.tarjeta-sub {
+    overflow-wrap: break-word;
+    word-break: normal;
+    hyphens: none;
+}
+
+/* Evita barra de scroll vertical fantasma en tablas cortas o vacías preservando sticky */
+.table-responsive {
+    overflow-x: auto;
+    overflow-y: clip;
+}
+
+/* Selects con botón "+" de alta rápida: misma altura que el resto y sin saltos */
+.d-flex:has(> .js-alta-rapida) > .flex-grow-1 {
+    min-width: 0;
+}
+
+.d-flex:has(> .js-alta-rapida) .form-select {
+    min-height: 40px;
+    height: 40px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.js-alta-rapida {
+    min-height: 40px;
+    min-width: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Objetivos táctiles cómodos en pantallas touch (WCAG 2.5.8) */
+@media (pointer: coarse) {
+    .iris-rail-btn,
+    .iris-menu-btn,
+    .iris-tema-movil-btn,
+    .iris-dialog-cerrar {
+        min-height: 40px;
+        min-width: 40px;
+    }
+}
+
+/* ---------- 9. Movimiento reducido e impresión ---------- */
+@media (prefers-reduced-motion: reduce) {
+    .iris-auth-pill,
+    .iris-aviso-caja,
+    .iris-tour-destacado,
+    dialog.iris-dialog[open] {
+        animation: none;
+    }
+}
+
+@media print {
+    body:has(> .app),
+    .app,
+    .contenido {
+        background: #FFFFFF !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        min-height: auto !important;
+    }
+
+    .iris-subnav-wrap,
+    .iris-skip-link,
+    dialog.iris-dialog {
+        display: none !important;
+    }
+
+    body.iris-imprimiendo-comprobante {
+        background: #FFFFFF !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    body.iris-imprimiendo-comprobante > *:not(#irisPrintHost) {
+        display: none !important;
+    }
+
+    body.iris-imprimiendo-comprobante > #irisPrintHost {
+        display: block !important;
+        width: 80mm;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+        background: #FFFFFF !important;
+    }
+
+    body.iris-imprimiendo-comprobante > #irisPrintHost .iris-comprobante-papel {
+        width: auto;
+        padding: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+}

@@ -190,7 +190,8 @@ class MedioPago(Maestra):
         # Mínimo 2: "QR" es un nombre de medio de pago legítimo (y es uno
         # de los datos iniciales; con 3 no se lo podía ni editar).
         self.nombre_medio_pago = texto_de_catalogo(
-            self.nombre_medio_pago, 2, 25, 'El nombre del medio de pago')
+            self.nombre_medio_pago, 2, 25, 'El nombre del medio de pago',
+            exige_letra=True)
         exigir_nombre_unico(self, 'nombre_medio_pago',
                             etiqueta='un medio de pago')
         self.recargo_porcentaje = validar_decimal(
@@ -289,7 +290,8 @@ class CajaRegistradora(Maestra):
     def clean(self):
         super().clean()
         self.nombre_caja_registradora = texto_de_catalogo(
-            self.nombre_caja_registradora, 3, 20, 'El nombre de la caja registradora')
+            self.nombre_caja_registradora, 3, 20, 'El nombre de la caja registradora',
+            exige_letra=True)
         exigir_nombre_unico(self, 'nombre_caja_registradora',
                             etiqueta='una caja registradora')
 

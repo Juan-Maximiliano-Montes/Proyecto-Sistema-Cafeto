@@ -65,7 +65,7 @@
             <h2 class="subtitulo h5 mb-0">La factura</h2>
             <div>
                 <label class="form-label" for="proveedor">Proveedor</label>
-                <div class="d-flex gap-2"><div class="flex-grow-1">
+                <div class="d-flex gap-2"><div class="flex-grow-1 min-w-0">
                 <select name="proveedor" id="proveedor" class="form-select"{% if orden %} disabled{% endif %}>
                     <option value="">Elegí el proveedor…</option>
                     {% for p in proveedores %}<option value="{{ p.pk|stringformat:"d" }}"{% if datos.proveedor == p.pk|stringformat:'s' or orden.id_proveedor_id == p.pk %} selected{% endif %}>{{ p }}</option>{% endfor %}
@@ -97,7 +97,7 @@
                     <input class="form-check-input" type="checkbox" name="ocasional" value="1" id="ocasional"{% if datos.ocasional %} checked{% endif %} aria-describedby="ayudaOcasional">
                     <label class="form-check-label" for="ocasional">Compra ocasional / de salvataje</label>
                     <div class="form-text" id="ayudaOcasional">Suma el stock sin cambiar el proveedor habitual ni el costo de referencia de los productos (el que usan los precios sugeridos).</div></div></div>
-                <div class="col-12"><label class="form-label" for="otros">Otros conceptos (percepciones, flete)</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="otros" id="otros" value="{{ datos.otros|default:'' }}" class="form-control" placeholder="0"></div></div>
+                <div class="col-12"><label class="form-label" for="otros">Otros conceptos (percepciones, flete)</label><div class="input-group"><span class="input-group-text">$</span><input type="text" inputmode="decimal" name="otros" id="otros" value="{{ datos.otros|default:'' }}" class="form-control" placeholder="0" data-minimo="0" data-decimales="2"></div></div>
             </div>
         </div>
     </div>

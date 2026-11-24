@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from compras.models import Proveedor, TipoEgreso
 from geografia.models import Localidad
 from nucleo.formularios import FormularioMaestro
-from nucleo.validaciones import normalizar_cuit, normalizar_telefono
+from nucleo.validaciones import normalizar_cuit, validar_telefono
 
 
 class ProveedorForm(forms.ModelForm):
@@ -152,12 +152,13 @@ class ProveedorForm(forms.ModelForm):
         return normalizar_cuit(self.cleaned_data.get('cuit_proveedor'))
 
     def clean_telefono_proveedor(self):
-        """Estandariza el teléfono ANTES del RegexValidator del modelo.
+        """Valida y estandariza el teléfono ANTES del RegexValidator del modelo.
 
         El operador puede escribir "(0387) 412-3456" o "+54 387 4123456";
-        en la base entra siempre como "387-4123456".
+        en la base entra siempre como dígitos normalizados. Si escribe letras
+        o menos de 7 dígitos, devuelve un error en el campo en vez de borrarlo.
         """
-        return normalizar_telefono(self.cleaned_data.get('telefono_proveedor'))
+        return validar_telefono(self.cleaned_data.get('telefono_proveedor'))
 
 
 # ===========================================================================

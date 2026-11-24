@@ -66,12 +66,14 @@ def buscar_productos(request):
     pagina = id_valido(request.GET.get('page')) or 1
 
     busqueda = request.GET.get('q', '').strip()
+    if '\x00' in busqueda:
+        return JsonResponse({'results': [], 'pagination': {'more': False}})
     productos = Producto.objects.filter(
         borrado_logico=False).select_related('id_marca')
     # ?excluir=COMBO,INSUMO  /  ?tipos=REVENTA,INSUMO: el selector de una
     # receta no ofrece combos; el del mostrador no ofrece insumos.
-    excluir = [t for t in request.GET.get('excluir', '').split(',') if t]
-    tipos = [t for t in request.GET.get('tipos', '').split(',') if t]
+    excluir = [t for t in request.GET.get('excluir', '').split(',') if t and '\x00' not in t]
+    tipos = [t for t in request.GET.get('tipos', '').split(',') if t and '\x00' not in t]
     if excluir:
         productos = productos.exclude(tipo_producto__in=excluir)
     if tipos:

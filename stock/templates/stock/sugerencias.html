@@ -43,7 +43,7 @@ suman "tildar todas" y el conteo en la confirmación.
 
 <div class="grilla">
 {% for s in filas %}
-    <article class="tarjeta">
+    <article class="tarjeta iris-sugerencia-card">
         <div class="tarjeta-cabeza">
             <div class="min-w-0 d-flex gap-2">
                 {% if s.tipo_sugerencia != 'RECETA' %}
@@ -62,12 +62,12 @@ suman "tildar todas" y el conteo en la confirmación.
             <span class="insignia insignia-marca">{{ s.get_tipo_sugerencia_display }}</span>
         </div>
         <dl class="tarjeta-datos">
-            <dt>Hoy</dt><dd>{{ s.valor_actual }}</dd>
-            <dt>Se propone</dt><dd><strong>{{ s.valor_propuesto }}</strong></dd>
+            <dt>Hoy</dt><dd class="iris-sugerencia-hoy">{{ s.valor_actual }}</dd>
+            <dt>Se propone</dt><dd class="iris-sugerencia-propuesto"><strong>{{ s.valor_propuesto }}</strong></dd>
             <dt>Por qué</dt><dd>{{ s.motivo }}</dd>
         </dl>
         <p class="small text-tenue mb-2">Propuesta el {{ s.fecha_creacion|date:"d/m/Y H:i" }}</p>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 iris-sugerencia-pie">
         {% if s.tipo_sugerencia == 'RECETA' %}
             <a href="{{ url_productos }}?busqueda={{ s.id_producto.nombre_producto|urlencode }}" class="btn btn-sm btn-primary"><i class="bi bi-journal-plus me-1" aria-hidden="true"></i>Ir a cargar la receta</a>
         {% else %}

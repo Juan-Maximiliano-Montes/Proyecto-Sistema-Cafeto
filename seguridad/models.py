@@ -61,6 +61,7 @@ from nucleo.reglas import (
 from nucleo.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
 from nucleo.validaciones import (
     exigir_nombre_unico,
+    texto_de_catalogo,
 )
 from nucleo.textos import pluralizar
 
@@ -189,7 +190,10 @@ class Perfil(SinBajaFisica, models.Model):
         mensajes, la documentación y las migraciones de datos.
         """
         super().clean()
-        self.nombre = (self.nombre or '').strip()
+        self.nombre = texto_de_catalogo(
+            self.nombre, 2, 20, 'El nombre del perfil', exige_letra=True)
+        self.descripcion = texto_de_catalogo(
+            self.descripcion, 1, 120, 'La descripción', obligatorio=False)
         exigir_nombre_unico(self, 'nombre', etiqueta='un perfil')
         if self.tope_descuento_porcentaje is None and not self.es_sistema:
             raise ValidationError({'tope_descuento_porcentaje': (

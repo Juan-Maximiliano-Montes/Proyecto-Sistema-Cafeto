@@ -5,6 +5,9 @@ borrarla lógicamente sólo escondería direcciones históricas. Por eso NO
 tienen baja lógica y su CRUD es alta y modificación (regla 4.4.a).
 """
 
+import re
+
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from nucleo.restricciones import CheckEnBase, CheckSQL, ClaveNormalizada
@@ -44,7 +47,12 @@ class Provincia(models.Model):
     def clean(self):
         super().clean()
         self.nombre_provincia = texto_de_catalogo(
-            self.nombre_provincia, 3, 60, 'El nombre de la provincia')
+            self.nombre_provincia, 3, 60, 'El nombre de la provincia',
+            exige_letra=True)
+        if re.search(r'\d', self.nombre_provincia):
+            raise ValidationError({
+                'nombre_provincia': 'El nombre de la provincia no puede llevar números.',
+            })
         exigir_nombre_unico(self, 'nombre_provincia',
                             etiqueta='una provincia')
 
@@ -82,7 +90,8 @@ class Localidad(models.Model):
     def clean(self):
         super().clean()
         self.nombre_localidad = texto_de_catalogo(
-            self.nombre_localidad, 2, 80, 'El nombre de la localidad')
+            self.nombre_localidad, 2, 80, 'El nombre de la localidad',
+            exige_letra=True)
         self.codigo_postal = validar_codigo_postal(self.codigo_postal)
         # Una localidad es única DENTRO de su provincia: "Rosario" existe
         # en Santa Fe y podría existir en otra.

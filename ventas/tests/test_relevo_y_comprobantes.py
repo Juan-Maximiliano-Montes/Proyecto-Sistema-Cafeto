@@ -493,3 +493,26 @@ class ValeYCambioTest(Base):
                       'Autorizó:', 'Firma del cliente (recibí conforme)'):
             with self.subTest(texto=texto):
                 self.assertIn(texto, html)
+
+    def test_el_ticket_tiene_papel_y_boton_volver_segun_permisos(self):
+        turno = self.abrir(self.ana)
+        venta = ventas.registrar(turno, self.ana, [ventas.Item(self.alfajor, D('1'))], [ventas.Pago(f.efectivo())])[0]
+
+        # Operador (vender): ve el papel y el botón Volver al mostrador (sin link a Ventas si no tiene ver_ventas).
+        self.entrar(self.ana)
+        html_op = self.client.get(reverse('ventas:ticket', args=[venta.pk])).content.decode()
+        self.assertIn('<article class="comprobante-papel">', html_op)
+        self.assertIn(f'href="{reverse("ventas:mostrador")}"', html_op)
+        self.assertIn('Volver al mostrador', html_op)
+
+        # Encargado (vender + ver_ventas): ve ambos enlaces de vuelta y la ficha también ofrece el ticket.
+        self.entrar(self.lucre)
+        html_enc = self.client.get(reverse('ventas:ticket', args=[venta.pk])).content.decode()
+        self.assertIn('<article class="comprobante-papel">', html_enc)
+        self.assertIn('Volver al mostrador', html_enc)
+        self.assertIn(f'href="{reverse("ventas:ventas")}"', html_enc)
+        self.assertIn('Ver ventas', html_enc)
+
+        ficha = self.client.get(reverse('ventas:ficha_venta', args=[venta.pk])).content.decode()
+        self.assertIn(reverse('ventas:ticket', args=[venta.pk]), ficha)
+        self.assertIn('Ver / imprimir ticket', ficha)

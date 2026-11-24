@@ -100,7 +100,8 @@ class CategoriaFidelizacion(Maestra):
     def clean(self):
         super().clean()
         self.nombre_categoria = texto_de_catalogo(
-            self.nombre_categoria, 3, 15, 'El nombre de la categoría')
+            self.nombre_categoria, 3, 15, 'El nombre de la categoría',
+            exige_letra=True)
         exigir_nombre_unico(self, 'nombre_categoria',
                             etiqueta='una categoría')
         self.puntos_minimos = validar_entero(
@@ -268,7 +269,8 @@ class Beneficio(Maestra):
     def clean(self):
         super().clean()
         self.descripcion_beneficio = texto_de_catalogo(
-            self.descripcion_beneficio, 5, 120, 'La descripción del beneficio')
+            self.descripcion_beneficio, 5, 120, 'La descripción del beneficio',
+            exige_letra=True)
 
         if self.tipo_beneficio not in TipoBeneficio.values:
             raise ValidationError({'tipo_beneficio': 'Elegí un tipo de la lista.'})
@@ -683,7 +685,7 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
         from nucleo.validaciones import normalizar_telefono
 
         texto = (texto or '').strip()
-        if not texto:
+        if not texto or '\x00' in texto:
             return None
         vigentes = cls.objects.filter(borrado_logico=False).select_related(
             'id_categoria')

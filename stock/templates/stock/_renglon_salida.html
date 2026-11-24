@@ -14,6 +14,6 @@
     </div>
     <div class="col-md-3">
         <label class="form-label small" for="cantidad_{{ fila.indice }}">Cantidad</label>
-        <div class="input-group"><input type="text" inputmode="decimal" name="cantidad_{{ fila.indice }}" id="cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control"><span class="input-group-text" id="unidad_{{ fila.indice }}">u.</span></div>
+        <div class="input-group"><input type="text" inputmode="decimal" name="cantidad_{{ fila.indice }}" id="cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control" data-minimo="0.001" data-decimales="3"><span class="input-group-text" id="unidad_{{ fila.indice }}">u.</span></div>
     </div>
 </div>

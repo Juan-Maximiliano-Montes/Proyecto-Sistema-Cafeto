@@ -40,9 +40,90 @@ class InicioTest(Base):
         respuesta = self.client.get(reverse('home'))
         self.assertContains(respuesta, 'Hola, Cami')
         self.assertNotContains(respuesta, 'Vendido hoy')
+        self.assertIsNone(respuesta.context['puesta_en_marcha'])
         self.client.logout()
         f.entrar(self.client, self.admin)
-        self.assertContains(self.client.get(reverse('home')), 'Vendido hoy')
+        inicio_admin = self.client.get(reverse('home'))
+        self.assertContains(inicio_admin, 'Vendido hoy')
+        self.assertIsNotNone(inicio_admin.context['puesta_en_marcha'])
+        self.assertContains(inicio_admin, 'Ir a Ajustes del local')
+
+    def test_el_aviso_de_primer_inicio_desaparece_al_completar_parametros(self):
+        f.entrar(self.client, self.admin)
+        # Antes de configurar CUIT/teléfono/correo y guardar: muestra la puesta en marcha.
+        inicial = self.client.get(reverse('home'))
+        self.assertTrue(inicial.context['puesta_en_marcha']['pendiente'])
+        self.assertLess(inicial.context['puesta_en_marcha']['porcentaje'], 80)
+        # Completa y guarda en Ajustes del local -> supera 80% y sella usuario_modificacion.
+        datos = {
+            'nombre_fantasia': 'Cafeto', 'razon_social': 'Cafeto Las Lomitas',
+            'cuit': '30-71234567-1', 'condicion_iva': 'MONOTRIBUTO',
+            'domicilio': 'Ruta Nacional 51 Km 17',
+            'telefono': '3874123456', 'correo': 'hola@cafeto.com.ar',
+            'redondeo_ventas': '1.00', 'tolerancia_arqueo': '500',
+            'fondo_caja_sugerido': '10.000', 'dias_para_cambios': '15',
+            'dias_aviso_vencimiento': '7',
+        }
+        self.client.post(reverse('negocio:parametros'), datos)
+        despues = self.client.get(reverse('home'))
+        self.assertIsNone(despues.context['puesta_en_marcha'])
+        self.assertNotContains(despues, 'Completá los datos de tu local antes de operar')
+
+    def test_parametros_rechaza_numeros_negativos(self):
+        f.entrar(self.client, self.admin)
+        datos = {
+            'nombre_fantasia': 'Cafeto', 'razon_social': 'Cafeto Las Lomitas',
+            'condicion_iva': 'MONOTRIBUTO', 'redondeo_ventas': '1.00',
+            'tolerancia_arqueo': '-500', 'fondo_caja_sugerido': '-1000',
+            'dias_para_cambios': '-5', 'dias_aviso_vencimiento': '0',
+        }
+        respuesta = self.client.post(reverse('negocio:parametros'), datos)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(respuesta.context['form'].errors)
+        parametros = ParametrosNegocio.vigentes()
+        self.assertGreaterEqual(parametros.tolerancia_arqueo, 0)
+        self.assertGreaterEqual(parametros.fondo_caja_sugerido, 0)
+
+    def test_el_mini_grafico_de_7_dias_sale_solo_con_ver_reportes(self):
+        from ventas import servicios
+        alfajor = f.producto('Alfajor', prov=self.prov, precio='1500')
+        f.comprar(self.admin, self.prov, (alfajor, 10, '800'))
+        turno = f.abrir_turno(self.admin)
+        servicios.registrar(turno, self.admin, [servicios.Item(alfajor, D('2'))],
+                            [servicios.Pago(f.efectivo())])
+
+        f.entrar(self.client, self.operador)
+        inicio_op = self.client.get(reverse('home'))
+        self.assertIsNone(inicio_op.context['pulso_ventas'])
+        self.assertNotContains(inicio_op, 'iris-kpi-pulso')
+        self.assertNotContains(inicio_op, 'Ver todos los reportes')
+        self.client.logout()
+
+        f.entrar(self.client, self.admin)
+        inicio_admin = self.client.get(reverse('home'))
+        pulso = inicio_admin.context['pulso_ventas']
+        self.assertIsNotNone(pulso)
+        self.assertEqual(len(pulso['barras']), 7)
+        self.assertEqual(pulso['total'], D('3000'))
+        self.assertTrue(pulso['barras'][-1]['es_hoy'])
+        self.assertContains(inicio_admin, 'iris-kpi-pulso')
+        self.assertContains(inicio_admin, 'class="iris-pulso-svg"')
+        self.assertContains(inicio_admin, 'Ver todos los reportes')
+
+    def test_olvide_y_elegir_clave_usan_el_marco_iris(self):
+        from seguridad import recuperacion
+        olvide = self.client.get(reverse('seguridad:olvide_clave'))
+        self.assertEqual(olvide.status_code, 200)
+        self.assertContains(olvide, 'class="acceso iris-login"')
+        self.assertContains(olvide, 'cafeto-fachada.jpg')
+        self.assertContains(olvide, 'data-tema-alternar')
+
+        enlace = recuperacion.token(self.operador, 'recuperar')
+        elegir = self.client.get(reverse('seguridad:elegir_clave', args=['recuperar', enlace]))
+        self.assertEqual(elegir.status_code, 200)
+        self.assertContains(elegir, 'class="acceso iris-login"')
+        self.assertContains(elegir, 'cafeto-fachada.jpg')
+        self.assertEqual(elegir.content.decode().count('data-iris-ver-clave'), 2)
 
 
 class ParametrosTest(Base):

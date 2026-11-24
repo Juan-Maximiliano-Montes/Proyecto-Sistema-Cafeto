@@ -41,7 +41,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label small" for="cantidad_destino_{{ fila.indice }}">Cantidad que entra</label>
-                <input type="text" inputmode="decimal" name="cantidad_destino_{{ fila.indice }}" id="cantidad_destino_{{ fila.indice }}" value="{{ fila.cantidad_destino }}" class="form-control">
+                <input type="text" inputmode="decimal" name="cantidad_destino_{{ fila.indice }}" id="cantidad_destino_{{ fila.indice }}" value="{{ fila.cantidad_destino }}" class="form-control" data-minimo="0.001" data-decimales="3">
             </div>
         </div>
     </div>

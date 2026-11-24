@@ -80,7 +80,7 @@ def cuentas(request):
         filas.sort(key=lambda c: (c.perdido_el is None, -(c.perdido_el.timestamp() if c.perdido_el else 0)))
     busqueda = request.GET.get('q', '').strip()[:60]
     hallados = []
-    if busqueda:
+    if busqueda and '\x00' not in busqueda:
         hallado = Cliente.identificar(busqueda)
         if hallado is not None:
             hallados = [hallado]

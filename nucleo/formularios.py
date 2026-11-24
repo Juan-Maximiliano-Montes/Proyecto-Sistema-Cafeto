@@ -12,6 +12,7 @@ restricciones de la base (capa 3).
 """
 from django import forms
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
+from django.core.validators import MinValueValidator
 
 # Clases de Bootstrap según el tipo de control.
 CLASES = {
@@ -75,6 +76,34 @@ class FormularioMaestro(forms.ModelForm):
             self.fields['version_leida'].initial = \
                 self.instance.fecha_modificacion.isoformat()
 
+    def _minimo_de(self, nombre, campo):
+        """Menor valor aceptado por el campo (si tiene cota >= 0), o None."""
+        minimo = getattr(campo, 'min_value', None)
+        validadores = list(getattr(campo, 'validators', ()))
+        modelo = getattr(getattr(self, '_meta', None), 'model', None)
+        if modelo is not None:
+            try:
+                validadores.extend(modelo._meta.get_field(nombre).validators)
+            except Exception:
+                pass
+        if minimo is None:
+            for validador in validadores:
+                if isinstance(validador, MinValueValidator):
+                    limite = validador.limit_value
+                    if callable(limite):
+                        limite = limite()
+                    minimo = limite if minimo is None else max(minimo, limite)
+        if minimo is None:
+            crudo = campo.widget.attrs.get('min')
+            if crudo not in (None, ''):
+                try:
+                    minimo = float(crudo)
+                except (TypeError, ValueError):
+                    minimo = None
+        if minimo is not None and minimo >= 0:
+            return minimo
+        return None
+
     def _localizar_importes(self):
         """Los importes se tipean en formato argentino: 1500,50 (V-G4).
 
@@ -91,15 +120,31 @@ class FormularioMaestro(forms.ModelForm):
           un ModelForm no da esa oportunidad: hay que hacerlo acá.
 
         ``inputmode="decimal"`` conserva el teclado numérico en el celular.
+        Además se propaga ``data-minimo`` y ``data-decimales`` para que el
+        resumen de ``.form-una-vez`` frene negativos o letras antes de pedir
+        confirmación (DD-103).
         """
-        for campo in self.fields.values():
-            if not isinstance(campo, forms.DecimalField):
-                continue
-            campo.localize = True
-            campo.widget.is_localized = True
-            if isinstance(campo.widget, forms.NumberInput):
-                campo.widget = forms.TextInput(attrs=dict(
-                    campo.widget.attrs, inputmode='decimal'))
+        for nombre, campo in self.fields.items():
+            if isinstance(campo, forms.DecimalField):
+                campo.localize = True
+                campo.widget.is_localized = True
+                minimo = self._minimo_de(nombre, campo)
+                if isinstance(campo.widget, forms.NumberInput):
+                    attrs = dict(campo.widget.attrs, inputmode='decimal')
+                    attrs.pop('min', None)
+                    attrs.pop('max', None)
+                    attrs.pop('step', None)
+                    campo.widget = forms.TextInput(attrs=attrs)
+                if minimo is not None:
+                    campo.widget.attrs.setdefault('data-minimo', str(minimo))
+                    decimales = getattr(campo, 'decimal_places', None)
+                    campo.widget.attrs.setdefault(
+                        'data-decimales', str(2 if decimales is None else decimales))
+            elif isinstance(campo, forms.IntegerField):
+                minimo = self._minimo_de(nombre, campo)
+                if minimo is not None:
+                    campo.widget.attrs.setdefault('data-minimo', str(minimo))
+                    campo.widget.attrs.setdefault('data-decimales', '0')
 
     def _decorar_campos(self):
         for nombre, campo in self.fields.items():

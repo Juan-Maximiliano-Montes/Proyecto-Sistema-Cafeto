@@ -11,6 +11,8 @@ from fidelizacion.models import (
     BeneficioProducto,
     CategoriaFidelizacion,
     Cliente,
+    ModoEntrega,
+    TipoBeneficio,
 )
 from geografia.models import Localidad
 from nucleo.formularios import FormularioMaestro, SelectorConBusqueda, vigentes_mas_el_actual
@@ -37,6 +39,8 @@ class CategoriaFidelizacionForm(FormularioMaestro):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['importe_por_punto'].widget.attrs.update({
+            'data-minimo': '1', 'data-decimales': '2'})
         if self.instance and self.instance.pk and self.instance.es_de_ingreso:
             self.fields['puntos_minimos'].disabled = True
             self.fields['puntos_minimos'].help_text = (
@@ -84,6 +88,13 @@ class BeneficioForm(FormularioMaestro):
                                CategoriaFidelizacion.objects.filter(borrado_logico=False))
         for nombre in ('vigencia_desde', 'vigencia_hasta'):
             self.fields[nombre].input_formats = ['%d/%m/%Y', '%Y-%m-%d']
+        # Porcentaje sólo para DESCUENTO; puntos sólo para CANJEABLE.
+        self.fields['porcentaje_descuento'].visible_si = f'modo_entrega={ModoEntrega.DESCUENTO}'
+        self.fields['puntos_requeridos'].visible_si = f'tipo_beneficio={TipoBeneficio.CANJEABLE}'
+        self.fields['porcentaje_descuento'].widget.attrs.update({
+            'data-minimo': '0.01', 'data-decimales': '2'})
+        self.fields['puntos_requeridos'].widget.attrs.update({
+            'data-minimo': '1', 'data-decimales': '0'})
 
         if self.instance and self.instance.pk and self.instance.ya_se_uso:
             congelados = ['id_categoria', 'tipo_beneficio', 'modo_entrega',
@@ -95,6 +106,20 @@ class BeneficioForm(FormularioMaestro):
                 'Este beneficio ya se usó en una venta: sólo se pueden '
                 'cambiar la descripción y la fecha de fin. Para cambiar lo '
                 'demás, dalo de baja y creá uno nuevo.')
+
+    def clean(self):
+        datos = super().clean()
+        if not (self.instance and self.instance.pk and self.instance.ya_se_uso):
+            # Si el usuario cambió el modo/tipo en pantalla, el campo oculto
+            # por data-visible-si puede traer un valor viejo del DOM: se
+            # descarta para no devolver un error invisible en un campo oculto.
+            if datos.get('modo_entrega') == ModoEntrega.ESPECIE:
+                datos['porcentaje_descuento'] = None
+                self._errors.pop('porcentaje_descuento', None)
+            if datos.get('tipo_beneficio') == TipoBeneficio.AUTOMATICO:
+                datos['puntos_requeridos'] = None
+                self._errors.pop('puntos_requeridos', None)
+        return datos
 
 
 

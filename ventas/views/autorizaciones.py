@@ -193,6 +193,42 @@ def _contestar(request, solicitud, usuario, aprobar, via):
     return resuelta
 
 
+@require_GET
+def pendientes_json(request):
+    """Conteo en vivo de autorizaciones pendientes para el Notch superior.
+
+    Responde sólo a sesiones autenticadas. Quienes no tienen permiso para
+    autorizar reciben siempre ``cantidad: 0`` sin filtrar datos ni motivos.
+    """
+    usuario = getattr(request, 'usuario_actual', None)
+    if usuario is None:
+        respuesta = JsonResponse({'ok': False}, status=401)
+        respuesta['Cache-Control'] = 'no-store'
+        return respuesta
+    if not a_distancia.puede_contestar(usuario):
+        respuesta = JsonResponse({'ok': True, 'puede': False, 'cantidad': 0, 'ultimo': None})
+        respuesta['Cache-Control'] = 'no-store'
+        return respuesta
+    a_distancia.vencer_las_viejas()
+    pendientes_qs = a_distancia.pendientes()
+    cantidad = pendientes_qs.count()
+    ultimo = None
+    if cantidad:
+        reciente = pendientes_qs.order_by('-fecha_solicitud').first()
+        if reciente is not None:
+            ultimo = {
+                'id': reciente.pk,
+                'caja': str(reciente.id_turno_caja.id_caja_registradora),
+                'pidio': f'{reciente.id_usuario_solicitante.nombre} {reciente.id_usuario_solicitante.apellido}'.strip(),
+                'motivo': reciente.motivo_solicitud,
+            }
+    respuesta = JsonResponse({
+        'ok': True, 'puede': True, 'cantidad': cantidad, 'ultimo': ultimo,
+    })
+    respuesta['Cache-Control'] = 'no-store'
+    return respuesta
+
+
 @requiere_alguno(*a_distancia.PERMISOS_PARA_AUTORIZAR, redirigir_a='home')
 def bandeja(request):
     if request.method == 'POST':

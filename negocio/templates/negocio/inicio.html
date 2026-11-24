@@ -13,15 +13,58 @@
     </div>
 </div>
 
-{% for tipo, icono, texto, url in avisos %}
-<a href="{{ url }}" class="aviso aviso-{{ tipo }} text-decoration-none"><i class="bi {{ icono }}"></i><span>{{ texto }}</span><i class="bi bi-chevron-right ms-auto"></i></a>
+{% if puesta_en_marcha %}
+<section class="iris-onboarding mb-3" aria-label="Configuración inicial del local">
+    <div class="iris-onboarding-cuerpo">
+        <div class="iris-onboarding-top">
+            <span class="iris-onboarding-eyebrow"><i class="bi bi-sliders me-1" aria-hidden="true"></i>Primeros pasos · Ajustes del local</span>
+            <span class="iris-onboarding-pct">{{ puesta_en_marcha.porcentaje }} % completo</span>
+        </div>
+        <h2 class="iris-onboarding-titulo">Completá los datos de tu local antes de operar</h2>
+        <p class="iris-onboarding-texto">Estos datos salen en los tickets y PDF, y definen las reglas de caja. <strong>Falta:</strong> {{ puesta_en_marcha.faltantes|join:", " }}.</p>
+        <progress class="iris-onboarding-progreso" value="{{ puesta_en_marcha.porcentaje|stringformat:"d" }}" max="100" aria-label="Progreso de configuración del local"></progress>
+    </div>
+    <div class="iris-onboarding-acciones">
+        <a href="{% url 'negocio:parametros' %}" class="btn btn-primary"><i class="bi bi-sliders me-1" aria-hidden="true"></i>Ir a Ajustes del local</a>
+        <button type="button" class="btn btn-secundario" data-iris-ayuda-abrir="pasos"><i class="bi bi-question-circle me-1" aria-hidden="true"></i>Ver guía</button>
+    </div>
+</section>
+{% endif %}
+
+{% if avisos %}
+{% regroup avisos|dictsort:0 by 0 as grupos_avisos %}
+{% for grupo in grupos_avisos %}
+{% if grupo.grouper == 'error' %}
+<div class="iris-avisos-criticos mb-3">
+    {% for tipo, icono, texto, url in grupo.list %}
+    <a href="{{ url }}" class="aviso aviso-{{ tipo }} text-decoration-none"><i class="bi {{ icono }}" aria-hidden="true"></i><span>{{ texto }}</span><i class="bi bi-chevron-right ms-auto" aria-hidden="true"></i></a>
+    {% endfor %}
+</div>
+{% endif %}
 {% endfor %}
+{% for grupo in grupos_avisos %}
+{% if grupo.grouper != 'error' %}
+<details class="iris-avisos-secundarios mb-3">
+    <summary class="iris-avisos-resumen">
+        <i class="bi bi-bell-fill iris-avisos-ic" aria-hidden="true"></i>
+        <span class="iris-avisos-cuenta">{{ grupo.list|length|pluralizar:"aviso operativo pendiente,avisos operativos pendientes" }}</span>
+        <i class="bi bi-chevron-down iris-avisos-flecha" aria-hidden="true"></i>
+    </summary>
+    <div class="iris-avisos-grilla">
+        {% for tipo, icono, texto, url in grupo.list %}
+        <a href="{{ url }}" class="aviso aviso-{{ tipo }} text-decoration-none"><i class="bi {{ icono }}" aria-hidden="true"></i><span>{{ texto }}</span><i class="bi bi-chevron-right ms-auto" aria-hidden="true"></i></a>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
+{% endfor %}
+{% endif %}
 
 {% if acciones %}
 <div class="grilla grilla-atajos atajos-{{ acciones|length }} mb-4">
     {% for titulo, icono, url, detalle in acciones %}
     <a href="{{ url }}" class="tarjeta tarjeta-accion">
-        <i class="bi {{ icono }}"></i>
+        <i class="bi {{ icono }}" aria-hidden="true"></i>
         <strong>{{ titulo }}</strong>
         <span class="small">{{ detalle }}</span>
     </a>
@@ -32,12 +75,30 @@
 {% if indicadores %}
 <div class="grilla grilla-resumen resumen-{{ indicadores|length }}">
     {% for i in indicadores %}
-    <a href="{{ i.url }}" class="tarjeta kpi text-reset{% if i.destacado %} tarjeta-destacada{% endif %}">
+    <a href="{{ i.url }}" class="tarjeta kpi text-reset{% if i.destacado %} tarjeta-destacada{% endif %}{% if i.clave == 'REPORTES' and pulso_ventas %} iris-kpi-pulso{% endif %}">
+        {% if i.clave == 'REPORTES' and pulso_ventas %}
+        <div class="iris-pulso-cabecera">
+            <span class="eyebrow">Reportes · 7 días</span>
+            <span class="iris-pulso-total">{{ pulso_ventas.total|pesos }}</span>
+        </div>
+        <svg class="iris-pulso-svg" viewBox="0 0 210 66" role="img" aria-label="Ventas de los últimos 7 días: total {{ pulso_ventas.total|pesos }}">
+            <line class="iris-pulso-base" x1="2" y1="47" x2="208" y2="47" />
+            {% for b in pulso_ventas.barras %}
+            <g class="iris-pulso-col{% if b.es_hoy %} es-hoy{% endif %}{% if not b.con_ventas %} sin-venta{% endif %}">
+                <title>{{ b.etiqueta }} {{ b.fecha|date:"d/m" }}: {{ b.monto|pesos }}</title>
+                <rect class="iris-pulso-barra" x="{{ b.x|stringformat:'d' }}" y="{{ b.y|stringformat:'d' }}" width="22" height="{{ b.alto|stringformat:'d' }}" rx="4" />
+                <text class="iris-pulso-dia" x="{{ b.cx|stringformat:'d' }}" y="61" text-anchor="middle">{{ b.etiqueta }}</text>
+            </g>
+            {% endfor %}
+        </svg>
+        <span class="detalle iris-pulso-link"><span>Ver todos los reportes</span><i class="bi bi-arrow-right" aria-hidden="true"></i></span>
+        {% else %}
         <span class="eyebrow">{{ i.titulo }}</span>
         {% if i.formato == 'pesos' %}<span class="valor">{{ i.valor|pesos }}</span>
         {% elif i.formato == 'numero' %}<span class="valor">{{ i.valor }}</span>
         {% else %}<span class="valor"><i class="bi bi-graph-up-arrow"></i></span>{% endif %}
         <span class="detalle">{{ i.detalle }}</span>
+        {% endif %}
     </a>
     {% endfor %}
 </div>

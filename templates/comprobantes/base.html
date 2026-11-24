@@ -34,7 +34,7 @@
     .firma span { display: block; }
     .pie { font-size: 10px; text-align: center; margin-top: 10px; }
     .acciones { font-family: system-ui, sans-serif; text-align: center; margin: 12px auto; width: 80mm; max-width: 100%; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-    .acciones a, .acciones button { font: 600 14px system-ui, sans-serif; padding: 10px 16px; min-height: 44px; border-radius: 8px; border: 1px solid #1b1b3a; background: #fff; color: #1b1b3a; text-decoration: none; cursor: pointer; }
+    .acciones a, .acciones button { font: 600 14px system-ui, sans-serif; padding: 10px 16px; min-height: 44px; border-radius: 8px; border: 1px solid #1b1b3a; background: #fff; color: #1b1b3a; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
     .acciones button { background: #1b1b3a; color: #fff; }
     @media print {
         html, body { background: #fff; }
@@ -44,12 +44,14 @@
 </style>
 </head>
 <body{% block autoimprimir %}{% endblock %}>
+<article class="comprobante-papel">
 <h1>{{ negocio.nombre_fantasia }}</h1>
 <div class="comercio">{{ negocio.razon_social }}{% if negocio.cuit %}<br>CUIT {{ negocio.cuit }}{% endif %}{% if negocio.domicilio %}<br>{{ negocio.domicilio }}{% endif %}</div>
 <div class="tipo">{% block tipo %}{% endblock %}</div>
 {% block cuerpo %}{% endblock %}
 <div class="pie">{% block pie %}Comprobante interno, no válido como factura.{% endblock %}{% if impreso %}<br>Emitido {{ impreso|date:"d/m/Y H:i:s" }}{% endif %}</div>
-<div class="acciones"><button type="button" data-imprimir>Imprimir</button>{% block acciones %}{% endblock %}</div>
+</article>
+<div class="acciones"><button type="button" data-imprimir>Imprimir</button>{% block acciones %}<a href="{% url 'home' %}">Volver al sistema</a>{% endblock %}</div>
 <script src="{% static 'cafeto/js/imprimir.js' %}"></script>
 </body>
 </html>

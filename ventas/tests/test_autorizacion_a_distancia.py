@@ -513,3 +513,37 @@ class DelegacionTest(Pantalla):
         self.assertEqual(yerba.stock_actual, D('4'))
         self.assertEqual((solicitud.estado_solicitud, solicitud.id_venta_id, solicitud.id_usuario_autorizante),
                          ('USADA', None, self.admin))
+
+    def test_pendientes_en_vivo_respeta_permisos_y_actualiza_al_aprobar(self):
+        url = reverse('ventas:pendientes_autorizacion')
+        # Sin sesión: navegación normal redirige a login (302); AJAX devuelve 401.
+        self.assertEqual(self.client.get(url).status_code, 302)
+        sin_sesion = self.client.get(url, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(sin_sesion.status_code, 401)
+
+        # Con un pedido pendiente, la cajera recibe 0 y nunca ve el motivo.
+        yerba = f.producto('Yerba', prov=self.prov, precio='3000', costo='2000')
+        self.entrar(self.cajera)
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self.pedir('pedir_autorizacion', {'tipo': 'ajuste', 'producto': yerba.pk, 'cantidad': '4'})
+        self.assertTrue(r['ok'], r)
+        vista_cajera = self.client.get(url)
+        self.assertEqual(vista_cajera.status_code, 200)
+        self.assertEqual(vista_cajera.json(), {'ok': True, 'puede': False, 'cantidad': 0, 'ultimo': None})
+
+        # Quien puede autorizar recibe el conteo y el detalle para el Notch en vivo.
+        f.entrar(self.client, self.admin)
+        vista_admin = self.client.get(url)
+        self.assertEqual(vista_admin.status_code, 200)
+        self.assertEqual(vista_admin['Cache-Control'], 'no-store')
+        datos = vista_admin.json()
+        self.assertTrue(datos['puede'])
+        self.assertEqual(datos['cantidad'], 1)
+        self.assertEqual(datos['ultimo']['id'], r['id'])
+        self.assertIn('Yerba', datos['ultimo']['motivo'])
+
+        # Al aprobar, el conteo en vivo vuelve a 0 de inmediato.
+        self.client.post(reverse('ventas:autorizaciones'), {'solicitud': r['id'], 'accion': 'aprobar'})
+        despues = self.client.get(url).json()
+        self.assertEqual(despues['cantidad'], 0)
+        self.assertIsNone(despues['ultimo'])

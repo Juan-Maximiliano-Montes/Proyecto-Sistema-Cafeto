@@ -45,16 +45,16 @@
                 </div>
                 <div class="table-responsive">
                 <table class="table align-middle mb-0">
-                    <thead><tr><th>Producto</th><th class="table-numero">Pagó c/u</th><th class="table-numero">Puede devolver</th><th style="width:7rem">Devuelve</th><th>¿Vuelve al stock?</th></tr></thead>
+                    <thead><tr><th>Producto</th><th class="table-numero">Pagó c/u</th><th class="table-numero">Puede devolver</th><th style="width:7rem">Devuelve</th><th class="iris-cambios-reingresa-th">¿Vuelve al stock?</th></tr></thead>
                     <tbody>
                     {% for r, queda, pedido, reingresa in renglones %}
                         <tr>
                             <td>{{ r.descripcion_item }}</td>
                             <td class="table-numero">{{ r.precio_reintegrable|pesos }}</td>
                             <td class="table-numero">{{ queda|cantidad }}</td>
-                            <td>{% if queda > 0 %}<input type="text" inputmode="decimal" name="devuelve_{{ r.pk|stringformat:"d" }}" class="form-control form-control-sm" value="{{ pedido }}" aria-label="Cantidad que devuelve">{% else %}<span class="small text-tenue">Ya devuelto</span>{% endif %}</td>
+                            <td>{% if queda > 0 %}<input type="text" inputmode="decimal" name="devuelve_{{ r.pk|stringformat:"d" }}" class="form-control form-control-sm" value="{{ pedido }}" data-minimo="0" data-decimales="3" aria-label="Cantidad que devuelve">{% else %}<span class="small text-tenue">Ya devuelto</span>{% endif %}</td>
                             <td>{% if queda > 0 and r.id_producto.tiene_stock_propio %}
-                                <select name="reingresa_{{ r.pk|stringformat:"d" }}" class="form-select form-select-sm" aria-label="¿Vuelve al stock?">
+                                <select name="reingresa_{{ r.pk|stringformat:"d" }}" class="form-select form-select-sm iris-cambios-reingresa" aria-label="¿Vuelve al stock?">
                                     <option value="1">Sí, está en buen estado</option>
                                     <option value="0"{% if reingresa == '0' %} selected{% endif %}>No (dañado o vencido)</option>
                                 </select>
@@ -76,7 +76,7 @@
                             {% if fila.producto %}<option value="{{ fila.producto.pk|stringformat:"d" }}" selected>{{ fila.producto }}</option>{% endif %}
                         </select>
                     </div>
-                    <div class="col-4"><input type="text" inputmode="decimal" name="entrega_cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control" placeholder="Cantidad" aria-label="Cantidad que se lleva"></div>
+                    <div class="col-4"><input type="text" inputmode="decimal" name="entrega_cantidad_{{ fila.indice }}" value="{{ fila.cantidad }}" class="form-control" placeholder="Cantidad" data-minimo="0.001" data-decimales="3" aria-label="Cantidad que se lleva"></div>
                 </div>
                 {% endfor %}
             </div>

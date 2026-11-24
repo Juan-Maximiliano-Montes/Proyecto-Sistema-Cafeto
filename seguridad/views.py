@@ -1043,7 +1043,9 @@ def verificar_dni(request):
         return denegado
 
     dni = request.GET.get('dni', '').strip()
-    existe = bool(dni and Usuario.objects.filter(dni_usuario=dni).exists())
+    if not dni or '\x00' in dni:
+        return JsonResponse({'existe': False})
+    existe = Usuario.objects.filter(dni_usuario=dni).exists()
     return JsonResponse({'existe': existe})
 
 

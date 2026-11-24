@@ -124,6 +124,39 @@ class ParametrosNegocio(ConSelloDeModificacion, SinBajaFisica, models.Model):
     def __str__(self):
         return self.nombre_fantasia
 
+    UMBRAL_CONFIGURACION_INICIAL = 80
+
+    def estado_configuracion(self):
+        """Progreso de configuración del local para la guía de primer inicio.
+
+        Evalúa los 7 datos del comercio y si alguien con permiso ya revisó y
+        guardó las reglas al menos una vez (``usuario_modificacion_id``).
+        Mientras esté por debajo del 80 % o nunca se haya guardado, el Inicio
+        muestra un aviso amigable que lleva directo a Ajustes del local.
+        """
+        campos = (
+            ('Razón social', bool((self.razon_social or '').strip())),
+            ('Nombre de fantasía', bool((self.nombre_fantasia or '').strip())),
+            ('CUIT', bool((self.cuit or '').strip())),
+            ('Domicilio', bool((self.domicilio or '').strip())),
+            ('Localidad', bool(self.id_localidad_id)),
+            ('Teléfono', bool((self.telefono or '').strip())),
+            ('Correo', bool((self.correo or '').strip())),
+            ('Confirmar reglas del local', bool(self.usuario_modificacion_id)),
+        )
+        completos = sum(1 for _etiqueta, ok in campos if ok)
+        total = len(campos)
+        porcentaje = round(completos * 100 / total)
+        faltantes = [etiqueta for etiqueta, ok in campos if not ok]
+        return {
+            'porcentaje': porcentaje,
+            'completos': completos,
+            'total': total,
+            'faltantes': faltantes,
+            'pendiente': (porcentaje < self.UMBRAL_CONFIGURACION_INICIAL
+                          or not self.usuario_modificacion_id),
+        }
+
     @classmethod
     def vigentes(cls):
         """La fila única. La crea la migración; si no está, se crea acá."""
@@ -136,9 +169,10 @@ class ParametrosNegocio(ConSelloDeModificacion, SinBajaFisica, models.Model):
     def clean(self):
         super().clean()
         self.razon_social = texto_de_catalogo(
-            self.razon_social, 3, 80, 'La razón social')
+            self.razon_social, 3, 80, 'La razón social', exige_letra=True)
         self.nombre_fantasia = texto_de_catalogo(
-            self.nombre_fantasia, 2, 60, 'El nombre de fantasía')
+            self.nombre_fantasia, 2, 60, 'El nombre de fantasía',
+            exige_letra=True)
         self.domicilio = texto_de_catalogo(
             self.domicilio, 3, 120, 'El domicilio', obligatorio=False)
         if self.cuit:

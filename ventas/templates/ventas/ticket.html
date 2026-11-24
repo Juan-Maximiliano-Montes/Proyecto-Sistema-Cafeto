@@ -68,4 +68,9 @@
 {% endblock %}
 
 {% block pie %}Comprobante interno, no válido como factura.<br>Cambios dentro de los {{ negocio.dias_para_cambios }} días con este ticket.<br>¡Gracias por elegirnos!{% endblock %}
+{% block acciones %}
+{% if 'vender' in permisos_usuario %}<a href="{% url 'ventas:mostrador' %}">Volver al mostrador</a>{% endif %}
+{% if 'ver_ventas' in permisos_usuario %}<a href="{% url 'ventas:ventas' %}">Ver ventas</a>{% endif %}
+{% if 'vender' not in permisos_usuario and 'ver_ventas' not in permisos_usuario %}<a href="{% url 'home' %}">Volver al sistema</a>{% endif %}
+{% endblock %}
 {% block autoimprimir %} data-autoimprimir{% endblock %}

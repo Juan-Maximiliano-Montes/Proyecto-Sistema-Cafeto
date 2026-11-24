@@ -3,10 +3,45 @@
 {% block titulo %}Cafeto · Recuperar la clave{% endblock %}
 
 {% block pantalla %}
-<main class="acceso">
+<main class="acceso iris-login">
+    <section class="iris-login-foto" aria-label="Cafeto Las Lomitas">
+        <img class="iris-login-img"
+             src="{% static 'cafeto/marca/cafeto-fachada.jpg' %}"
+             alt="Fachada de Cafeto Las Lomitas en Ruta Nacional 51 Km. 17"
+             width="1264"
+             height="848"
+             fetchpriority="high">
+        <div class="iris-login-scrim" aria-hidden="true"></div>
+
+        <div class="iris-login-notch-wrap">
+            <div class="iris-login-notch">
+                <img class="iris-login-notch-logo"
+                     src="{% static 'cafeto/marca/cafeto-icono-ambar.svg' %}"
+                     alt=""
+                     aria-hidden="true"
+                     width="20"
+                     height="20">
+                <span class="iris-login-notch-dot" aria-hidden="true"></span>
+                <span class="iris-login-notch-txt">Ruta 51 Km. 17 · Campo Quijano · NAS Local</span>
+            </div>
+        </div>
+
+        <div class="iris-login-pie-foto">
+            <span class="iris-login-eyebrow">Ruta Nacional 51 Km. 17 · Campo Quijano, Salta</span>
+            <strong class="iris-login-lugar">Cafeto Las Lomitas</strong>
+        </div>
+    </section>
+
     <div class="acceso-caja">
-        <img class="acceso-logo logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="Cafeto Las Lomitas">
-        <img class="acceso-logo logo-para-claro" src="{% static 'cafeto/marca/cafeto-isologotipo-positivo.svg' %}" alt="Cafeto Las Lomitas">
+        <div class="iris-login-top">
+            <img class="iris-login-marca logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
+            <img class="iris-login-marca logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
+            <button type="button" class="iris-login-tema" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
+                <i class="bi bi-circle-half" aria-hidden="true"></i>
+                <span class="iris-tema-a-claro">Claro</span>
+                <span class="iris-tema-a-oscuro">Oscuro</span>
+            </button>
+        </div>
 
         <div class="card">
             {% if enviado %}
@@ -17,7 +52,7 @@
                 <li>Si no lo ves, mirá en Spam o Correo no deseado.</li>
                 <li>Si no te llega, pedile a quien administra el sistema que te restablezca la clave.</li>
             </ul>
-            <a href="{% url 'seguridad:login' %}" class="btn btn-primary w-100 mt-2"><i class="bi bi-arrow-left me-1"></i>Volver al ingreso</a>
+            <a href="{% url 'seguridad:login' %}" class="btn btn-primary btn-xl w-100 mt-2 iris-login-submit"><i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Volver al ingreso</a>
             {% else %}
             <h1 class="titulo-pantalla mb-1">¿Te olvidaste la clave?</h1>
             <p class="text-secondary mb-4">Escribí tu DNI o tu usuario y te mandamos un enlace a tu correo para que elijas una nueva.</p>
@@ -28,12 +63,19 @@
                     {{ form.identificador }}
                     {% if form.identificador.errors %}<p class="error-campo">{{ form.identificador.errors|striptags }}</p>{% endif %}
                 </div>
-                <button type="submit" class="btn btn-primary btn-xl w-100" data-requiere-red><i class="bi bi-envelope me-1"></i> Mandarme el enlace</button>
+                <button type="submit" class="btn btn-primary btn-xl w-100 iris-login-submit" data-requiere-red><i class="bi bi-envelope me-1" aria-hidden="true"></i> Mandarme el enlace</button>
             </form>
             <p class="small text-tenue mt-3 mb-0">Si sos el titular, tu clave no se recupera por correo: pedí ayuda a quien administra el servidor del sistema.</p>
-            <a href="{% url 'seguridad:login' %}" class="d-block text-center small mt-3">Volver al ingreso</a>
+            <a href="{% url 'seguridad:login' %}" class="olvido-clave d-block text-center mt-3">Volver al ingreso</a>
             {% endif %}
         </div>
+
+        <div class="iris-login-pie">
+            <span>Cafeto Las Lomitas · Gestión interna</span>
+            <span><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>Auditoría activa</span>
+        </div>
     </div>
+
+    <span class="sin-conexion" role="status"><i class="bi bi-wifi-off" aria-hidden="true"></i>Sin conexión con el sistema</span>
 </main>
 {% endblock %}

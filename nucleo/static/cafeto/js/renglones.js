@@ -75,8 +75,12 @@
                 var cabeza = el('div', 'd-flex flex-wrap align-items-center gap-2');
                 cabeza.appendChild(el('strong', 'me-auto', r.nombre));
                 var cant = campo(r.cantidad, 'Cantidad', '6.5rem');
+                cant.dataset.minimo = '0.001';
+                cant.dataset.decimales = '3';
                 cant.addEventListener('input', function () { r.cantidad = cant.value; guardar(); });
                 var precio = campo(r.costo, etiquetaPrecio, '8rem');
+                precio.dataset.minimo = '0';
+                precio.dataset.decimales = '2';
                 precio.addEventListener('input', function () { r.costo = precio.value; guardar(); });
                 var quitar = el('button', 'btn btn-sm btn-outline-danger'); quitar.type = 'button';
                 quitar.innerHTML = '<i class="bi bi-x-lg"></i>'; quitar.title = 'Quitar renglón';
@@ -93,6 +97,8 @@
                         var vence = campo(l.vence, 'Vence el', '10rem', 'date');
                         vence.addEventListener('input', function () { l.vence = vence.value; guardar(); });
                         var cl = campo(l.cantidad, r.lotes.length === 1 ? 'Todo' : 'Cantidad', '6rem');
+                        cl.dataset.minimo = '0.001';
+                        cl.dataset.decimales = '3';
                         cl.addEventListener('input', function () { l.cantidad = cl.value; guardar(); });
                         var nl = campo(l.numero, 'N° de lote', '8rem', 'text');
                         nl.addEventListener('input', function () { l.numero = nl.value; guardar(); });

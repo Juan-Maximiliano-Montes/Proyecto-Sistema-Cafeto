@@ -167,6 +167,9 @@ def mensaje_de(excepcion):
     if isinstance(excepcion, (DataError, OverflowError)):
         return ('Un número es demasiado grande o un dato no tiene la forma esperada (por ejemplo, un '
                 'código de barras escrito donde va un N° de venta). Revisá lo cargado y probá de nuevo.'), 400
+    if isinstance(excepcion, ValueError) and 'NUL (0x00)' in str(excepcion):
+        return ('El pedido trae caracteres que no se pueden buscar ni guardar. '
+                'Revisá lo cargado y probá de nuevo.'), 400
     return None
 
 

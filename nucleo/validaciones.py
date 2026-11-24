@@ -35,6 +35,11 @@ SIMBOLOS_PROHIBIDOS = '<>{}[]\\|^`'
 # la puntuación que de verdad aparece en un nombre comercial.
 NOMBRE_VALIDO = re.compile(r"^[^\W_]|[\w .,\-'()/&%+ºª°]+$", re.UNICODE)
 
+# Al menos una letra (con acentos o ñ): evita nombres compuestos sólo por
+# números o signos ("123456", "---") sin rechazar nombres comerciales con
+# dígitos ("7Up", "Caja 2", "25 de Mayo").
+CONTIENE_LETRA = re.compile(r'[^\W\d_]', re.UNICODE)
+
 
 # El nombre o el apellido de una PERSONA: letras (con acentos, ñ, ü),
 # espacios, apóstrofo y guion ("D'Angelo", "Pérez-Gómez"). Un nombre
@@ -104,7 +109,7 @@ def validar_caracteres(valor, etiqueta='Este dato'):
 
 
 def texto_de_catalogo(valor, minimo, maximo, etiqueta='Este dato',
-                      obligatorio=True):
+                      obligatorio=True, exige_letra=False):
     """Las tres reglas generales de un nombre, en el orden correcto.
 
     Controla los caracteres ANTES de limpiar (V-G3), limpia (V-G1) y
@@ -112,6 +117,10 @@ def texto_de_catalogo(valor, minimo, maximo, etiqueta='Este dato',
     los saltos de línea en espacios, así que si se validara después, un
     texto pegado desde Word pasaría sin que nadie se entere de que traía
     saltos de línea.
+
+    Con ``exige_letra=True`` exige al menos una letra, para rechazar nombres
+    compuestos sólo por dígitos o símbolos ("123456") admitiendo los
+    alfanuméricos reales ("7Up", "Caja 2", "25 de Mayo").
 
     Devuelve ``None`` cuando el campo es opcional y vino vacío.
     """
@@ -123,6 +132,10 @@ def texto_de_catalogo(valor, minimo, maximo, etiqueta='Este dato',
             raise ValidationError(f'{etiqueta} es obligatorio.')
         return None
     validar_largo(texto, minimo, maximo, etiqueta)
+    if exige_letra and not CONTIENE_LETRA.search(texto):
+        raise ValidationError(
+            f'{etiqueta} debe incluir al menos una letra (no puede ser sólo '
+            'números o símbolos).')
     return texto
 
 
@@ -426,14 +439,18 @@ def normalizar_telefono(valor):
 
 
 def validar_telefono(valor):
-    """7 a 15 dígitos una vez normalizado (V-E)."""
-    digitos = normalizar_telefono(valor)
-    if digitos is None:
+    """7 a 15 dígitos una vez normalizado, sin letras ni símbolos raros (V-E)."""
+    texto = limpiar_texto(valor)
+    if texto is None:
         return None
-    if not 7 <= len(digitos) <= 15:
+    if re.search(r'[^\d\s().+-]', texto):
+        raise ValidationError(
+            'El teléfono no puede llevar letras ni símbolos raros.')
+    digitos = normalizar_telefono(texto)
+    if digitos is None or not 7 <= len(digitos) <= 15:
         raise ValidationError(
             'El teléfono debe tener entre 7 y 15 dígitos; el que escribiste '
-            f'quedó en {len(digitos)}.')
+            f'quedó en {len(digitos or "")}.')
     if len(set(digitos)) == 1:
         raise ValidationError(
             f'El teléfono {digitos} no parece un número real: son todos '

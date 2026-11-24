@@ -50,14 +50,14 @@
     {% if request.GET %}<a href="{% url 'ventas:ventas' %}" class="btn btn-link text-secondary">Hoy</a>{% endif %}
 </form>
 
-<div class="grilla grilla-compacta mb-3">
+<div class="grilla grilla-compacta iris-kpi-ventas mb-3">
     <div class="tarjeta kpi"><span class="eyebrow">Tickets</span><span class="valor">{{ cantidad }}</span></div>
     <div class="tarjeta kpi tarjeta-destacada"><span class="eyebrow">Vendido</span><span class="valor">{{ facturado|pesos }}</span></div>
     {% if cantidad %}<div class="tarjeta kpi"><span class="eyebrow">Ticket promedio</span><span class="valor">{{ promedio|pesos }}</span></div>{% endif %}
     {% if anuladas %}<div class="tarjeta kpi"><span class="eyebrow">Anuladas</span><span class="valor text-peligro">{{ anuladas }}</span><span class="small text-secondary">no suman</span></div>{% endif %}
 </div>
 {% if ganancia and cantidad %}
-<div class="grilla grilla-compacta mb-3">
+<div class="grilla grilla-compacta iris-kpi-ventas mb-3">
     <div class="tarjeta kpi"><span class="eyebrow">Costo de lo vendido</span><span class="valor">{{ ganancia.costo|pesos }}</span></div>
     <div class="tarjeta kpi tarjeta-destacada"><span class="eyebrow">Ganancia bruta</span><span class="valor{% if ganancia.ganancia < 0 %} text-peligro{% endif %}">{{ ganancia.ganancia|pesos }}</span></div>
     <div class="tarjeta kpi"><span class="eyebrow">Margen sobre el costo</span><span class="valor">{% if ganancia.margen is None %}—{% else %}{{ ganancia.margen }} %{% endif %}</span></div>
@@ -68,7 +68,7 @@
 
 <div class="tarjeta p-0 overflow-hidden">
     <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover align-middle mb-0 iris-tabla-ventas">
         <thead><tr><th class="col-centro">N°</th><th>Fecha</th><th>Caja</th><th>Vendió</th><th class="col-centro">Renglones</th><th class="table-numero">Total</th><th class="col-centro">Estado</th><th class="col-acciones"><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
         {% for v in filas %}
@@ -81,8 +81,8 @@
                 <td class="table-numero monto">{% if v.anulada %}<s>{{ v.total_venta|pesos }}</s>{% else %}{{ v.total_venta|pesos }}{% endif %}</td>
                 <td class="col-centro">{% if v.anulada %}<span class="insignia insignia-peligro" title="{{ v.get_motivo_anulacion_display }}">Anulada</span>{% else %}<span class="insignia insignia-exito">Completada</span>{% endif %}</td>
                 <td class="col-acciones">
-                    <button type="button" class="btn btn-sm btn-secundario" data-remoto="{% url 'ventas:ficha_venta' v.pk %}" data-modal="#modalVenta" data-titulo="Venta N° {{ v.pk }}" title="Ver detalle"><i class="bi bi-eye"></i></button>
-                    <a class="btn btn-sm btn-secundario" href="{% url 'ventas:ticket' v.pk %}" target="_blank" rel="noopener" title="Reimprimir ticket"><i class="bi bi-printer"></i></a>
+                    <button type="button" class="btn btn-sm btn-secundario iris-btn-accion" data-remoto="{% url 'ventas:ficha_venta' v.pk %}" data-modal="#modalVenta" data-titulo="Venta N° {{ v.pk }}" title="Ver detalle" aria-label="Ver detalle de venta N° {{ v.pk }}"><i class="bi bi-eye" aria-hidden="true"></i></button>
+                    <a class="btn btn-sm btn-secundario iris-btn-accion" href="{% url 'ventas:ticket' v.pk %}" target="_blank" rel="noopener" title="Reimprimir ticket" aria-label="Reimprimir ticket de venta N° {{ v.pk }}"><i class="bi bi-printer" aria-hidden="true"></i></a>
                 </td>
             </tr>
         {% empty %}

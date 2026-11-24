@@ -181,7 +181,8 @@ class Proveedor(ConSelloDeModificacion,
     def clean(self):
         super().clean()
         self.nombre_proveedor = texto_de_catalogo(
-            self.nombre_proveedor, 2, 50, 'El nombre del proveedor')
+            self.nombre_proveedor, 2, 50, 'El nombre del proveedor',
+            exige_letra=True)
         self.cuit_proveedor = validar_cuit(self.cuit_proveedor)
         if self.pk and type(self).objects.filter(
                 pk=self.pk, cuit_proveedor=CUIT_PROVEEDOR_GENERAL).exists() and (
@@ -356,7 +357,8 @@ class TipoEgreso(Maestra):
     def clean(self):
         super().clean()
         self.nombre_tipo_egreso = texto_de_catalogo(
-            self.nombre_tipo_egreso, 3, 30, 'El nombre del tipo de egreso')
+            self.nombre_tipo_egreso, 3, 30, 'El nombre del tipo de egreso',
+            exige_letra=True)
         exigir_nombre_unico(self, 'nombre_tipo_egreso',
                             etiqueta='un tipo de egreso')
         self.descripcion_tipo_egreso = texto_de_catalogo(

@@ -14,7 +14,7 @@
             </label>
             {% with url_alta=campo|alta_rapida %}{% if url_alta %}
             <div class="d-flex gap-2 align-items-start">
-                <div class="flex-grow-1">{{ campo }}</div>
+                <div class="flex-grow-1 min-w-0">{{ campo }}</div>
                 <button type="button" class="btn btn-secundario js-alta-rapida" data-url="{{ url_alta }}"
                         data-destino="{{ campo.id_for_label }}" title="{{ campo|alta_titulo }} sin salir de acá"
                         aria-label="{{ campo|alta_titulo }}"><i class="bi bi-plus-lg"></i></button>
