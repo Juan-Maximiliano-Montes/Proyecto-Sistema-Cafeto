@@ -107,16 +107,6 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                     {% endfor %}
                 </div>
                 <div id="pagos" class="mt-2 d-flex flex-column gap-2"></div>
-                <div id="irisBilletes" class="iris-billetes mt-2" role="group" aria-label="Billetes rápidos de efectivo" hidden>
-                    <span class="iris-billetes-etiqueta">Billetes rápidos</span>
-                    <div class="iris-billetes-fila">
-                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="exacto" aria-pressed="false">Exacto</button>
-                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="2000" aria-pressed="false">$&nbsp;2.000</button>
-                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="5000" aria-pressed="false">$&nbsp;5.000</button>
-                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="10000" aria-pressed="false">$&nbsp;10.000</button>
-                        <button type="button" class="btn btn-sm btn-secundario iris-billete-btn" data-iris-billete="20000" aria-pressed="false">$&nbsp;20.000</button>
-                    </div>
-                </div>
                 <button type="button" class="btn btn-link btn-sm p-0 mt-1 d-none" id="mixto"><i class="bi bi-plus-circle me-1"></i>Pagar con dos medios</button>
                 <div id="fiado" class="d-none mt-2">
                     <div class="aviso aviso-error mb-2 d-none" id="fiadoSinCliente" role="alert"><i class="bi bi-person-x-fill"></i><span>Para fiar hay que saber a quién: identificá al cliente del Club (o dalo de alta) antes de cobrar.</span></div>
