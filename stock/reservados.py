@@ -22,11 +22,17 @@ def marca_generica():
     marca = Marca.objects.filter(nombre_marca=MARCA_GENERICA).first()
     if marca is None:
         marca = Marca.objects.create(
-            nombre_marca=MARCA_GENERICA,
+            nombre_marca=MARCA_GENERICA, es_propia=True,
             descripcion_marca='Productos que todavía no tienen la marca cargada')
+    cambios = {}
     if marca.borrado_logico:
-        Marca.objects.filter(pk=marca.pk).update(borrado_logico=False)
-        marca.borrado_logico = False
+        cambios['borrado_logico'] = False
+    if not marca.es_propia:
+        cambios['es_propia'] = True
+    if cambios:
+        Marca.objects.filter(pk=marca.pk).update(**cambios)
+        for campo, valor in cambios.items():
+            setattr(marca, campo, valor)
     return marca
 
 

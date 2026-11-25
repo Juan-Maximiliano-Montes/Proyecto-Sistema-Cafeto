@@ -28,7 +28,7 @@ def _volver(request):
 @require_POST
 @requiere_permiso('editar_producto', redirigir_a='stock:productos_lista')
 def foto_de_producto(request, pk):
-    producto = get_object_or_404(Producto, pk=pk)
+    producto = get_object_or_404(Producto, pk=pk, borrado_logico=False)
     antes = producto.imagen
     try:
         if request.POST.get('quitar'):

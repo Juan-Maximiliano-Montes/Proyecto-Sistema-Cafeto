@@ -5,6 +5,8 @@ de productos (``buscar_productos``) la usan los selectores de todo el
 sistema.
 """
 
+from decimal import Decimal
+
 from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.utils import timezone
@@ -94,6 +96,8 @@ def buscar_productos(request):
     # elegir cada pantalla (STK-01 / FID-01). Un cliente que mande otro
     # ?tipos= o ?excluir= sólo puede achicar la lista, nunca ampliarla.
     para = request.GET.get('para', '')
+    if '\x00' in para:
+        return JsonResponse({'results': [], 'pagination': {'more': False}})
     if para:
         permitidos = TIPOS_PARA_BUSQUEDA.get(para)
         if permitidos is None:
@@ -115,7 +119,8 @@ def buscar_productos(request):
                      filtrar_por_texto(productos, ('nombre_producto',
                                                    'id_marca__nombre_marca'),
                                        busqueda))
-    productos = productos.order_by('nombre_producto', 'pk')
+    productos = productos.order_by('nombre_producto', 'pk').prefetch_related(
+        'composicion__id_componente')
 
     desde = (pagina - 1) * POR_PAGINA
     # Se pide UNA fila de más: si viene, hay página siguiente. Así se evita
@@ -124,7 +129,9 @@ def buscar_productos(request):
     hay_mas = len(tramo) > POR_PAGINA
 
     return JsonResponse({
-        'results': [{'id': p.pk, 'text': str(p)}
+        'results': [{'id': p.pk, 'text': str(p),
+                     'unidad': p.unidad_medida,
+                     'costo_unitario': str(p.costo_vigente() or Decimal('0'))}
                     for p in tramo[:POR_PAGINA]],
         'pagination': {'more': hay_mas},
     })

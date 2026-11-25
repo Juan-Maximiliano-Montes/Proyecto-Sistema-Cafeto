@@ -22,7 +22,9 @@ LIMITE_PORCENTAJE = Decimal('300')
 def alcanzados(rubro=None, marca=None, proveedor=None):
     productos = (Producto.objects
                  .filter(borrado_logico=False, tipo_producto__in=TIPOS_VENDIBLES)
-                 .select_related('id_marca', 'id_rubro').order_by('nombre_producto'))
+                 .select_related('id_marca', 'id_rubro')
+                 .prefetch_related('composicion__id_componente')
+                 .order_by('nombre_producto'))
     if rubro:
         productos = productos.filter(id_rubro=rubro)
     if marca:
@@ -40,8 +42,13 @@ def nuevo_precio(precio, porcentaje, paso):
 
 def quedan_bajo_costo(productos, porcentaje, paso):
     """Los productos cuyo precio nuevo queda por debajo de lo que costaron."""
-    return [p for p, _antes, despues in calcular(productos, porcentaje, paso)
-            if p.precio_costo is not None and despues < p.precio_costo]
+    # El costo de un compuesto es el de su receta de hoy (``costo_vigente``).
+    bajos = []
+    for p, _antes, despues in calcular(productos, porcentaje, paso):
+        costo = p.costo_vigente()
+        if costo is not None and despues < costo:
+            bajos.append(p)
+    return bajos
 
 
 def calcular(productos, porcentaje, paso):

@@ -1,14 +1,23 @@
 """Formularios del módulo Stock: rubros, marcas y productos."""
 
+from decimal import Decimal
+
 from django import forms
 from django.core.exceptions import ValidationError
 from django.urls import reverse_lazy
 
 from compras.models import Proveedor, TipoProveedor
-from nucleo.formularios import FormularioMaestro, SelectorConBusqueda, vigentes_mas_el_actual
+from nucleo.formularios import (
+    CampoCantidad,
+    FormularioMaestro,
+    SelectorConBusqueda,
+    vigentes_mas_el_actual,
+)
 from nucleo.validaciones import validar_codigo_barras
 from stock.models import (
     TIPOS_CON_PROVEEDOR,
+    TIPOS_CON_STOCK,
+    TIPOS_VENDIBLES,
     ComposicionProducto,
     Marca,
     Producto,
@@ -53,7 +62,7 @@ class RubroForm(FormularioMaestro):
 class MarcaForm(FormularioMaestro):
     class Meta:
         model = Marca
-        fields = ['nombre_marca', 'descripcion_marca']
+        fields = ['nombre_marca', 'descripcion_marca', 'es_propia']
         widgets = {
             'nombre_marca': forms.TextInput(
                 attrs={'placeholder': 'La Morenita', 'autofocus': 'autofocus'}),
@@ -63,6 +72,9 @@ class MarcaForm(FormularioMaestro):
         help_texts = {
             'nombre_marca': 'Sólo la marca, sin el producto: "La Morenita", '
                             'no "Café La Morenita".',
+            'es_propia': 'Tildala si es una marca del propio local: es la '
+                         'única que admiten los productos elaborados o '
+                         'producidos en el local.',
         }
 
     def clean_nombre_marca(self):
@@ -94,6 +106,28 @@ class MarcaForm(FormularioMaestro):
 # ===========================================================================
 #  PRODUCTOS
 # ===========================================================================
+class SelectorDeMarca(forms.Select):
+    """Combo de marcas que marca con ``data-propia="1"`` las del local.
+
+    Los elaborados y producidos sólo admiten marcas propias: el JS del
+    formulario filtra el selector en vivo leyendo esa marca. El servidor
+    valida igual (``Producto._validar_marca_propia``).
+    """
+
+    def __init__(self, *args, propias=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.propias = {str(p) for p in propias}
+
+    def create_option(self, name, value, label, selected, index,
+                      subindex=None, attrs=None):
+        opcion = super().create_option(name, value, label, selected, index,
+                                       subindex=subindex, attrs=attrs)
+        valor = getattr(value, 'value', value)
+        if str(valor) in self.propias:
+            opcion['attrs']['data-propia'] = '1'
+        return opcion
+
+
 class ProductoForm(FormularioMaestro):
     """Alta y edición de productos.
 
@@ -116,8 +150,8 @@ class ProductoForm(FormularioMaestro):
     #  Lo que se ve de entrada (DD-86): lo que se sabe con el producto en la
     #  mano. El resto va plegado en "Más opciones" y arranca con valores por
     #  defecto que dejan la fila completa y válida.
-    CAMPOS_SIMPLES = ('codigo_barras', 'nombre_producto', 'id_rubro',
-                      'precio_costo', 'alicuota_iva', 'utilidad',
+    CAMPOS_SIMPLES = ('tipo_producto', 'codigo_barras', 'nombre_producto',
+                      'id_rubro', 'precio_costo', 'alicuota_iva', 'utilidad',
                       'precio_venta')
 
     codigo_barras = forms.CharField(
@@ -194,6 +228,17 @@ class ProductoForm(FormularioMaestro):
         self.fields['unidad_medida'].required = False
         self.fields['alicuota_iva'].required = False
         self.fields['stock_minimo'].required = False
+        # Un campo sólo se muestra en los tipos a los que les corresponde
+        # (el navegador lo esconde; el servidor lo descarta en clean()).
+        for nombre, tipos in self.VISIBLE_SEGUN_TIPO.items():
+            self.fields[nombre].visible_si = 'tipo_producto=' + ','.join(sorted(tipos))
+        # Las marcas del propio local: el JS filtra el selector con esto
+        # cuando el tipo es ELABORADO o PRODUCIDO.
+        campo_marca = self.fields['id_marca']
+        atributos = dict(campo_marca.widget.attrs)
+        campo_marca.widget = SelectorDeMarca(attrs=atributos, propias=set(
+            Marca.objects.filter(es_propia=True).values_list('pk', flat=True)))
+        campo_marca.widget.choices = campo_marca.choices
         self.order_fields(list(self.CAMPOS_SIMPLES))
         for nombre, campo in self.fields.items():
             campo.avanzado = nombre not in self.CAMPOS_SIMPLES
@@ -224,6 +269,36 @@ class ProductoForm(FormularioMaestro):
             self.fields['precio_costo'].required = False
             self.fields['precio_costo'].help_text = (
                 'Costo inicial. Si no lo sabés todavía, dejalo en 0.')
+
+    #  Qué tipos muestran cada campo (la matriz de la cabecera del modelo).
+    VISIBLE_SEGUN_TIPO = {
+        'id_proveedor': TIPOS_CON_PROVEEDOR,
+        'fraccionable': TIPOS_CON_PROVEEDOR,
+        'stock_minimo': TIPOS_CON_STOCK,
+        'controla_vencimiento': TIPOS_CON_STOCK,
+        'dias_rebaja_vencimiento': TIPOS_CON_STOCK,
+        'porcentaje_rebaja_vencimiento': TIPOS_CON_STOCK,
+        'precio_venta': TIPOS_VENDIBLES,
+        'utilidad': TIPOS_VENDIBLES,
+    }
+    #  Qué valor toma un campo oculto (no corresponde a ese tipo).
+    VALOR_DE_LO_OCULTO = {
+        'id_proveedor': None, 'fraccionable': False, 'stock_minimo': Decimal('0'),
+        'controla_vencimiento': False, 'dias_rebaja_vencimiento': None,
+        'porcentaje_rebaja_vencimiento': None, 'precio_venta': Decimal('0'),
+        'utilidad': None,
+    }
+
+    def _descartar_lo_oculto(self, datos):
+        """Si cambió el tipo en pantalla, un campo oculto puede traer un valor
+        viejo del DOM: se descarta, y con él su error (que nadie vería)."""
+        tipo = datos.get('tipo_producto')
+        if not tipo:
+            return
+        for nombre, tipos in self.VISIBLE_SEGUN_TIPO.items():
+            if tipo not in tipos:
+                datos[nombre] = self.VALOR_DE_LO_OCULTO[nombre]
+                self._errors.pop(nombre, None)
 
     def _exigir_nombre_no_registrado(self, datos):
         """Nombre repetido sin distinguir mayúsculas, con el aviso en el campo.
@@ -304,6 +379,7 @@ class ProductoForm(FormularioMaestro):
 
     def clean(self):
         datos = super().clean()
+        self._descartar_lo_oculto(datos)
         self._exigir_minimo_entero(datos)
         if (datos.get('tipo_producto') in TIPOS_CON_PROVEEDOR
                 and not datos.get('id_proveedor')):
@@ -330,8 +406,11 @@ class ProductoForm(FormularioMaestro):
 # ===========================================================================
 #  COMPOSICIÓN (receta de un elaborado/producido, contenido de un combo)
 # ===========================================================================
-class ComposicionForm(forms.ModelForm):
+class ComposicionForm(FormularioMaestro):
     """Un renglón de la receta o del combo, con el buscador de productos."""
+
+    # Coma decimal argentina: 0,250 (CampoNumero la lee como una persona).
+    cantidad = CampoCantidad(label='Cantidad')
 
     class Meta:
         model = ComposicionProducto
@@ -359,8 +438,7 @@ class ComposicionForm(forms.ModelForm):
                    'data-para-segun': 'tipo_producto', 'data-para-mapa': mapa})
         campo.widget.choices = campo.choices
         campo.empty_label = '— Buscá un producto —'
-        self.fields['cantidad'].widget.attrs.update(
-            {'class': 'form-control', 'min': '0.001', 'step': '0.001'})
+        self.fields['cantidad'].widget.attrs.update({'class': 'form-control'})
 
 
 ComposicionFormSet = forms.inlineformset_factory(

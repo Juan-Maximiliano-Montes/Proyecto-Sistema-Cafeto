@@ -53,7 +53,7 @@ def actualizar_precios(request):
             # bajo el costo y lo que el redondeo deja igual.
             todas = precios.calcular(productos, porcentaje, paso)
             bajo_costo = [p for p, _antes, despues in todas
-                          if p.precio_costo is not None and despues < p.precio_costo]
+                          if p.costo_vigente() is not None and despues < p.costo_vigente()]
             contexto['bajo_costo'] = bajo_costo
             confirmado = (request.method == 'POST'
                           and (not bajo_costo or request.POST.get('confirmo_bajo_costo')))
