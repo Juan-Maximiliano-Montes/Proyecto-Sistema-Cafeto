@@ -44,9 +44,9 @@
             <button type="button" class="btn btn-sm btn-secundario boton-ver" data-remoto="{% url 'stock:productos_ver' p.pk|stringformat:'d' %}" data-modal="#modalVer" data-titulo="{{ p.nombre_producto }}">Ver ficha</button>
             <a href="{% url 'stock:productos_lista' %}?busqueda={{ p.nombre_producto|urlencode }}" class="btn btn-sm btn-secundario">Ir al producto</a>
             {% if p.tipo_producto == 'PRODUCIDO' %}
-                {% if 'registrar_produccion' in permisos_usuario %}<a href="{% url 'stock:producciones' %}" class="btn btn-sm btn-primary ms-auto"><i class="bi bi-fire me-1" aria-hidden="true"></i>Registrar producción</a>{% endif %}
+                {% if 'registrar_produccion' in permisos_usuario %}<a href="{% url 'stock:producciones' %}" class="btn btn-sm btn-primary iris-accion-ancha"><i class="bi bi-fire me-1" aria-hidden="true"></i>Registrar producción</a>{% endif %}
             {% elif 'registrar_compra' in permisos_usuario %}
-                <a href="{% url 'compras:recepcion' %}" class="btn btn-sm btn-primary ms-auto"><i class="bi bi-truck me-1" aria-hidden="true"></i>Recibir compra</a>
+                <a href="{% url 'compras:recepcion' %}" class="btn btn-sm btn-primary iris-accion-ancha"><i class="bi bi-truck me-1" aria-hidden="true"></i>Recibir compra</a>
             {% endif %}
         </div>
     </article>

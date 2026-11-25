@@ -18,12 +18,15 @@
 <div class="aviso aviso-aviso"><i class="bi bi-cash-stack"></i><span>La caja de este dispositivo no tiene un turno abierto: podés consultar, pero para registrar el cambio hay que <a href="{% url 'ventas:caja' %}">abrir la caja</a>.</span></div>
 {% endif %}
 
-<form method="get" class="herramientas" role="search" hx-boost="true">
-    <div class="buscador" style="max-width: 320px">
-        <i class="bi bi-receipt"></i>
+<form method="get" class="herramientas iris-herramientas-ajustadas" role="search" hx-boost="true">
+    <div class="buscador iris-buscador-venta">
+        <i class="bi bi-receipt" aria-hidden="true"></i>
         <input type="search" name="venta" value="{{ numero }}" class="form-control" inputmode="numeric" placeholder="N° de venta (está en el ticket)" aria-label="Número de venta" autofocus>
     </div>
     <button type="submit" class="btn btn-secundario">Buscar</button>
+    {% if es_administrador or 'ver_ventas' in permisos_usuario %}
+    <a href="{% url 'ventas:ventas' %}" class="btn btn-secundario"><i class="bi bi-list-ul me-1" aria-hidden="true"></i>Ver últimas ventas</a>
+    {% endif %}
 </form>
 
 {% if venta and venta.anulada %}

@@ -13,12 +13,12 @@
         <p class="bajada">Estos datos solo los puede editar un administrador. Si algo está mal, avisale.</p>
         {% endif %}
     </div>
-    <div class="acciones">
-        <a href="{% url 'seguridad:cambiar_clave' %}" class="btn btn-secundario"><i class="bi bi-key me-1"></i>Cambiar mi clave</a>
-    </div>
 </div>
 
-<article class="tarjeta" style="max-width: 680px;">
+{# Dos tarjetas parejas a todo el ancho: los datos de la cuenta y, al lado, la seguridad con su acción. #}
+<div class="iris-perfil-grilla">
+<article class="tarjeta">
+    <h2 class="eyebrow mb-0"><i class="bi bi-person-vcard me-1" aria-hidden="true"></i>Datos de tu cuenta</h2>
     <div class="tarjeta-cabeza">
         <div class="d-flex gap-3 align-items-center">
             <span class="avatar" style="width:3rem;height:3rem;font-size:1.05rem" aria-hidden="true">{{ usuario|iniciales }}</span>
@@ -44,9 +44,20 @@
             <span class="small text-secondary d-block mt-1">Hasta el {{ usuario.temporal_hasta|date:'d/m/Y H:i' }}</span>
         </dd>
         {% endif %}
+    </dl>
+</article>
+
+<section class="tarjeta iris-perfil-seguridad" aria-labelledby="titSeguridad">
+    <h2 class="eyebrow mb-0" id="titSeguridad"><i class="bi bi-shield-lock me-1" aria-hidden="true"></i>Seguridad y acceso</h2>
+    <dl class="tarjeta-datos iris-perfil-datos">
         <dt>Clave</dt>
         <dd>{% if usuario.debe_cambiar_clave %}<span class="insignia insignia-aviso">Provisoria</span>{% else %}Cambiada el {{ usuario.fecha_cambio_clave|date:'d/m/Y'|default:'—' }}{% endif %}</dd>
         <dt>Última modificación</dt><dd>{{ usuario.fecha_ultima_modificacion|date:'d/m/Y H:i'|default:'—' }}</dd>
     </dl>
-</article>
+    <p class="small text-secondary mb-0">Tu clave es personal: nadie del local te la va a pedir. Si sospechás que alguien la conoce, cambiala ahora.</p>
+    <div class="tarjeta-pie">
+        <a href="{% url 'seguridad:cambiar_clave' %}" class="btn btn-primary w-100"><i class="bi bi-key me-1" aria-hidden="true"></i>Cambiar mi clave</a>
+    </div>
+</section>
+</div>
 {% endblock %}

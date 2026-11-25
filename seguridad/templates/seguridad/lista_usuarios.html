@@ -116,7 +116,7 @@ se toquen por accidente; las que cambian el estado piden confirmación.
             {% if puede_restablecer or puede_perfil or puede_temporal and not u.id_perfil.es_sistema %}
             <div class="dropdown">
                 <button class="btn btn-sm btn-secundario" data-bs-toggle="dropdown" aria-expanded="false" title="Más acciones">
-                    <i class="bi bi-three-dots"></i>
+                    <i class="bi bi-three-dots-vertical" aria-hidden="true"></i><span class="ms-1">Más</span>
                 </button>
                 <ul class="dropdown-menu">
                     {% if puede_restablecer %}
@@ -174,7 +174,7 @@ se toquen por accidente; las que cambian el estado piden confirmación.
                       data-titulo="¿Dar de baja este usuario?" data-aceptar="Sí, dar de baja" data-peligro="1"
                       data-confirmar="{{ u.nombre_usuario }} no va a poder ingresar. No se borra: queda inactivo y se puede reactivar.">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja" aria-label="Dar de baja"><i class="bi bi-person-x"></i></button>
+                    <button type="submit" class="btn btn-sm btn-outline-danger btn-eliminar" title="Dar de baja"><i class="bi bi-person-x" aria-hidden="true"></i><span class="ms-1">Baja</span></button>
                 </form>
                 {% endif %}
             {% endif %}

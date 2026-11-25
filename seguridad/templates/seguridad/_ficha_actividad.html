@@ -52,63 +52,24 @@ No hay ni un control de formulario acá. El libro es append-only.
 <div class="aviso aviso-aviso py-2 mb-3"><i class="bi bi-info-circle-fill"></i><span>{{ resumen }}</span></div>
 
 {% if filas %}
-<div class="table-responsive">
-<table class="table table-sm align-middle mb-0 tabla-actividad">
-    <thead>
-        <tr>
-            <th class="col-campo">Campo</th>
-            {% if hubo_antes %}<th>Antes</th>{% endif %}
-            <th>{% if hubo_antes %}Después{% else %}Valor{% endif %}</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for fila in filas %}
-        {% if fila.tiene_subtabla %}
-        {% comment %}Los renglones y los pagos de una venta: ocho columnas
-        no entran en un tercio del ancho. Se sale de la grilla de dos
-        columnas y se dibuja a lo ancho, el antes arriba del después.
-        {% endcomment %}
-        <tr{% if fila.destacada %} class="fila-destacada"{% endif %}>
-            <td colspan="{% if hubo_antes %}3{% else %}2{% endif %}" class="celda-anidada">
-                <p class="rotulo-anidado {% if fila.destacada %}text-marca{% else %}text-secondary{% endif %}">
-                    {% if fila.destacada %}<i class="bi bi-arrow-right-short"></i>{% endif %}{{ fila.etiqueta }}
-                </p>
-                <div class="anidados">
-                    {% if hubo_antes %}
-                    <div class="anidado">
-                        <span class="eyebrow">Antes</span>
-                        {% include "seguridad/_valor_actividad.html" with valor=fila.antes %}
-                    </div>
-                    {% endif %}
-                    <div class="anidado">
-                        <span class="eyebrow">{% if hubo_antes %}Después{% else %}Valor{% endif %}</span>
-                        {% include "seguridad/_valor_actividad.html" with valor=fila.despues %}
-                    </div>
-                </div>
-            </td>
-        </tr>
-        {% else %}
-        <tr{% if fila.destacada %} class="fila-destacada"{% endif %}>
-            <th class="fw-normal {% if fila.destacada %}text-marca{% else %}text-secondary{% endif %}">
-                {% if fila.destacada %}
-                <i class="bi bi-arrow-right-short"></i>
-                {% endif %}
-                {{ fila.etiqueta }}
-            </th>
-            {% if hubo_antes %}
-            <td class="{% if fila.destacada %}text-decoration-line-through opacity-75{% endif %}">
-                {% include "seguridad/_valor_actividad.html" with valor=fila.antes %}
-            </td>
-            {% endif %}
-            <td class="{% if fila.destacada %}fw-bold{% endif %}">
-                {% include "seguridad/_valor_actividad.html" with valor=fila.despues %}
-            </td>
-        </tr>
-        {% endif %}
-        {% endfor %}
-    </tbody>
-</table>
-</div>
+{% comment %}Una modificación muestra primero y sola lo que cambió; lo que
+quedó igual va plegado debajo, sin las claves internas («Id parametros»),
+que no le dicen nada a quien revisa. Un alta o una baja (sin antes o sin
+cambios marcados) se ven enteras, como siempre.{% endcomment %}
+{% if hubo_antes and filas.0.destacada %}
+{% regroup filas by destacada as grupos %}
+{% for grupo in grupos %}{% if grupo.grouper %}
+{% include "seguridad/_tabla_actividad.html" with lista=grupo.list %}
+{% endif %}{% endfor %}
+{% for grupo in grupos %}{% if not grupo.grouper %}
+<details class="iris-sin-cambios mt-3">
+    <summary><i class="bi bi-chevron-right iris-sin-cambios-flecha" aria-hidden="true"></i>Ver campos sin cambios</summary>
+    <div class="mt-2">{% include "seguridad/_tabla_actividad.html" with lista=grupo.list ocultar_internos=True %}</div>
+</details>
+{% endif %}{% endfor %}
+{% else %}
+{% include "seguridad/_tabla_actividad.html" with lista=filas %}
+{% endif %}
 {% else %}
 <p class="text-secondary mb-0">Este registro no guardó el detalle de los campos.</p>
 {% endif %}

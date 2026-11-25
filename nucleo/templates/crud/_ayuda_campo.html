@@ -1,0 +1,14 @@
+{% comment %}
+La ayuda de un campo como un "?" junto a la etiqueta, en lugar de un párrafo
+debajo: el modal queda más corto y la ayuda sigue a un toque o al pasar el
+mouse. El globo es CSS puro (:hover, :focus-visible y :focus para el toque
+en pantallas táctiles) y el texto está siempre en el DOM: el lector de
+pantalla lo anuncia por aria-describedby del botón y por el nombre del
+botón. No depende de JavaScript.
+{% endcomment %}
+<span class="iris-ayuda-campo">
+    <button type="button" class="iris-ayuda-campo-btn" aria-label="Ayuda sobre {{ campo.label }}" aria-describedby="ayuda_{{ campo.id_for_label }}">
+        <i class="bi bi-question-lg" aria-hidden="true"></i>
+    </button>
+    <span class="iris-ayuda-campo-globo" role="tooltip" id="ayuda_{{ campo.id_for_label }}">{{ campo.help_text }}</span>
+</span>

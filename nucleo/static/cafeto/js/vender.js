@@ -318,6 +318,8 @@
         var lista = $('renglones');
         lista.textContent = '';
         $('ticketVacio').classList.toggle('d-none', estado.items.length > 0);
+        // "Vaciar" sólo tiene sentido con algo cargado: con 0 ítems no se ofrece.
+        $('vaciar').hidden = estado.items.length === 0;
         var porProducto = {};
         // Los regalos del club van aparte: son otro renglón aunque sean el
         // mismo producto que se está comprando.

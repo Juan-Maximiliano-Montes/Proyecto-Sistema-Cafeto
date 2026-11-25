@@ -48,7 +48,7 @@
             {% if c.en_acreditacion %}<dt>En acreditación</dt><dd class="monto">{{ c.en_acreditacion|pesos }}</dd>{% endif %}
             <dt>Falta pagar</dt><dd class="monto text-peligro fw-semibold">{{ c.falta|pesos }}</dd>
         </dl>
-        {% if puede_registrar %}<div class="tarjeta-pie"><a href="?ver=a_pagar&amp;compra={{ c.pk|stringformat:"d" }}#compra-{{ c.pk|stringformat:"d" }}" class="btn btn-sm btn-primary"><i class="bi bi-cash me-1" aria-hidden="true"></i>Pagar lo que falta</a></div>{% endif %}
+        {% if puede_registrar %}<div class="tarjeta-pie"><a href="?ver=a_pagar&amp;compra={{ c.pk|stringformat:"d" }}#compra-{{ c.pk|stringformat:"d" }}" class="btn btn-sm btn-primary w-100"><i class="bi bi-cash me-1" aria-hidden="true"></i>Pagar lo que falta</a></div>{% endif %}
     </article>
     {% endfor %}
 </div>

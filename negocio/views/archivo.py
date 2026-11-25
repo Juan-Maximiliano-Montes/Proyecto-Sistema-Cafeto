@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from negocio import archivo
 from nucleo.exportar import exportar
+from nucleo.paginacion import TAMANIOS_TABLA, paginar
 from seguridad.decorators import requiere_permiso
 from seguridad.servicios import registrar_auditoria
 from nucleo.validaciones import id_valido
@@ -14,6 +15,10 @@ from nucleo.textos import pluralizar
 
 TOPE_EXCEL = 50000
 PRIMER_ANIO = 2000
+# La pantalla se recorre de a páginas (25 por defecto, como la Actividad);
+# lo que se puede recorrer tiene el mismo techo que el Excel. Las descargas
+# no pasan por acá: siguen bajando el período completo.
+TOPE_EN_PANTALLA = TOPE_EXCEL
 
 
 def _periodo(request):
@@ -48,13 +53,17 @@ def _anio(request):
 def archivo_historico(request):
     libro = archivo.libro(request.GET.get('libro', ''))
     desde, hasta = _periodo(request)
-    columnas, filas, hay_mas = archivo.consultar(libro, desde, hasta, tope=archivo.FILAS_EN_PANTALLA)
-    return render(request, 'negocio/archivo.html', {
+    columnas, filas, hay_mas = archivo.consultar(libro, desde, hasta, tope=TOPE_EN_PANTALLA)
+    # paginar() deja en parametros la query string sin pagina: el
+    # libro, el año o las fechas y el tamaño viajan en cada enlace de página.
+    contexto = paginar(request, filas, TAMANIOS_TABLA, por_defecto=25)
+    contexto.update({
         'libros': archivo.LIBROS, 'libro': libro, 'desde': desde, 'hasta': hasta,
-        'anios': archivo.por_anio(), 'columnas': columnas, 'filas': filas, 'hay_mas': hay_mas,
-        'tope': archivo.FILAS_EN_PANTALLA, 'conservacion': archivo.ANIOS_DE_CONSERVACION,
+        'anios': archivo.por_anio(), 'columnas': columnas, 'hay_mas': hay_mas,
+        'tope': TOPE_EN_PANTALLA, 'conservacion': archivo.ANIOS_DE_CONSERVACION,
         'anio': _anio(request), 'hoy': timezone.localdate(),
     })
+    return render(request, 'negocio/archivo.html', contexto)
 
 
 @requiere_permiso('ver_reportes', redirigir_a='home')

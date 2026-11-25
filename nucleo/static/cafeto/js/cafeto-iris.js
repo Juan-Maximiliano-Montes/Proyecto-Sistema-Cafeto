@@ -710,7 +710,9 @@
 
     function evaluarDesbordeSubnav(wrap) {
         if (!wrap || !wrap.isConnected) { return; }
-        if (window.innerWidth < 840) {
+        // Debajo de 992px el CSS ya muestra el selector; arriba, las pestañas
+        // se angostan (texto con "…") antes de pasar al selector.
+        if (window.innerWidth < 992) {
             wrap.classList.remove('is-compacto');
             return;
         }
@@ -743,6 +745,33 @@
                 observadorSubnav.observe(wrap);
             }
             evaluarDesbordeSubnav(wrap);
+        });
+    }
+
+    // Un atajo del menú que redirige a una vista de otra pantalla (Ofertas ->
+    // /stock/alertas/?ver=ofertas) deja marcada la pantalla destino. Si el
+    // ?ver= coincide con el último tramo de otro enlace del mismo grupo, la
+    // pestaña que se ilumina es esa: la que la persona tocó.
+    function corregirPestanaSegunVista() {
+        var ver = new URLSearchParams(window.location.search).get('ver');
+        if (!ver) { return; }
+        [['.iris-subtabs', 'a.iris-subtab', 'is-active'], ['.lateral-desplegable', 'a.lateral-link', 'activo']].forEach(function (conf) {
+            document.querySelectorAll(conf[0]).forEach(function (grupo) {
+                var enlaces = Array.prototype.slice.call(grupo.querySelectorAll(conf[1]));
+                var destino = enlaces.filter(function (a) {
+                    var ruta = (a.pathname || '').replace(/\/+$/, '');
+                    return ruta.split('/').pop() === ver && window.location.pathname.indexOf(ruta + '/') !== 0;
+                })[0];
+                if (!destino || destino.classList.contains(conf[2])) { return; }
+                enlaces.forEach(function (a) {
+                    if (a.classList.contains(conf[2])) {
+                        a.classList.remove(conf[2]);
+                        a.removeAttribute('aria-current');
+                    }
+                });
+                destino.classList.add(conf[2]);
+                destino.setAttribute('aria-current', 'page');
+            });
         });
     }
 
@@ -2209,7 +2238,7 @@
         estado.classList.toggle('sin-red', !enLinea);
         var texto = estado.querySelector('.js-rail-red-texto');
         if (texto) {
-            texto.textContent = enLinea ? 'Cafeto · NAS Local' : 'Sin conexión';
+            texto.textContent = enLinea ? 'En línea' : 'Sin conexión';
         }
     }
 
@@ -2721,6 +2750,11 @@
         conectarModalComprobante();
         cerrarTour(false);
         cerrarOtrosDialogos(dialogo);
+        // Una confirmación previa (Cafeto.confirmar) no queda flotando detrás del ticket.
+        var confirmacion = document.getElementById('modalConfirmar');
+        if (confirmacion && confirmacion.classList.contains('show') && window.bootstrap && window.bootstrap.Modal) {
+            window.bootstrap.Modal.getOrCreateInstance(confirmacion).hide();
+        }
 
         var tituloEl = document.getElementById('irisComprobanteTitulo');
         var cargandoEl = document.getElementById('irisComprobanteCargando');
@@ -3336,6 +3370,7 @@
         actualizarBotonesSonido();
         sincronizarEstadoRedRail();
         observarSubnavs(raiz);
+        corregirPestanaSegunVista();
         evaluarDesbordeChips();
         restaurarAvisoPersistente();
         promoverMensajesAlNotch(raiz);
@@ -3383,6 +3418,7 @@
         if (destino) {
             cerrarAreaPopover();
             observarSubnavs(destino);
+            corregirPestanaSegunVista();
             evaluarDesbordeChips();
             sincronizarDrawer(false);
         }

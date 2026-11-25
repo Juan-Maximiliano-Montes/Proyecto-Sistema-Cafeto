@@ -58,7 +58,6 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
         <i class="bi bi-search" aria-hidden="true"></i>
         <input type="search" name="busqueda" value="{{ busqueda }}" class="form-control"
                placeholder="Buscar {{ cfg.plural }}…" aria-label="Buscar">
-        <kbd class="iris-keycap iris-buscador-kbd d-none d-lg-inline-flex" aria-hidden="true">F2</kbd>
     </div>
     {% for filtro, opciones, elegido in filtros %}
     <select name="{{ filtro.clave }}" class="form-select" aria-label="{{ filtro.etiqueta }}" data-auto-enviar>
@@ -146,8 +145,8 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
                       data-confirmar="¿Dar de baja &quot;{{ fila }}&quot;? Queda guardado y se puede reactivar cuando quieras."
                       data-aceptar="Sí, dar de baja" data-peligro="1">
                     {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja" aria-label="Dar de baja">
-                        <i class="bi bi-archive"></i>
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Dar de baja">
+                        <i class="bi bi-archive" aria-hidden="true"></i><span class="ms-1">Baja</span>
                     </button>
                 </form>
                 {% endif %}

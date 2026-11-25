@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="{% static 'cafeto/vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
     <link rel="stylesheet" href="{% static 'cafeto/vendor/select2/select2.min.css' %}">
     <link rel="stylesheet" href="{% static 'cafeto/css/cafeto.css' %}">
-    <link rel="stylesheet" href="{% static 'cafeto/css/cafeto-iris.css' %}?v=20261125a">
+    <link rel="stylesheet" href="{% static 'cafeto/css/cafeto-iris.css' %}?v=20261125c">
     {% block estilos %}{% endblock %}
 </head>
 <body hx-history="false">
@@ -88,10 +88,9 @@
                 <span class="iris-rail-fila-txt iris-tema-a-claro">Claro</span>
                 <span class="iris-rail-fila-txt iris-tema-a-oscuro">Oscuro</span>
             </button>
-            <button type="button" class="iris-rail-fila" data-iris-ayuda-abrir="pantalla" aria-haspopup="dialog" aria-controls="irisModalAyuda" aria-label="Abrir centro de ayuda, práctica guiada y atajos (F1)" title="Ayuda, práctica guiada y atajos (F1)">
+            <button type="button" class="iris-rail-fila" data-iris-ayuda-abrir="pantalla" aria-haspopup="dialog" aria-controls="irisModalAyuda" aria-label="Abrir centro de ayuda y práctica guiada" title="Ayuda y práctica guiada">
                 <i class="bi bi-question-circle" aria-hidden="true"></i>
                 <span class="iris-rail-fila-txt">Ayuda</span>
-                <kbd class="iris-keycap iris-keycap-chassis ms-auto">F1</kbd>
             </button>
             <div class="dropup iris-rail-perfil-wrap" hx-boost="false">
                 <button type="button" class="iris-rail-perfil" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Cuenta de {{ u.nombre }} {{ u.apellido }}" title="{{ u.nombre }} {{ u.apellido }} · {{ u.perfil_efectivo.nombre }}">
@@ -110,7 +109,7 @@
                         </span>
                         <span class="iris-rail-estado mt-1 px-0" id="irisRailEstado">
                             <span class="iris-rail-estado-punto" aria-hidden="true"></span>
-                            <span class="js-rail-red-texto">Cafeto · NAS Local</span>
+                            <span class="js-rail-red-texto">En línea</span>
                         </span>
                     </li>
                     <li><a class="dropdown-item" href="{% url 'mi_perfil' %}"><i class="bi bi-person-badge" aria-hidden="true"></i><span>Mi perfil</span></a></li>
@@ -208,10 +207,10 @@
                         {% endif %}
 
                         <button type="button" class="iris-notch-lupa" id="irisNotchLupa" data-iris-paleta-abrir
-                                aria-label="Buscar pantalla (Ctrl+K)" aria-expanded="false" aria-controls="irisNotchBuscador"
-                                title="Buscar pantalla (Ctrl+K)">
+                                aria-label="Buscar pantalla" aria-expanded="false" aria-controls="irisNotchBuscador"
+                                title="Buscar una pantalla por su nombre">
                             <i class="bi bi-search" aria-hidden="true"></i>
-                            <kbd class="iris-keycap iris-keycap-chassis d-none d-xl-inline-flex">Ctrl+K</kbd>
+                            <span class="iris-notch-lupa-txt d-none d-xl-inline">Buscar...</span>
                         </button>
                     </div>
 
@@ -250,6 +249,7 @@
                         {% for item in grupo.items %}
                         <a class="iris-subtab{% if forloop.first %} is-first{% endif %}{% if item.activo %} is-active{% endif %}"
                            href="{{ item.url }}"
+                           title="{{ item.titulo }}"
                            data-icono="{{ item.icono }}"
                            {% if item.activo %}aria-current="page"{% endif %}>
                             <i class="bi {{ item.icono }}" aria-hidden="true"></i>
@@ -257,7 +257,6 @@
                         </a>
                         {% endfor %}
                     </nav>
-                    <span class="iris-subnav-meta d-none d-lg-inline" aria-hidden="true">{{ grupo.titulo }} · {{ grupo.items|length }}</span>
                 </div>
                 <button type="button" class="iris-subnav-selector" data-iris-subnav-abrir aria-haspopup="dialog" aria-controls="irisSubnavSheet" aria-expanded="false">
                     <span class="iris-subnav-selector-izq">
@@ -442,9 +441,8 @@
             <h2 id="irisComprobanteTitulo" class="iris-dialog-titulo">Comprobante</h2>
         </div>
         <form method="dialog">
-            <button type="submit" class="iris-dialog-cerrar">
-                <span>Volver</span>
-                <kbd class="iris-keycap">Esc</kbd>
+            <button type="submit" class="iris-dialog-cerrar iris-dialog-cerrar-x" aria-label="Cerrar comprobante" title="Cerrar">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
             </button>
         </form>
     </div>
@@ -464,9 +462,6 @@
             <i class="bi bi-box-arrow-up-right me-1" aria-hidden="true"></i><span id="irisComprobantePestanaTexto">Abrir en pestaña</span>
         </a>
         <div class="iris-comprobante-pie-der">
-            <form method="dialog">
-                <button type="submit" class="btn btn-secundario">Volver</button>
-            </form>
             <button type="button" id="irisComprobanteImprimir" class="btn btn-primary" data-iris-comprobante-imprimir autofocus>
                 <i class="bi bi-printer me-1" aria-hidden="true"></i>Imprimir <kbd class="iris-keycap iris-keycap-on-accent ms-1">P</kbd>
             </button>
@@ -481,7 +476,7 @@
 <script src="{% static 'cafeto/vendor/select2/select2.min.js' %}" data-global></script>
 <script src="{% static 'cafeto/vendor/htmx/htmx.min.js' %}" data-global></script>
 <script src="{% static 'cafeto/js/cafeto.js' %}" data-global></script>
-<script src="{% static 'cafeto/js/cafeto-iris.js' %}?v=20261125a" data-global></script>
+<script src="{% static 'cafeto/js/cafeto-iris.js' %}?v=20261125b" data-global></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

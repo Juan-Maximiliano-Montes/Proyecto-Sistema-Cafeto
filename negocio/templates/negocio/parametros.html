@@ -19,7 +19,7 @@
             <h2 class="subtitulo h5 mb-0">El comercio</h2>
             <div class="row g-2">
                 {% for campo in form %}{% if forloop.counter <= 8 %}
-                <div class="{% if campo.name == 'domicilio' or campo.name == 'razon_social' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}">
+                <div class="{% if campo.name == 'domicilio' or campo.name == 'razon_social' or campo.name == 'correo' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}">
                     <label class="form-label" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
                     {{ campo }}
                     {% for e in campo.errors %}<p class="error-campo">{{ e }}</p>{% endfor %}

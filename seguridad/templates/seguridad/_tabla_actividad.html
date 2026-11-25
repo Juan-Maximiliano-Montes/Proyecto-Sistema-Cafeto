@@ -1,0 +1,62 @@
+{% comment %}
+Tabla campo por campo de un registro de auditoría (la usa _ficha_actividad).
+``lista``: las filas a dibujar; ``ocultar_internos``: salta las claves
+técnicas («Id ...») en la lista de campos sin cambios.
+{% endcomment %}
+<div class="table-responsive">
+<table class="table table-sm align-middle mb-0 tabla-actividad">
+    <thead>
+        <tr>
+            <th class="col-campo">Campo</th>
+            {% if hubo_antes %}<th>Antes</th>{% endif %}
+            <th>{% if hubo_antes %}Después{% else %}Valor{% endif %}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for fila in lista %}{% if not ocultar_internos or fila.etiqueta|slice:":3" != "Id " %}
+        {% if fila.tiene_subtabla %}
+        {% comment %}Los renglones y los pagos de una venta: ocho columnas
+        no entran en un tercio del ancho. Se sale de la grilla de dos
+        columnas y se dibuja a lo ancho, el antes arriba del después.
+        {% endcomment %}
+        <tr{% if fila.destacada %} class="fila-destacada"{% endif %}>
+            <td colspan="{% if hubo_antes %}3{% else %}2{% endif %}" class="celda-anidada">
+                <p class="rotulo-anidado {% if fila.destacada %}text-marca{% else %}text-secondary{% endif %}">
+                    {% if fila.destacada %}<i class="bi bi-arrow-right-short"></i>{% endif %}{{ fila.etiqueta }}
+                </p>
+                <div class="anidados">
+                    {% if hubo_antes %}
+                    <div class="anidado">
+                        <span class="eyebrow">Antes</span>
+                        {% include "seguridad/_valor_actividad.html" with valor=fila.antes %}
+                    </div>
+                    {% endif %}
+                    <div class="anidado">
+                        <span class="eyebrow">{% if hubo_antes %}Después{% else %}Valor{% endif %}</span>
+                        {% include "seguridad/_valor_actividad.html" with valor=fila.despues %}
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% else %}
+        <tr{% if fila.destacada %} class="fila-destacada"{% endif %}>
+            <th class="fw-normal {% if fila.destacada %}text-marca{% else %}text-secondary{% endif %}">
+                {% if fila.destacada %}
+                <i class="bi bi-arrow-right-short"></i>
+                {% endif %}
+                {{ fila.etiqueta }}
+            </th>
+            {% if hubo_antes %}
+            <td class="{% if fila.destacada %}text-decoration-line-through opacity-75{% endif %}">
+                {% include "seguridad/_valor_actividad.html" with valor=fila.antes %}
+            </td>
+            {% endif %}
+            <td class="{% if fila.destacada %}fw-bold{% endif %}">
+                {% include "seguridad/_valor_actividad.html" with valor=fila.despues %}
+            </td>
+        </tr>
+        {% endif %}
+        {% endif %}{% endfor %}
+    </tbody>
+</table>
+</div>

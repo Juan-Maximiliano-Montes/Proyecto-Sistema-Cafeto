@@ -99,7 +99,7 @@ class SesionEnElServidorTest(Base):
         self.assertIn(reverse('seguridad:olvide_clave'), html)
         pagina = self.client.get(reverse('seguridad:olvide_clave')).content.decode()
         self.assertNotIn('recuperar_titular', pagina)
-        self.assertIn('quien administra el servidor', pagina)
+        self.assertIn('soporte técnico del local', pagina)
         con_error = self.client.post(reverse('seguridad:login'),
                                      {'identificador': 'nadie99', 'clave': 'x'}).content.decode()
         self.assertIn('¿Te olvidaste la clave?', con_error)

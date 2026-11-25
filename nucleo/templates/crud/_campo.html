@@ -1,17 +1,21 @@
 {% load crud_extras %}
     <div class="{% if campo.field.widget.input_type == 'checkbox' %}col-12{% else %}col-md-6{% endif %}{% if campo.errors %} con-error{% endif %}"{% if campo.field.visible_si %} data-visible-si="{{ campo.field.visible_si }}"{% endif %}>
         {% if campo.field.widget.input_type == 'checkbox' %}
-            <div class="form-check">
+            <div class="form-check iris-etiqueta-fila">
                 {{ campo }}
                 <label class="form-check-label" for="{{ campo.id_for_label }}">
                     {{ campo.label }}
                 </label>
+                {% if campo.help_text %}{% include 'crud/_ayuda_campo.html' %}{% endif %}
             </div>
         {% else %}
-            <label class="form-label" for="{{ campo.id_for_label }}">
-                {{ campo.label }}
-                {% if campo.field.required %}<span class="text-peligro" aria-hidden="true">*</span>{% endif %}
-            </label>
+            <div class="iris-etiqueta-fila">
+                <label class="form-label" for="{{ campo.id_for_label }}">
+                    {{ campo.label }}
+                    {% if campo.field.required %}<span class="text-peligro" aria-hidden="true">*</span>{% endif %}
+                </label>
+                {% if campo.help_text %}{% include 'crud/_ayuda_campo.html' %}{% endif %}
+            </div>
             {% with url_alta=campo|alta_rapida %}{% if url_alta %}
             <div class="d-flex gap-2 align-items-start">
                 <div class="flex-grow-1 min-w-0">{{ campo }}</div>
@@ -24,9 +28,6 @@
         {% endif %}
 
         {% if campo.field.complemento %}{% include campo.field.complemento %}{% endif %}
-        {% if campo.help_text %}
-            <div class="form-text">{{ campo.help_text }}</div>
-        {% endif %}
         {% for error in campo.errors %}
             <p class="error-campo"><i class="bi bi-exclamation-circle-fill me-1"></i>{{ error }}</p>
         {% endfor %}

@@ -63,7 +63,6 @@ perfil", con el tilde de permisos agrupado por módulo).
         <div class="tarjeta-cabeza">
             <div class="min-w-0">
                 <h2 class="tarjeta-titulo">{{ perm.nombre }}</h2>
-                <p class="tarjeta-sub"><code class="text-marca">{{ perm.codigo }}</code></p>
             </div>
             <span class="insignia {% if perm.es_exclusivo_del_administrador %}insignia-marca{% else %}insignia-neutra{% endif %}">{{ perm.get_modulo_display }}</span>
         </div>

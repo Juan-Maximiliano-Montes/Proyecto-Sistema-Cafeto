@@ -13,19 +13,6 @@
              fetchpriority="high">
         <div class="iris-login-scrim" aria-hidden="true"></div>
 
-        <div class="iris-login-notch-wrap">
-            <div class="iris-login-notch">
-                <img class="iris-login-notch-logo"
-                     src="{% static 'cafeto/marca/cafeto-icono-ambar.svg' %}"
-                     alt=""
-                     aria-hidden="true"
-                     width="20"
-                     height="20">
-                <span class="iris-login-notch-dot" aria-hidden="true"></span>
-                <span class="iris-login-notch-txt">Ruta 51 Km. 17 · Campo Quijano · NAS Local</span>
-            </div>
-        </div>
-
         <div class="iris-login-pie-foto">
             <span class="iris-login-eyebrow">Ruta Nacional 51 Km. 17 · Campo Quijano, Salta</span>
             <strong class="iris-login-lugar">Cafeto Las Lomitas</strong>
@@ -34,8 +21,6 @@
 
     <div class="acceso-caja">
         <div class="iris-login-top">
-            <img class="iris-login-marca logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
-            <img class="iris-login-marca logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
             <button type="button" class="iris-login-tema" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
                 <i class="bi bi-circle-half" aria-hidden="true"></i>
                 <span class="iris-tema-a-claro">Claro</span>
@@ -44,6 +29,10 @@
         </div>
 
         <div class="card">
+            <div class="iris-login-logo">
+                <img class="iris-login-marca logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
+                <img class="iris-login-marca logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
+            </div>
             {% if enviado %}
             <h1 class="titulo-pantalla mb-2">Revisá tu correo</h1>
             <p class="text-secondary">Si esos datos son de una cuenta activa, te mandamos un enlace al correo que figura en tu ficha. Abrilo y elegí tu clave nueva.</p>
@@ -65,7 +54,7 @@
                 </div>
                 <button type="submit" class="btn btn-primary btn-xl w-100 iris-login-submit" data-requiere-red><i class="bi bi-envelope me-1" aria-hidden="true"></i> Mandarme el enlace</button>
             </form>
-            <p class="small text-tenue mt-3 mb-0">Si sos el titular, tu clave no se recupera por correo: pedí ayuda a quien administra el servidor del sistema.</p>
+            <p class="small text-tenue mt-3 mb-0">Si sos el titular, tu clave no se recupera por correo: pedí ayuda al soporte técnico del local.</p>
             <a href="{% url 'seguridad:login' %}" class="olvido-clave d-block text-center mt-3">Volver al ingreso</a>
             {% endif %}
         </div>

@@ -14,19 +14,6 @@
              fetchpriority="high">
         <div class="iris-login-scrim" aria-hidden="true"></div>
 
-        <div class="iris-login-notch-wrap">
-            <div class="iris-login-notch">
-                <img class="iris-login-notch-logo"
-                     src="{% static 'cafeto/marca/cafeto-icono-ambar.svg' %}"
-                     alt=""
-                     aria-hidden="true"
-                     width="20"
-                     height="20">
-                <span class="iris-login-notch-dot" aria-hidden="true"></span>
-                <span class="iris-login-notch-txt">Ruta 51 Km. 17 · Campo Quijano · NAS Local</span>
-            </div>
-        </div>
-
         <div class="iris-login-pie-foto">
             <span class="iris-login-eyebrow">Ruta Nacional 51 Km. 17 · Campo Quijano, Salta</span>
             <strong class="iris-login-lugar">Cafeto Las Lomitas</strong>
@@ -36,8 +23,6 @@
     {# Formulario plano sobre el marco Surround (mantiene .acceso-caja .card para test_responsivo) #}
     <div class="acceso-caja">
         <div class="iris-login-top">
-            <img class="iris-login-marca logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
-            <img class="iris-login-marca logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
             <button type="button" class="iris-login-tema" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
                 <i class="bi bi-circle-half" aria-hidden="true"></i>
                 <span class="iris-tema-a-claro">Claro</span>
@@ -46,6 +31,10 @@
         </div>
 
         <div class="card">
+            <div class="iris-login-logo">
+                <img class="iris-login-marca logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
+                <img class="iris-login-marca logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
+            </div>
             <h1 class="titulo-pantalla mb-1">¡Hola!</h1>
             <p class="text-secondary mb-3">Ingresá con tu DNI o tu usuario.</p>
 

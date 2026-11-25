@@ -694,6 +694,16 @@
     //  sólo para lo que se prepara...). Es comodidad: el servidor valida.
     // ---------------------------------------------------------------------
     Cafeto.activarDependencias = function (contenedor) {
+        // El costo de lo que se prepara al momento o de un combo sale de lo
+        // que lleva: no se carga a mano. Se oculta su campo (el valor sigue
+        // viajando en el formulario y el servidor valida igual).
+        contenedor.querySelectorAll('[name="precio_costo"]').forEach(function (costo) {
+            var formulario = costo.closest('form');
+            var columna = costo.closest('[class*="col-"]');
+            if (!formulario || !columna || columna.dataset.visibleSi ||
+                    !formulario.querySelector('[name="tipo_producto"]')) { return; }
+            columna.dataset.visibleSi = 'tipo_producto=,REVENTA,INSUMO,PRODUCIDO';
+        });
         contenedor.querySelectorAll('[data-visible-si]').forEach(function (bloque) {
             if (bloque.dataset.dependenciaActiva === '1') { return; }
             var partes = bloque.dataset.visibleSi.split('=');
@@ -1601,6 +1611,67 @@
         var boton = evento.target.closest && evento.target.closest('.js-camara');
         var destino = boton && document.querySelector(boton.dataset.destino);
         if (destino) { leerConCamara(destino); }
+    });
+})();
+
+/* Modales grandes: botón expandir/restaurar (⤢) en todos.
+   Es el mismo mecanismo del Registro de Actividad (actividad.js), llevado al
+   componente base: cualquier modal .modal-lg / .modal-xl recibe el botón en
+   su cabecera al abrirse y puede ocupar casi toda la pantalla, sin barras
+   horizontales internas. La elección se recuerda por modal mientras dure la
+   pestaña. Sin manejadores en línea: un solo listener delegado. */
+(function () {
+    'use strict';
+    var PREFIJO = 'cafeto:modal-amplio:';
+
+    function clave(modal) { return PREFIJO + (modal.id || 'sin-id'); }
+    function recordado(modal) {
+        try { return sessionStorage.getItem(clave(modal)) === '1'; } catch (e) { return false; }
+    }
+    function recordar(modal, amplio) {
+        try { sessionStorage.setItem(clave(modal), amplio ? '1' : '0'); } catch (e) { /* modo privado */ }
+    }
+    function aplicar(modal, amplio) {
+        var dialogo = modal.querySelector('.modal-dialog');
+        var boton = modal.querySelector('.js-modal-ampliar');
+        if (!dialogo || !boton) { return; }
+        dialogo.classList.toggle('iris-modal-amplio', amplio);
+        var etiqueta = amplio ? 'Volver al tamaño normal' : 'Agrandar la ventana';
+        boton.setAttribute('aria-pressed', amplio ? 'true' : 'false');
+        boton.setAttribute('aria-label', etiqueta);
+        boton.title = etiqueta;
+        boton.querySelector('i').className = 'bi bi-' + (amplio ? 'fullscreen-exit' : 'arrows-angle-expand');
+    }
+    function preparar(modal) {
+        var dialogo = modal.querySelector('.modal-dialog');
+        var cabecera = modal.querySelector('.modal-header');
+        if (!dialogo || !cabecera) { return false; }
+        if (!dialogo.classList.contains('modal-lg') && !dialogo.classList.contains('modal-xl')) { return false; }
+        // El Registro de Actividad ya trae el suyo (pantalla completa).
+        if (modal.querySelector('.js-pantalla-completa')) { return false; }
+        if (!modal.querySelector('.js-modal-ampliar')) {
+            var boton = document.createElement('button');
+            boton.type = 'button';
+            boton.className = 'btn btn-sm btn-secundario btn-icono iris-modal-ampliar js-modal-ampliar';
+            boton.innerHTML = '<i class="bi bi-arrows-angle-expand" aria-hidden="true"></i>';
+            var cerrar = cabecera.querySelector('.btn-close');
+            cabecera.insertBefore(boton, cerrar || null);
+        }
+        return true;
+    }
+
+    document.addEventListener('show.bs.modal', function (evento) {
+        var modal = evento.target;
+        if (!modal.classList || !modal.classList.contains('modal')) { return; }
+        if (preparar(modal)) { aplicar(modal, recordado(modal)); }
+    });
+    document.addEventListener('click', function (evento) {
+        var boton = evento.target.closest && evento.target.closest('.js-modal-ampliar');
+        if (!boton) { return; }
+        var modal = boton.closest('.modal');
+        var amplio = !modal.querySelector('.modal-dialog').classList.contains('iris-modal-amplio');
+        aplicar(modal, amplio);
+        recordar(modal, amplio);
     });
 })();
 

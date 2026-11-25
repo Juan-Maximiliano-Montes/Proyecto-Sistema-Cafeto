@@ -375,6 +375,9 @@ def divergente(marco, etiqueta, valor, titulo):
 # ---------------------------------------------------------------------------
 #  Evolución en el tiempo
 # ---------------------------------------------------------------------------
+MARGEN_SUPERIOR = 0.15
+
+
 def evolucion(serie, desde, hasta, titulo, dinero=True, nombre='Vendido',
               forma='auto', colores=(AMBAR, CORAL), estadisticas=False):
     """Una serie diaria (índice de fechas) con la granularidad que conviene.
@@ -424,6 +427,10 @@ def evolucion(serie, desde, hasta, titulo, dinero=True, nombre='Vendido',
     if estadisticas and len(serie):
         _media_y_tendencia(eje, serie, dinero, color_estadistica,
                            'mes' if dias > DIAS_POR_SEMANA else 'semana' if dias > DIAS_POR_DIA else 'día')
+    # Aire arriba (15 % del rango): la barra más alta no toca el techo del
+    # gráfico ni queda debajo de la leyenda, que va arriba a la izquierda.
+    abajo, arriba = eje.get_ylim()
+    eje.set_ylim(abajo, arriba + (arriba - abajo) * MARGEN_SUPERIOR)
     eje.yaxis.set_major_formatter(FuncFormatter(_formato(dinero)))
     figura.autofmt_xdate(rotation=0, ha='center')
     _leyenda(eje, loc='upper left')

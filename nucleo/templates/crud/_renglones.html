@@ -52,7 +52,7 @@ El bloque se muestra y se esconde solo según el campo que declare
         <div class="row g-2 align-items-end mb-2 js-renglon">
             {% for oculto in renglon.hidden_fields %}{{ oculto }}{% endfor %}
 
-            {% for campo in renglon.visible_fields %}
+            {% for campo in renglon.visible_fields %}{% if campo.name != 'DELETE' %}
             <div class="col">
                 <label class="form-label small text-muted mb-1"
                        for="{{ campo.id_for_label }}">{{ campo.label }}</label>
@@ -61,7 +61,7 @@ El bloque se muestra y se esconde solo según el campo que declare
                 <p class="error-campo">{{ error }}</p>
                 {% endfor %}
             </div>
-            {% endfor %}
+            {% endif %}{% endfor %}
 
             <div class="col-auto">
                 {# El DELETE del formset: lo tilda el botón, no se muestra. #}
@@ -92,13 +92,13 @@ El bloque se muestra y se esconde solo según el campo que declare
     <template class="js-molde-renglon">
         <div class="row g-2 align-items-end mb-2 js-renglon">
             {% for oculto in formset.empty_form.hidden_fields %}{{ oculto }}{% endfor %}
-            {% for campo in formset.empty_form.visible_fields %}
+            {% for campo in formset.empty_form.visible_fields %}{% if campo.name != 'DELETE' %}
             <div class="col">
                 <label class="form-label small text-muted mb-1"
                        for="{{ campo.id_for_label }}">{{ campo.label }}</label>
                 {{ campo }}
             </div>
-            {% endfor %}
+            {% endif %}{% endfor %}
             <div class="col-auto">
                 <div class="d-none">{{ formset.empty_form.DELETE }}</div>
                 <button type="button"

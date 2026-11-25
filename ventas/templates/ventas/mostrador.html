@@ -32,9 +32,9 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
             <div class="buscador">
                 <i class="bi bi-search" aria-hidden="true"></i>
                 <input type="search" id="buscar" class="form-control form-control-lg" placeholder="Buscar producto…" autocomplete="off" autofocus aria-label="Buscar producto">
-                <kbd class="iris-keycap iris-buscador-kbd d-none d-lg-inline-flex" aria-hidden="true">F2</kbd>
             </div>
             <button type="button" class="btn btn-secundario btn-camara js-camara" data-destino="#buscar" hidden aria-label="Leer el código con la cámara"><i class="bi bi-camera" aria-hidden="true"></i></button>
+            {% if morosos %}<button type="button" class="btn pildora-mora iris-mora-fuera" id="radar" aria-haspopup="dialog"><i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Deudores en mora ({{ morosos }})</button>{% endif %}
         </div>
         <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Qué mostrar">
             <button type="button" class="btn btn-sm btn-primary js-sector" data-sector="mas_vendidos" aria-pressed="true"><i class="bi bi-star me-1"></i>Más vendidos</button>
@@ -49,15 +49,16 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
 
     {# ------------------------------- TICKET ------------------------------- #}
     <aside class="ticket" id="ticket" aria-label="Ticket">
-        <div class="tarjeta">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        {# Cabecera fija · cuerpo con scroll propio · pie opaco con Cobrar: nada se encima. #}
+        <div class="tarjeta iris-ticket">
+            <div class="iris-ticket-cabeza d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <h2 class="subtitulo h5 mb-0 text-nowrap"><i class="bi bi-receipt me-1" aria-hidden="true"></i>Ticket</h2>
                 <div class="d-flex align-items-center gap-2 ms-auto">
-                    {% if morosos %}<button type="button" class="btn btn-sm pildora-mora" id="radar" aria-haspopup="dialog"><i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Deudores en mora ({{ morosos }})</button>{% endif %}
-                    <button type="button" class="btn btn-sm btn-link text-secondary" id="vaciar">Vaciar</button>
+                    <button type="button" class="btn btn-sm btn-link text-secondary" id="vaciar" hidden>Vaciar</button>
                 </div>
             </div>
 
+            <div class="iris-ticket-cuerpo">
             <div id="renglones"></div>
             <div id="regalos"></div>
             <p class="text-secondary small text-center py-3 mb-0" id="ticketVacio">Tocá un producto para agregarlo.</p>
@@ -141,10 +142,13 @@ cambio (ventas:cotizar). Lo que se ve antes de cobrar es lo que se cobra.
                 </div>
             </div>
 
-            <button type="button" class="btn btn-primary btn-xl w-100" id="cobrar" disabled data-requiere-red>
-                <i class="bi bi-check2-circle me-1"></i>Cobrar
-            </button>
-            <p class="small text-tenue text-center mb-0 mt-1 d-none d-lg-flex iris-atajos-pie"><kbd class="iris-keycap">F2</kbd> buscar · <kbd class="iris-keycap">F4</kbd> efectivo · <kbd class="iris-keycap">F9</kbd> cobrar</p>
+            </div>
+
+            <div class="iris-ticket-pie">
+                <button type="button" class="btn btn-primary btn-xl w-100" id="cobrar" disabled data-requiere-red>
+                    <i class="bi bi-check2-circle me-1"></i>Cobrar
+                </button>
+            </div>
         </div>
     </aside>
 </div>
