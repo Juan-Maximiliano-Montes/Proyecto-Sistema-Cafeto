@@ -41,7 +41,7 @@ case "$(echo "${DJANGO_DEBUG:-True}" | tr '[:upper:]' '[:lower:]')" in
         exec gunicorn cafeto.wsgi:application \
             --bind 0.0.0.0:8000 \
             --workers "${GUNICORN_WORKERS:-3}" \
-            --timeout 60 \
+            --timeout 120 \
             --access-logfile - \
             --error-logfile -
         ;;

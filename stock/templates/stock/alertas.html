@@ -40,6 +40,15 @@
             <dt>Mínimo</dt><dd>{{ p.stock_minimo|cantidad_de:p }}</dd>
             <dt>Proveedor</dt><dd>{{ p.id_proveedor|default:"—" }}</dd>
         </dl>
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario boton-ver" data-remoto="{% url 'stock:productos_ver' p.pk|stringformat:'d' %}" data-modal="#modalVer" data-titulo="{{ p.nombre_producto }}">Ver ficha</button>
+            <a href="{% url 'stock:productos_lista' %}?busqueda={{ p.nombre_producto|urlencode }}" class="btn btn-sm btn-secundario">Ir al producto</a>
+            {% if p.tipo_producto == 'PRODUCIDO' %}
+                {% if 'registrar_produccion' in permisos_usuario %}<a href="{% url 'stock:producciones' %}" class="btn btn-sm btn-primary ms-auto"><i class="bi bi-fire me-1" aria-hidden="true"></i>Registrar producción</a>{% endif %}
+            {% elif 'registrar_compra' in permisos_usuario %}
+                <a href="{% url 'compras:recepcion' %}" class="btn btn-sm btn-primary ms-auto"><i class="bi bi-truck me-1" aria-hidden="true"></i>Recibir compra</a>
+            {% endif %}
+        </div>
     </article>
     {% endfor %}
 {% elif pestania == 'vencimientos' %}
@@ -57,6 +66,15 @@
             <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad_de:l.id_producto }}</dd>
         </dl>
         {% if dias_restantes < 0 %}<p class="small text-peligro mb-0"><i class="bi bi-exclamation-triangle me-1"></i>No se vende: cargalo como merma.</p>{% endif %}
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario boton-ver" data-remoto="{% url 'stock:productos_ver' l.id_producto.pk|stringformat:'d' %}" data-modal="#modalVer" data-titulo="{{ l.id_producto.nombre_producto }}">Ver ficha</button>
+            <a href="{% url 'stock:productos_lista' %}?busqueda={{ l.id_producto.nombre_producto|urlencode }}" class="btn btn-sm btn-secundario">Ir al producto</a>
+            {% if dias_restantes < 0 and 'registrar_merma' in permisos_usuario %}
+                <a href="{% url 'stock:merma' %}" class="btn btn-sm btn-outline-danger ms-auto"><i class="bi bi-trash me-1" aria-hidden="true"></i>Sacar por merma</a>
+            {% elif dias_restantes >= 0 %}
+                <a href="{% url 'stock:alertas' %}?ver=ofertas" class="btn btn-sm btn-primary ms-auto"><i class="bi bi-tag me-1" aria-hidden="true"></i>Ver ofertas</a>
+            {% endif %}
+        </div>
     </article>
     {% endwith %}
     {% endfor %}
@@ -72,6 +90,10 @@
             <dt>Con rebaja</dt><dd class="monto text-marca fs-5">{{ precio|pesos }}</dd>
             <dt>Quedan</dt><dd>{{ l.stock_lote|cantidad_de:l.id_producto }}</dd>
         </dl>
+        <div class="tarjeta-pie">
+            <button type="button" class="btn btn-sm btn-secundario boton-ver" data-remoto="{% url 'stock:productos_ver' l.id_producto.pk|stringformat:'d' %}" data-modal="#modalVer" data-titulo="{{ l.id_producto.nombre_producto }}">Ver ficha</button>
+            <a href="{% url 'stock:productos_lista' %}?busqueda={{ l.id_producto.nombre_producto|urlencode }}" class="btn btn-sm btn-secundario">Ir al producto</a>
+        </div>
     </article>
     {% endfor %}
 {% endif %}
@@ -83,4 +105,20 @@
     {% if pestania == 'faltantes' %}No hay productos por debajo del mínimo.{% elif pestania == 'vencimientos' %}Nada por vencer en los próximos {{ dias }} días.{% else %}Hoy no hay productos en oferta por vencimiento.{% endif %}
 </div>
 {% endif %}
+
+{# ---------- MODAL: FICHA DE SÓLO LECTURA ---------- #}
+<div class="modal fade" id="modalVer" tabindex="-1" aria-hidden="true" aria-labelledby="tituloVer">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i><span class="js-titulo-remoto" id="tituloVer">Ficha</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body js-remoto"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secundario" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

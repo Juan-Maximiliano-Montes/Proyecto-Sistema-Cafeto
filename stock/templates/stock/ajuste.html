@@ -60,12 +60,12 @@
     <p class="small text-secondary mb-0">Al aprobar, recién ahí se mueve el stock. Al rechazar no se toca nada, pero hay que decir por qué.</p>
     <input type="text" name="observacion" class="form-control" maxlength="120" placeholder="Observación (obligatoria para rechazar)" aria-label="Observación">
     <div class="d-flex gap-2">
-        <button type="submit" name="decision" value="rechazar" class="btn btn-outline-danger"
-                data-titulo="¿Lo rechazamos?" data-aceptar="Sí, rechazar" data-peligro="1"
-                data-confirmar="El stock no se toca y el ajuste queda cerrado como rechazado. No se puede volver atrás."><i class="bi bi-x-lg me-1"></i>Rechazar</button>
         {% if puede_aprobar %}<button type="submit" name="decision" value="aprobar" class="btn btn-primary flex-grow-1" data-requiere-red
                 data-titulo="¿Lo aprobamos?" data-aceptar="Sí, aprobar"
                 data-confirmar="Al aprobar se mueve el stock con las cantidades de arriba. No se puede deshacer."><i class="bi bi-check-lg me-1"></i>Aprobar y mover el stock</button>{% endif %}
+        <button type="submit" name="decision" value="rechazar" class="btn btn-outline-danger"
+                data-titulo="¿Lo rechazamos?" data-aceptar="Sí, rechazar" data-peligro="1"
+                data-confirmar="El stock no se toca y el ajuste queda cerrado como rechazado. No se puede volver atrás."><i class="bi bi-x-lg me-1"></i>Rechazar</button>
     </div>
     {% if not puede_aprobar %}<p class="small text-secondary mb-0">Lo cargaste vos: lo aprueba otra persona con permiso para autorizar ajustes.</p>{% endif %}
 </form>

@@ -237,8 +237,8 @@ se toquen por accidente; las que cambian el estado piden confirmación.
                     {{ form.id_perfil }}
                     {% if form.id_perfil.errors %}<p class="error-campo">{{ form.id_perfil.errors|striptags }}</p>{% endif %}
                 </div>
-                <div class="mb-1{% if form.clave_operador.errors %} con-error{% endif %}">
-                    <label for="{{ form.clave_operador.id_for_label }}" class="form-label">{{ form.clave_operador.label }}</label>
+                <div class="mb-1{% if form.clave_operador.errors %} con-error{% else %} d-none{% endif %}" data-visible-si="id_perfil={% for p in perfiles %}{% if p.es_sistema %}{{ p.pk|stringformat:'d' }}{% endif %}{% endfor %}">
+                    <label for="{{ form.clave_operador.id_for_label }}" class="form-label">{{ form.clave_operador.label }} <span class="text-tenue fw-normal">(solo para perfil administrador)</span></label>
                     {{ form.clave_operador }}
                     <div class="form-text">{{ form.clave_operador.help_text }}</div>
                     {% if form.clave_operador.errors %}<p class="error-campo">{{ form.clave_operador.errors|striptags }}</p>{% endif %}

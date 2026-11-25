@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="{% static 'cafeto/css/cafeto.css' %}">
 </head>
 <body>
-<main class="acceso">
+<main id="contenido" class="acceso">
     <img class="acceso-marca-agua" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="" aria-hidden="true">
     <div class="acceso-caja">
         <img class="acceso-logo" src="{% static 'cafeto/marca/cafeto-isologotipo-negativo.svg' %}" alt="Cafeto Las Lomitas">
@@ -23,7 +23,7 @@
             {% if referencia %}<p class="small text-secondary mb-4">Referencia <strong class="font-monospace">{{ referencia }}</strong> · {{ hora|date:"d/m/Y H:i" }}</p>{% endif %}
             <div class="d-grid gap-2">
                 <a class="btn btn-primary btn-xl" href="{% url 'home' %}"><i class="bi bi-house-door me-1" aria-hidden="true"></i>Volver al inicio</a>
-                <a class="btn btn-secundario" href="{% url 'ventas:mostrador' %}"><i class="bi bi-shop me-1" aria-hidden="true"></i>Ir al mostrador</a>
+                {% if permisos_usuario and 'vender' in permisos_usuario %}<a class="btn btn-secundario" href="{% url 'ventas:mostrador' %}"><i class="bi bi-shop me-1" aria-hidden="true"></i>Ir al mostrador</a>{% endif %}
             </div>
         </div>
     </div>
