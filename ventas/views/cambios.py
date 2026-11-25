@@ -155,6 +155,10 @@ def cambios(request):
                         pass   # se avisa al confirmar, con el medio elegido
         elif saldo > 0:
             contexto['medios'] = contexto['medios'].filter(cantidad_cuotas=1)
+            if venta.id_cliente_id is None:
+                # VEN-01: sin cliente no hay a quién anotarle la deuda.
+                contexto['medios'] = contexto['medios'].exclude(
+                    nombre_medio_pago=MedioPago.NOMBRE_CUENTA_CORRIENTE)
         if accion != 'confirmar':
             return render(request, 'ventas/cambios.html', contexto)
 
@@ -168,12 +172,31 @@ def cambios(request):
                     'Elegí con qué medio se ' + ('cobra.' if saldo > 0 else
                                                  'devuelve: el mismo con que se pagó.'))
         autorizante = None
+        operador = request.usuario_actual
         if saldo < 0:
             a_devolver = servicio.reintegro(venta, medio, -saldo)
-            autorizante = autorizar_con_clave(
-                request, request.POST.get('autoriza_usuario'),
-                request.POST.get('autoriza_clave'), 'autorizar_devolucion',
-                para=f'devolver {pesos(a_devolver)} al cliente')
+            if operador.es_titular and operador.tiene_permiso('autorizar_devolucion'):
+                # VEN-04: la titular ya está identificada con su sesión: no
+                # se le vuelve a pedir la clave para autorizarse a sí misma.
+                autorizante = operador
+            else:
+                autorizante = autorizar_con_clave(
+                    request, request.POST.get('autoriza_usuario'),
+                    request.POST.get('autoriza_clave'), 'autorizar_devolucion',
+                    distinto_de=venta.id_usuario,
+                    para=f'devolver {pesos(a_devolver)} al cliente')
+        elif medio is not None and medio.es_cuenta_corriente:
+            # VEN-01: fiar la diferencia puede pedir la firma de quien
+            # gestiona el fiado (cliente sin cuenta, en mora o sobre el tope).
+            if venta.id_cliente_id is None:
+                raise ValidationError(
+                    'Esta venta no tiene cliente: la diferencia no se puede '
+                    'dejar en cuenta corriente. Elegí otro medio.')
+            if request.POST.get('autoriza_usuario'):
+                autorizante = autorizar_con_clave(
+                    request, request.POST.get('autoriza_usuario'),
+                    request.POST.get('autoriza_clave'), 'gestionar_credito',
+                    para='dejar la diferencia en cuenta corriente')
         try:
             token = uuid.UUID(contexto['token'])
         except ValueError:

@@ -22,7 +22,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from compras import servicios
-from compras.models import Compra, OrdenCompra, Proveedor, TipoComprobante
+from compras.models import CUIT_PROVEEDOR_GENERAL, Compra, OrdenCompra, Proveedor, TipoComprobante
 from nucleo import idempotencia
 from nucleo.exportar import ColumnaExportable, exportar
 from nucleo.formularios import leer_numero
@@ -137,7 +137,8 @@ def _renglones_de_la_orden(orden):
 @requiere_permiso('registrar_compra', redirigir_a='home')
 def recepcion(request):
     proveedores = Proveedor.objects.filter(borrado_logico=False).exclude(
-        tipo_proveedor='SERVICIOS').order_by('nombre_proveedor')
+        tipo_proveedor='SERVICIOS').exclude(
+        cuit_proveedor=CUIT_PROVEEDOR_GENERAL).order_by('nombre_proveedor')
     orden = None
     if id_valido(request.GET.get('orden')):
         orden = OrdenCompra.objects.filter(

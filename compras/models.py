@@ -79,6 +79,17 @@ NOMBRE_PROVEEDOR_GENERAL = 'Proveedor General (Por asignar)'
 CUIT_PROVEEDOR_GENERAL = '30-00000000-7'
 
 
+def exigir_proveedor_real(id_proveedor):
+    """CMP-02: el proveedor reservado sólo sirve para fichar productos que
+    todavía no tienen el suyo. No se le pide, no se le compra ni se le paga:
+    quedaría un gasto imputado a nadie."""
+    if id_proveedor and Proveedor.objects.filter(
+            pk=id_proveedor, cuit_proveedor=CUIT_PROVEEDOR_GENERAL).exists():
+        raise ValidationError({'id_proveedor': (
+            f'"{NOMBRE_PROVEEDOR_GENERAL}" es un proveedor reservado para los '
+            'productos que todavía no tienen el suyo: elegí el proveedor real.')})
+
+
 class Proveedor(ConSelloDeModificacion,
                 SinBajaFisica, models.Model):
     """Proveedor de mercadería o de servicios. Tabla PROVEEDORES del DER.
@@ -420,6 +431,10 @@ class OrdenCompra(SinBajaFisica, models.Model):
         'CANCELADA': set(),
     }
 
+    def clean(self):
+        super().clean()
+        exigir_proveedor_real(self.id_proveedor_id)
+
     def save(self, *args, **kwargs):
         """Reemplaza a ``fn_orden_valida``."""
         if not self._state.adding:
@@ -661,13 +676,20 @@ class Compra(ConSaldosDerivados, SinBajaFisica, models.Model):
     def __str__(self):
         return f'{self.get_tipo_comprobante_display()} {self.numero_formateado} · {self.id_proveedor}'
 
+    def clean(self):
+        super().clean()
+        exigir_proveedor_real(self.id_proveedor_id)
+
     @staticmethod
     def con_pagado(consulta):
-        """La misma consulta con lo pagado de cada compra ya sumado."""
+        """La misma consulta con lo pagado de cada compra ya sumado.
+
+        Sólo cuenta lo que salió o está en camino: una obligación anotada
+        pero sin pagar (PENDIENTE_PAGO) no es plata pagada (CMP-03)."""
         from django.db.models import DecimalField, OuterRef, Subquery, Sum
 
         pagos = (Egreso.objects.filter(id_compra=OuterRef('pk'))
-                 .exclude(estado_pago='RECHAZADO').order_by()
+                 .exclude(estado_pago__in=('RECHAZADO', 'PENDIENTE_PAGO')).order_by()
                  .values('id_compra').annotate(t=Sum('monto')).values('t'))
         return consulta.annotate(pagado_anotado=Subquery(
             pagos, output_field=DecimalField(max_digits=14, decimal_places=2)))
@@ -688,7 +710,8 @@ class Compra(ConSaldosDerivados, SinBajaFisica, models.Model):
         if 'pagado_anotado' in self.__dict__:
             return self.pagado_anotado or Decimal('0')
 
-        return self.egresos.exclude(estado_pago='RECHAZADO').aggregate(
+        return self.egresos.exclude(
+            estado_pago__in=('RECHAZADO', 'PENDIENTE_PAGO')).aggregate(
             t=Sum('monto'))['t'] or Decimal('0')
 
     @property
@@ -867,6 +890,14 @@ class Egreso(SinBajaFisica, models.Model):
         vacíos terminaba en un error 500 en vez de un aviso.
         """
         super().clean()
+        exigir_proveedor_real(self.id_proveedor_id)
+        if self.id_compra_id and self.estado_pago == 'PENDIENTE_PAGO':
+            # CMP-03: la factura ya es la obligación (con su vencimiento).
+            # Anotar además un egreso pendiente la contaba dos veces en
+            # "A pagar".
+            raise ValidationError(
+                'Una compra ya es la obligación de pago: no se anota otra '
+                'pendiente. Pagala directamente desde la factura.')
         if self.destinatario is not None:
             self.destinatario = self.destinatario.strip() or None
         if self.id_proveedor_id is None and self.destinatario is None:
