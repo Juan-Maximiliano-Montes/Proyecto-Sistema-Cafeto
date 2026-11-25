@@ -20,17 +20,23 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 
-from compras.models import Proveedor
+from compras.models import CUIT_PROVEEDOR_GENERAL, Proveedor, TipoProveedor
 from nucleo.formularios import leer_numero
 from nucleo.importar import Columna, Importador, Opcion, opcion, registrar, si_no
 from nucleo.validaciones import clave_normalizada, es_gtin, normalizar_cuit, sanear_codigo
 from stock.models import (
-    ALICUOTAS_IVA, TIPOS_CON_PROVEEDOR, Marca, Producto, Rubro, TipoProducto, UnidadMedida)
+    ALICUOTAS_IVA, TIPOS_CON_PROVEEDOR, TIPOS_CON_RECETA, Marca, Producto, Rubro, TipoProducto,
+    UnidadMedida)
 from nucleo.templatetags.cafeto import cantidad, pesos
 from nucleo.textos import pluralizar, segun
 
-CAMPOS_QUE_SE_ACTUALIZAN = ('precio_venta', 'precio_costo', 'alicuota_iva',
+#  El costo NO está: lo actualiza la compra (RN-4.2.4), no una planilla.
+CAMPOS_QUE_SE_ACTUALIZAN = ('precio_venta', 'alicuota_iva',
                             'stock_minimo', 'id_proveedor_id', 'codigo_barras')
+
+#  Debajo de este precio de venta un artículo de reventa casi seguro viene
+#  mal cargado (un precio en miles escrito en unidades, o sin completar).
+PRECIO_VENTA_SOSPECHOSO = Decimal('50')
 
 #  Tope de kilos que se acepta como inventario inicial de un fraccionable.
 #  Arriba de eso, en la planilla real del local, lo cargado son gramos en la
@@ -41,7 +47,7 @@ STOCK_FRACCIONABLE_MAXIMO = Decimal('200')
 #  vende por peso. Van con el espacio alrededor para que no las dispare una
 #  palabra que las contenga.
 PALABRAS_FRACCIONABLES = (' suelto ', ' suelta ', ' sueltos ', ' sueltas ',
-                          ' x kg ')
+                          ' x kg ', ' xkg ', ' por kg ')
 
 
 @registrar
@@ -105,7 +111,12 @@ class ImportadorProductos(Importador):
         self.marcas = {clave_normalizada(m.nombre_marca): m for m in Marca.objects.all()}
         self.generica = marca_generica()
         self.general = proveedor_general()
-        proveedores = list(Proveedor.objects.filter(borrado_logico=False))
+        # Un proveedor nombrado en la planilla es uno de verdad: ni uno de
+        # servicios (la luz no provee mercadería) ni el reservado, que sólo
+        # se asigna solo cuando la fila no dice ninguno.
+        proveedores = list(Proveedor.objects.filter(borrado_logico=False).exclude(
+            tipo_proveedor=TipoProveedor.SERVICIOS).exclude(
+            cuit_proveedor=CUIT_PROVEEDOR_GENERAL))
         self.proveedores_por_cuit = {p.cuit_proveedor: p for p in proveedores}
         self.proveedores_por_nombre = {clave_normalizada(p.nombre_proveedor): p for p in proveedores}
         # Dos índices del catálogo, armados UNA vez: con miles de filas,
@@ -170,6 +181,10 @@ class ImportadorProductos(Importador):
             return None
         if numero < 0:
             return 'NEGATIVO'
+        # Lo que vence va por lote y la planilla no trae lote ni fecha: el
+        # conteo no puede asentarlo, queda en 0 hasta que se cargue la compra.
+        if producto.controla_vencimiento:
+            return 'LOTE'
         if (producto.exige_cantidad_entera and numero != numero.to_integral_value()) or numero > 99999:
             return 'DECIMALES'
         # Un fraccionable se cuenta en kilos y nadie tiene 8.693 kg de queso
@@ -186,6 +201,7 @@ class ImportadorProductos(Importador):
         cargables = sum(1 for s in nuevos if isinstance(s, Decimal))
         negativos, raros = nuevos.count('NEGATIVO'), nuevos.count('DECIMALES')
         anomalos = nuevos.count('ANOMALO')
+        sin_lote = nuevos.count('LOTE')
         elaborados = sum(1 for r in altas
                          if r.preparado[0].tipo_producto == TipoProducto.ELABORADO)
         fraccionables = sum(1 for r in altas if r.preparado[0].fraccionable)
@@ -198,6 +214,10 @@ class ImportadorProductos(Importador):
                 f"{pluralizar(fraccionables, 'producto')} {segun(fraccionables, 'entra', 'entran')} por kilo "
                 '(fraccionable): el precio es POR KILO y en el mostrador se cobra lo que se pese. '
                 'Fijate en la lista de abajo cuáles son; los que vengan envasados corregilos antes de importar.')
+        if sin_lote:
+            frases.append(
+                f"{pluralizar(sin_lote, 'producto controla', 'productos controlan')} vencimiento: el stock de la "
+                'planilla no se carga (falta el lote y la fecha). Quedan en 0 hasta que entre la compra o los cuentes.')
         if not (cargables or negativos or raros or anomalos):
             return frases
         frases.append(f"{pluralizar(cargables, 'producto nuevo', 'productos nuevos')} {segun(cargables, 'trae', 'traen')} "
@@ -220,7 +240,8 @@ class ImportadorProductos(Importador):
         from stock import servicios
         from stock.models import MotivoAjuste
         pares = [(r.preparado[0], r.preparado[3]) for r in resultados
-                 if r.ok and r.accion == 'ALTA' and r.foto_nueva and isinstance(r.preparado[3], Decimal)]
+                 if r.ok and r.accion == 'ALTA' and r.foto_nueva and isinstance(r.preparado[3], Decimal)
+                 and not r.preparado[0].controla_vencimiento]
         if not pares:
             return []
         try:
@@ -243,6 +264,18 @@ class ImportadorProductos(Importador):
     #  vende sin stock propio (DD-90).
     RUBROS_ELABORADOS = ('comidas elaboradas',)
     PREFIJOS_ELABORADOS = ('cafeteria ', 'promo ')
+    #  Un «combo» de la planilla no trae su contenido: entra como elaborado
+    #  (con aviso) y el contenido se arma después, desde Productos.
+    PREFIJOS_COMBO = ('combo ', 'combos ')
+    #  Nombres de la cafetería. Con un EAN-13 comercial y stock es un
+    #  paquete de góndola (un café molido, una yerba); sin eso, es lo que se
+    #  prepara en el local. «cafetreia» y «bebdia» son errores de tipeo reales.
+    PALABRAS_DE_CAFETERIA = ('cafeteria', 'cafetreia', 'bebdia')
+    RUBROS_SIN_CLASIFICAR = ('otros rubros', 'sin clasificar')
+    #  Platos y bebidas de cafetería que la planilla deja en rubros sueltos.
+    PLATOS_DE_CAFETERIA = ('cortado', 'expresso', 'espresso', 'lagrima', 'latte', 'submarino',
+                           'licuado', 'tostado', 'toston', 'porcion')
+    FRASES_DE_CAFETERIA = ('medialuna con',)
 
     #  La exportación de Fácil Virtual no trae ni "Fraccionable" ni
     #  "Unidad": todo entraría por unidad, y el queso, el fiambre o la carne
@@ -275,15 +308,45 @@ class ImportadorProductos(Importador):
             return 'el nombre dice que se vende suelto o por kilo'
         numero = leer_numero((datos.get('stock') or '').strip(), 3)
         if numero is not None and numero != numero.to_integral_value():
+            # Un congelado envasado con código de fábrica y stock negativo
+            # decimal es un descuadre de inventario, no un producto por peso.
+            codigo = sanear_codigo((datos.get('codigo') or '').strip())
+            if (numero < 0 and codigo and len(codigo) == 13 and es_gtin(codigo)
+                    and clave_normalizada(datos.get('rubro') or '') == 'alimentos congelados'):
+                return None
             return f'el stock de la planilla viene con decimales ({numero})'
         return None
 
+    @staticmethod
+    def _es_ean13_comercial(codigo):
+        """Un EAN-13 de fábrica: bien formado y fuera del rango 20-29, que
+        es de circulación restringida (códigos propios de cada local)."""
+        return bool(codigo) and len(codigo) == 13 and es_gtin(codigo) and not codigo.startswith('2')
+
     @classmethod
-    def _tipo_por_defecto(cls, nombre, rubro):
+    def _tipo_sugerido(cls, nombre, rubro, codigo=None, stock=None):
+        """``(tipo, aviso)``: lo que entra cuando la planilla no dice el tipo."""
         nombre, rubro = clave_normalizada(nombre or ''), clave_normalizada(rubro or '')
+        con_espacios = f' {nombre} '
+        if (nombre + ' ').startswith(cls.PREFIJOS_COMBO):
+            return TipoProducto.ELABORADO, (
+                'Empieza con "combo": entra como elaborado, sin contenido (la planilla no lo trae). '
+                'Para que descuente sus productos, armalo como combo desde Productos.')
         if rubro in cls.RUBROS_ELABORADOS or (nombre + ' ').startswith(cls.PREFIJOS_ELABORADOS):
-            return TipoProducto.ELABORADO
-        return TipoProducto.REVENTA
+            return TipoProducto.ELABORADO, None
+        if any(f' {p} ' in con_espacios for p in cls.PALABRAS_DE_CAFETERIA):
+            if not cls._es_ean13_comercial(codigo) or (stock is not None and stock <= 0):
+                return TipoProducto.ELABORADO, (
+                    'El nombre es de cafetería y no tiene código de fábrica con stock: entra como elaborado.')
+        if rubro in cls.RUBROS_SIN_CLASIFICAR and (
+                any(f' {p} ' in con_espacios for p in cls.PLATOS_DE_CAFETERIA)
+                or any(f in con_espacios for f in cls.FRASES_DE_CAFETERIA)):
+            return TipoProducto.ELABORADO, 'Parece un plato o bebida de la cafetería: entra como elaborado.'
+        return TipoProducto.REVENTA, None
+
+    @classmethod
+    def _tipo_por_defecto(cls, nombre, rubro, codigo=None, stock=None):
+        return cls._tipo_sugerido(nombre, rubro, codigo, stock)[0]
 
     @staticmethod
     def _iva(texto):
@@ -304,8 +367,13 @@ class ImportadorProductos(Importador):
         marca = self.marcas.get(clave_normalizada(marca_texto)) if marca_texto else self.generica
         try:
             rubro, rubro_nuevo = self._rubro(d.get('rubro'), resultado)
-            tipo = opcion(d.get('tipo'), TipoProducto.choices, 'El tipo',
-                          self._tipo_por_defecto(nombre, d.get('rubro')))
+            tipo_dicho = (d.get('tipo') or '').strip()
+            tipo_defecto, aviso_de_tipo = self._tipo_sugerido(
+                nombre, d.get('rubro'), sanear_codigo((d.get('codigo') or '').strip()),
+                leer_numero((d.get('stock') or '').strip(), 3))
+            tipo = opcion(d.get('tipo'), TipoProducto.choices, 'El tipo', tipo_defecto)
+            if aviso_de_tipo and not tipo_dicho:
+                resultado.avisos.append(aviso_de_tipo)
             unidad = opcion(d.get('unidad'), UnidadMedida.choices, 'La unidad', UnidadMedida.UNIDAD)
             contenido = leer_numero(d.get('contenido') or '1', 3)
             if contenido is None:
@@ -392,8 +460,10 @@ class ImportadorProductos(Importador):
             antes = {c: getattr(producto, c) for c in CAMPOS_QUE_SE_ACTUALIZAN}
             if 'precio' in numeros:
                 producto.precio_venta = numeros['precio']
-            if 'costo' in numeros:
-                producto.precio_costo = numeros['costo']
+            if 'costo' in numeros and numeros['costo'] != producto.precio_costo:
+                resultado.avisos.append(
+                    f'El costo de la planilla ({pesos(numeros["costo"])}) no se aplica: el de '
+                    f'{producto} ({pesos(producto.precio_costo)}) lo actualiza la compra.')
             if 'minimo' in numeros:
                 producto.stock_minimo = numeros['minimo']
             if iva is not None:
@@ -421,6 +491,16 @@ class ImportadorProductos(Importador):
             resultado.preparado = (producto, None, None, None)
             return
 
+        if tipo == TipoProducto.COMBO:
+            errores.append(
+                'Un combo no se importa: la planilla no trae su contenido y sin él no se puede vender. '
+                'Cargalo desde Productos, con sus componentes.')
+            return
+        if tipo in TIPOS_CON_RECETA and marca_texto and (marca is None or not marca.es_propia):
+            errores.append(
+                f'Un {TipoProducto(tipo).label.split(" (")[0].lower()} lleva una marca propia del local '
+                f'("Genérica", "Sin marca", "Cafeto"), no "{marca_texto}".')
+            return
         if proveedor is None and tipo in TIPOS_CON_PROVEEDOR:
             proveedor = self.general
         producto = Producto(
@@ -441,6 +521,15 @@ class ImportadorProductos(Importador):
             return
         self._avisar_bajo_costo(resultado, producto)
         self._avisar_sin_costo(resultado, producto)
+        if (tipo == TipoProducto.REVENTA and 'precio' in numeros
+                and 0 < numeros['precio'] < PRECIO_VENTA_SOSPECHOSO):
+            resultado.avisos.append(
+                f'El precio de venta ({pesos(numeros["precio"])}) es muy bajo para un producto de reventa: '
+                'fijate que no esté en otra unidad o sin completar.')
+        if producto.controla_vencimiento and self._stock(d.get('stock'), producto) == 'LOTE':
+            resultado.avisos.append(
+                'Controla vencimiento: su stock no se carga desde la planilla (falta el lote y la fecha). '
+                'Queda en 0 hasta que entre la compra.')
         if codigo and len(codigo) in (8, 12, 13, 14) and not es_gtin(codigo):
             resultado.avisos.append(
                 f'El código {codigo} tiene el largo de uno de fábrica pero el dígito de control no cierra: '

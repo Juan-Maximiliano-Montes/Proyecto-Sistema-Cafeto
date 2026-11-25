@@ -50,16 +50,27 @@ def rubro(nombre='Minisuper'):
     return Rubro.objects.get(nombre_rubro=nombre)
 
 
-def marca(nombre='Sin marca'):
-    return Marca.objects.get_or_create(nombre_marca=nombre)[0]
+def marca(nombre='Sin marca', es_propia=None):
+    """La marca ``nombre``. Las del propio local ('Sin marca', 'Genérica',
+    'Cafeto') son ``es_propia``; cualquier otra, de un fabricante."""
+    if es_propia is None:
+        es_propia = nombre in ('Sin marca', 'Genérica', 'Cafeto')
+    nueva = Marca.objects.get_or_create(
+        nombre_marca=nombre, defaults={'es_propia': es_propia})[0]
+    if es_propia and not nueva.es_propia:
+        Marca.objects.filter(pk=nueva.pk).update(es_propia=True)
+        nueva.es_propia = True
+    return nueva
 
 
 def producto(nombre, tipo='REVENTA', precio='1000', costo='600', prov=None,
              rubro_nombre='Minisuper', marca_nombre='Sin marca',
              contenido='1', unidad='UNIDAD', **extra):
+    # Lo que se prepara en el local lleva una marca propia (es_propia).
+    propia = True if tipo in ('ELABORADO', 'PRODUCIDO') else None
     datos = dict(
         tipo_producto=tipo, nombre_producto=nombre,
-        id_rubro=rubro(rubro_nombre), id_marca=marca(marca_nombre),
+        id_rubro=rubro(rubro_nombre), id_marca=marca(marca_nombre, propia),
         contenido=D(contenido), unidad_medida=unidad,
         precio_venta=D(precio) if tipo != 'INSUMO' else D('0'),
         precio_costo=D(costo), id_proveedor=prov)
@@ -138,3 +149,28 @@ def entrar(cliente, usuario_):
     vincular_sesion(sesion, usuario_, sesion_negocio)
     sesion.save()
     return sesion_negocio
+
+
+def atrasar_fiados(consulta, dias):
+    """Hace que los fiados de ``consulta`` (un queryset de ``MovimientoCuenta``)
+    hayan vencido hace ``dias`` días.
+
+    La cuenta corriente es un libro inalterable también en la base
+    (``tr_movimientos_cuenta_inalterable``): de un fiado sólo cambian el saldo y
+    los puntos. Para armar un fiado atrasado sin esperar, la prueba apaga ese
+    trigger durante el UPDATE. Es DDL transaccional: lo deshace el rollback de
+    la prueba y nada de esto existe fuera de ella.
+    """
+    from django.db import connection
+
+    vence = timezone.localdate() - timedelta(days=dias)
+    with connection.cursor() as cursor:
+        # Las claves foráneas de Django se verifican al final de la transacción:
+        # con eventos pendientes, PostgreSQL no deja hacer el ALTER TABLE.
+        cursor.execute('SET CONSTRAINTS ALL IMMEDIATE')
+        cursor.execute('ALTER TABLE movimientos_cuenta DISABLE TRIGGER tr_movimientos_cuenta_inalterable')
+        try:
+            consulta.update(fecha_vencimiento=vence)
+        finally:
+            cursor.execute('ALTER TABLE movimientos_cuenta ENABLE TRIGGER tr_movimientos_cuenta_inalterable')
+            cursor.execute('SET CONSTRAINTS ALL DEFERRED')

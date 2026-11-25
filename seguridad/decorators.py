@@ -20,7 +20,18 @@ from django.shortcuts import redirect
 from nucleo.errores import error_json, quiere_json
 
 
-def requiere_permiso(codigo_permiso, redirigir_a='seguridad:lista'):
+def nombre_legible(codigo_permiso):
+    """El nombre en castellano del permiso (``Permiso.nombre``), para
+    mostrárselo a la persona. Si el permiso no está cargado en la base,
+    queda el código técnico: más vale eso que un aviso vacío."""
+    from seguridad.models import Permiso
+
+    nombre = (Permiso.objects.filter(codigo=codigo_permiso)
+              .values_list('nombre', flat=True).first())
+    return nombre or codigo_permiso
+
+
+def requiere_permiso(codigo_permiso, redirigir_a='home'):
     """Deja pasar sólo si el usuario logueado tiene ese permiso.
 
     Uso::
@@ -29,16 +40,20 @@ def requiere_permiso(codigo_permiso, redirigir_a='seguridad:lista'):
         def crear_usuario(request):
             ...
 
-        # con destino de rebote propio (para no caer en un bucle cuando
-        # la vista protegida es justamente el listado):
-        @requiere_permiso('ver_usuarios', redirigir_a='mi_perfil')
-        def lista_usuarios(request):
+        # con destino de rebote propio (para quedarse en el módulo):
+        @requiere_permiso('registrar_egreso', redirigir_a='compras:egresos')
+        def registrar_egreso(request):
             ...
 
     Si el usuario NO tiene el permiso: corta la ejecución de la vista,
     deja el intento en el Registro de Actividad con resultado RECHAZADA
     (DD-62), muestra un ``messages.error`` de acceso denegado y redirige a
-    ``redirigir_a``.
+    ``redirigir_a``. El destino por defecto es el inicio (``home``), que
+    ninguna vista protegida por permiso puede rebotar a sí misma: rebotar a
+    un listado protegido con el mismo permiso era un bucle de redirecciones.
+
+    El aviso dice el NOMBRE del permiso en castellano («Registrar un
+    egreso»), no su código técnico.
     """
 
     def decorador(vista):
@@ -57,13 +72,14 @@ def requiere_permiso(codigo_permiso, redirigir_a='seguridad:lista'):
                 # DD-62: el intento queda en el Registro de Actividad.
                 from seguridad.servicios import registrar_acceso_denegado
                 registrar_acceso_denegado(request, codigo_permiso)
+                nombre = nombre_legible(codigo_permiso)
                 if quiere_json(request):
                     return error_json('Tu perfil no tiene habilitado el permiso necesario para esta '
-                                      f'acción ("{codigo_permiso}").', 403)
+                                      f'acción ("{nombre}").', 403)
                 messages.error(
                     request,
                     'Acceso denegado: tu perfil no tiene habilitado el '
-                    f'permiso necesario para esta acción ("{codigo_permiso}").'
+                    f'permiso necesario para esta acción ("{nombre}").'
                 )
                 return redirect(redirigir_a)
 

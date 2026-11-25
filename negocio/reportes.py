@@ -88,6 +88,20 @@ def _margen(venta, costo):
     return ((venta - costo) / venta * 100).quantize(Decimal('0.1'))
 
 
+def _neto_de_cambios_por(ventas, agrupar):
+    """``{valor: cobrado - devuelto}`` de los cambios de ``ventas``, agrupados
+    por ``agrupar`` (un campo de la venta original: el día, el cliente...).
+
+    Los cambios se atribuyen a la venta ORIGINAL (REP-01): el ticket no se
+    anula, se corrige con lo que se cobró de más y lo que se reintegró.
+    """
+    from negocio import ganancia
+    filas = (ganancia.cambios_de(ventas)
+             .values(agrupar).order_by()
+             .annotate(cobrado=Sum('importe_cobrado'), devuelto=Sum('importe_devuelto')))
+    return {f[agrupar]: (f['cobrado'] or CERO) - (f['devuelto'] or CERO) for f in filas}
+
+
 def ventas_por_dia(desde, hasta, caja=None):
     from ventas.models import Venta
     ventas = _filtrar(Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA'),
@@ -96,11 +110,16 @@ def ventas_por_dia(desde, hasta, caja=None):
              .values('fecha_venta').order_by('fecha_venta')
              .annotate(tickets=Count('pk'), total=Sum('total_venta'),
                        recargos=Sum('monto_recargo')))
+    # «Vendido» es NETO de los cambios y devoluciones del día de la venta
+    # (REP-01); los tickets y los recargos son los de las ventas.
+    neto = _neto_de_cambios_por(ventas, 'id_venta__fecha_venta')
     columnas = [C('Día', 'fecha'), C('Tickets', 'numero', conteo=True), C('Vendido', 'dinero'),
                 C('Ticket promedio', 'dinero'), C('Recargos', 'dinero')]
-    datos = [[f['fecha_venta'], f['tickets'], f['total'],
-              (f['total'] / f['tickets']).quantize(Decimal('0.01')), f['recargos']]
-             for f in filas]
+    datos = []
+    for f in filas:
+        vendido = f['total'] + neto.get(f['fecha_venta'], CERO)
+        datos.append([f['fecha_venta'], f['tickets'], vendido,
+                      (vendido / f['tickets']).quantize(Decimal('0.01')), f['recargos']])
     total = sum((f[2] for f in datos), CERO)
     tickets = sum((f[1] for f in datos), 0)
     return columnas, datos, ['Total', tickets, total,
@@ -136,6 +155,25 @@ def productos(desde, hasta, rubro=None, caja=None):
         actual['descripcion_item'] = fila['descripcion_item']
         for campo in ('cantidad_total', 'vendido', 'costo_total', 'descuentos'):
             actual[campo] += fila[campo] or CERO
+    # REP-01: los renglones de los cambios corrigen a cada producto. Lo que
+    # el cliente devuelve resta unidades y plata; lo que se lleva a cambio las
+    # suma. El costo se ajusta igual que en ``negocio.ganancia``.
+    from negocio import ganancia
+    from ventas.models import DetalleCambio
+    ajustes = DetalleCambio.objects.filter(id_cambio__id_venta__fecha_venta__range=(desde, hasta),
+                                           id_cambio__id_venta__estado_venta='COMPLETADA')
+    ajustes = _filtrar(ajustes, rubro, 'id_producto__id_rubro')
+    ajustes = _filtrar(ajustes, caja, 'id_cambio__id_venta__id_turno_caja__id_caja_registradora')
+    for renglon in (ajustes.select_related('id_producto', 'id_detalle_venta')
+                    .prefetch_related('id_producto__composicion__id_componente')
+                    .order_by('pk')):
+        signo = 1 if renglon.sentido == 'ENTREGA' else -1
+        actual = por_id.setdefault(renglon.id_producto_id, {
+            'descripcion_item': renglon.id_producto.nombre_producto, 'cantidad_total': CERO,
+            'vendido': CERO, 'costo_total': CERO, 'descuentos': CERO})
+        actual['cantidad_total'] += signo * renglon.cantidad
+        actual['vendido'] += signo * renglon.subtotal
+        actual['costo_total'] += ganancia.costo_de_renglon_de_cambio(renglon)
     filas = sorted(por_id.values(), key=lambda f: f['vendido'], reverse=True)
     columnas = [C('Producto'), C('Cantidad', 'numero'), C('Vendido', 'dinero'),
                 C('Costo', 'dinero'), C('Ganancia', 'dinero'), C('Margen %', 'numero'),
@@ -150,7 +188,8 @@ def productos(desde, hasta, rubro=None, caja=None):
 
 
 def medios(desde, hasta, caja=None):
-    from ventas.models import PagoVenta
+    from negocio import ganancia
+    from ventas.models import PagoVenta, Venta
     pagos = _filtrar(PagoVenta.objects.filter(id_venta__fecha_venta__range=(desde, hasta),
                                               id_venta__estado_venta='COMPLETADA'),
                      caja, 'id_venta__id_turno_caja__id_caja_registradora')
@@ -160,8 +199,23 @@ def medios(desde, hasta, caja=None):
              .order_by('-cobrado'))
     columnas = [C('Medio de pago'), C('Pagos', 'numero', conteo=True), C('Cobrado', 'dinero'),
                 C('Recargos', 'dinero'), C('Total', 'dinero')]
-    datos = [[f['id_medio_pago__nombre_medio_pago'], f['pagos'], f['cobrado'], f['recargos'],
-              f['cobrado'] + f['recargos']] for f in filas]
+    por_medio = OrderedDict(
+        (f['id_medio_pago__nombre_medio_pago'], [f['pagos'], f['cobrado'], f['recargos']]) for f in filas)
+    # REP-01: la diferencia que se cobró por un medio al hacer un cambio suma
+    # a lo cobrado, y lo que se reintegró por él resta. No son «pagos» (no
+    # cuentan en esa columna) ni llevan recargo propio: el reintegro ya trae
+    # su parte del recargo (DD-66), así que el neto va en «Cobrado».
+    ventas = _filtrar(Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA'),
+                      caja, 'id_turno_caja__id_caja_registradora')
+    cambios = (ganancia.cambios_de(ventas).filter(id_medio_pago__isnull=False)
+               .values('id_medio_pago__nombre_medio_pago').order_by()
+               .annotate(cobrado=Sum('importe_cobrado'), devuelto=Sum('importe_devuelto')))
+    for f in cambios:
+        fila = por_medio.setdefault(f['id_medio_pago__nombre_medio_pago'], [0, CERO, CERO])
+        fila[1] += (f['cobrado'] or CERO) - (f['devuelto'] or CERO)
+    datos = sorted(([medio, pagos_, cobrado, recargos, cobrado + recargos]
+                    for medio, (pagos_, cobrado, recargos) in por_medio.items()),
+                   key=lambda fila: fila[2], reverse=True)
     return columnas, datos, ['Total', sum((f[1] for f in datos), 0),
                              sum((f[2] for f in datos), CERO), sum((f[3] for f in datos), CERO),
                              sum((f[4] for f in datos), CERO)]
@@ -250,18 +304,43 @@ def mermas(desde, hasta, rubro=None):
 
 
 def stock_valorizado(desde=None, hasta=None, rubro=None):
-    from stock.models import TIPOS_CON_STOCK, Producto
-    valor = ExpressionWrapper(F('stock_actual') * F('precio_costo'), output_field=DINERO)
-    venta = ExpressionWrapper(F('stock_actual') * F('precio_venta'), output_field=DINERO)
-    filas = (_filtrar(Producto.objects.filter(borrado_logico=False, tipo_producto__in=TIPOS_CON_STOCK,
-                                              stock_actual__gt=0), rubro, 'id_rubro')
-             .values('id_rubro__nombre_rubro')
-             .annotate(productos=Count('pk'), al_costo=Sum(valor), a_la_venta=Sum(venta))
-             .order_by('-al_costo'))
+    """Lo que hay en el local, por rubro.
+
+    * «Al costo»: todo el stock, lo apto y lo vencido (sigue siendo plata
+      puesta hasta que se dé de baja con una merma), insumos incluidos.
+    * «A precio de venta» (REP-02): sólo lo que de verdad se puede vender,
+      es decir el stock APTO (sin los lotes vencidos) de los productos
+      VENDIBLES. Un insumo no se vende y lo vencido tampoco: valorizarlos a
+      precio de góndola inflaba lo que el local cree tener para vender.
+    """
+    from django.utils import timezone
+
+    from stock.models import TIPOS_CON_STOCK, TIPOS_VENDIBLES, Lote, Producto
+    productos_ = list(_filtrar(Producto.objects.filter(
+        borrado_logico=False, tipo_producto__in=TIPOS_CON_STOCK, stock_actual__gt=0),
+        rubro, 'id_rubro').values('pk', 'id_rubro__nombre_rubro', 'tipo_producto', 'controla_vencimiento',
+                                  'stock_actual', 'precio_costo', 'precio_venta'))
+    # Lo vencido, por producto y en UNA consulta (como ``Producto.stock_vencido``:
+    # sólo aplica a lo que controla vencimiento).
+    vencido = {f['id_producto']: f['t'] or CERO for f in (
+        Lote.objects.filter(id_producto__in=[p['pk'] for p in productos_ if p['controla_vencimiento']],
+                            stock_lote__gt=0, fecha_vencimiento__lt=timezone.localdate())
+        .values('id_producto').order_by().annotate(t=Sum('stock_lote')))}
+    por_rubro = {}
+    for p in productos_:
+        fila = por_rubro.setdefault(p['id_rubro__nombre_rubro'], {'productos': 0, 'al_costo': CERO,
+                                                                  'a_la_venta': CERO})
+        fila['productos'] += 1
+        fila['al_costo'] += p['stock_actual'] * p['precio_costo']
+        if p['tipo_producto'] in TIPOS_VENDIBLES:
+            apto = max(p['stock_actual'] - vencido.get(p['pk'], CERO), CERO)
+            fila['a_la_venta'] += apto * p['precio_venta']
+    filas = [dict(rubro=nombre, **cuenta) for nombre, cuenta in
+             sorted(por_rubro.items(), key=lambda par: par[1]['al_costo'], reverse=True)]
     columnas = [C('Rubro'), C('Productos', 'numero', conteo=True), C('Al costo', 'dinero'),
                 C('A precio de venta', 'dinero')]
-    datos = [[f['id_rubro__nombre_rubro'], f['productos'], f['al_costo'], f['a_la_venta']]
-             for f in filas]
+    datos = [[f['rubro'], f['productos'], f['al_costo'].quantize(Decimal('0.01')),
+              f['a_la_venta'].quantize(Decimal('0.01'))] for f in filas]
     return columnas, datos, ['Total', sum((f[1] for f in datos), 0),
                              sum((f[2] for f in datos), CERO), sum((f[3] for f in datos), CERO)]
 
@@ -271,7 +350,8 @@ def stock_valorizado(desde=None, hasta=None, rubro=None):
 # ===========================================================================
 def _consumo_por_cliente(desde, hasta):
     """Ventas, gasto, ticket promedio y última compra de cada cliente en
-    el período, con lo devuelto ya descontado."""
+    el período, neto de cambios y devoluciones (REP-01): lo que pagó de más
+    en un cambio suma y lo que se le reintegró resta."""
     from ventas.models import Cambio, Venta
     ventas = {f['id_cliente']: f for f in (
         Venta.objects.filter(fecha_venta__range=(desde, hasta), estado_venta='COMPLETADA',
@@ -279,12 +359,13 @@ def _consumo_por_cliente(desde, hasta):
         .values('id_cliente')
         .annotate(compras=Count('pk'), gastado=Sum('total_venta'),
                   ultima=Max('fecha_venta'), primera=Min('fecha_venta')))}
-    devuelto = {f['id_venta__id_cliente']: f['t'] for f in (
+    cambios = {f['id_venta__id_cliente']: (f['cobrado'] or CERO) - (f['devuelto'] or CERO) for f in (
         Cambio.objects.filter(id_venta__fecha_venta__range=(desde, hasta), id_venta__estado_venta='COMPLETADA',
                               id_venta__id_cliente__isnull=False)
-        .values('id_venta__id_cliente').annotate(t=Sum('importe_devuelto')))}
+        .values('id_venta__id_cliente').order_by()
+        .annotate(cobrado=Sum('importe_cobrado'), devuelto=Sum('importe_devuelto')))}
     for clave, fila in ventas.items():
-        fila['neto'] = fila['gastado'] - (devuelto.get(clave) or CERO)
+        fila['neto'] = fila['gastado'] + cambios.get(clave, CERO)
     return ventas
 
 

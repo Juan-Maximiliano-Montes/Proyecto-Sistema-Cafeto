@@ -557,7 +557,7 @@ def _motivo_de_margen(producto, piso, sin_receta):
     from stock.models import TipoProducto
 
     cero = Decimal('0')
-    costo = producto.precio_costo or cero
+    costo = producto.costo_vigente() or cero
     utilidad = producto.utilidad_porcentaje
     con_costo_propio = producto.tipo_producto in (TipoProducto.REVENTA,
                                                   TipoProducto.PRODUCIDO)
@@ -590,7 +590,8 @@ def productos_margen_bajo(request):
     consulta = (Producto.objects
                 .filter(borrado_logico=False,
                         tipo_producto__in=sorted(TIPOS_VENDIBLES))
-                .select_related('id_rubro').prefetch_related('composicion'))
+                .select_related('id_rubro')
+                .prefetch_related('composicion__id_componente'))
     filas = []
     for producto in _con_movimiento_reciente(consulta, desde):
         sin_receta = (producto.tipo_producto == TipoProducto.ELABORADO
@@ -602,7 +603,7 @@ def productos_margen_bajo(request):
             'id': producto.pk, 'nombre': str(producto),
             'rubro': producto.id_rubro.nombre_rubro,
             'tipo': producto.tipo_producto, 'motivo': motivo,
-            'precio_costo': str(producto.precio_costo),
+            'precio_costo': str(producto.costo_vigente()),
             'precio_venta': str(producto.precio_venta),
             'utilidad_porcentaje': None if utilidad is None else str(utilidad),
             'se_movio_hace_poco': bool(producto.reciente),

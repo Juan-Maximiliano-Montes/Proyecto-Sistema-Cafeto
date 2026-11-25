@@ -30,7 +30,7 @@ Uso::
 """
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import connection, transaction
 
 from compras.models import Proveedor
 from fidelizacion.models import Cliente
@@ -145,6 +145,105 @@ AUDITORIAS = (
 )
 
 
+# ---------------------------------------------------------------------------
+#  DERIVAS DE ESQUEMA (DB-RPH-01)
+# ---------------------------------------------------------------------------
+# El archivo histórico se crea con ``LIKE <tabla viva>`` y desde entonces
+# nadie lo mantiene solo: cada vez que una migración le agrega, le saca o le
+# cambia el tipo a una columna de la tabla viva, hay que acordarse de hacer
+# lo mismo en su ``hist_*``. Si se olvida, el pase a histórico falla (o, peor,
+# copia a la columna equivocada) justo la noche en que hay algo para archivar.
+# Esta auditoría lo detecta antes: compara columna por columna.
+COLUMNA_SOLO_DEL_HISTORICO = 'fecha_archivo'
+
+COLUMNAS_DEL_ESQUEMA = """
+    SELECT column_name, udt_name, character_maximum_length,
+           numeric_precision, numeric_scale
+      FROM information_schema.columns
+     WHERE table_schema = current_schema() AND table_name = %s
+"""
+
+TABLAS_CON_HISTORICO_VIGENTES = """
+    SELECT h.table_name
+      FROM information_schema.tables h
+      JOIN information_schema.tables v
+        ON v.table_schema = h.table_schema
+       AND v.table_name = substr(h.table_name, 6)
+     WHERE h.table_schema = current_schema()
+       AND h.table_type = 'BASE TABLE' AND v.table_type = 'BASE TABLE'
+       AND h.table_name LIKE 'hist\\_%'
+     ORDER BY h.table_name
+"""
+
+
+class DerivaDeEsquema:
+    """Una diferencia entre una tabla viva y su histórico.
+
+    No es una fila que se pueda dar de baja: se arregla con una migración.
+    """
+
+    def __init__(self, tabla, historico, motivo):
+        self.tabla = tabla
+        self.historico = historico
+        self.motivo = motivo
+
+    def __str__(self):
+        return '%-22s %-28s %s' % (self.tabla, self.historico, self.motivo)
+
+
+def _columnas(cursor, tabla):
+    """``{columna: (tipo, largo, precisión, escala)}`` de una tabla."""
+    cursor.execute(COLUMNAS_DEL_ESQUEMA, [tabla])
+    return {nombre: tuple(forma) for nombre, *forma in cursor.fetchall()}
+
+
+def _forma(firma):
+    tipo, largo, precision, escala = firma
+    if largo:
+        return '%s(%s)' % (tipo, largo)
+    if tipo == 'numeric' and precision:
+        return 'numeric(%s,%s)' % (precision, escala or 0)
+    return tipo
+
+
+def derivas_de_esquema():
+    """Las columnas que no coinciden entre cada tabla con histórico y su
+    ``hist_*``.
+
+    Se compara el nombre y la forma del tipo (no el NOT NULL ni el orden:
+    el histórico es una fotografía y el archivado copia por nombre). La única
+    columna que el histórico tiene de más es ``fecha_archivo``.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(TABLAS_CON_HISTORICO_VIGENTES)
+        historicos = [fila[0] for fila in cursor.fetchall()]
+        for historico in historicos:
+            tabla = historico[len('hist_'):]
+            vivas = _columnas(cursor, tabla)
+            archivadas = _columnas(cursor, historico)
+            for columna in vivas.keys() - archivadas.keys():
+                yield DerivaDeEsquema(
+                    tabla, historico,
+                    'a %s le falta la columna "%s": el pase a histórico '
+                    'fallaría' % (historico, columna))
+            for columna in archivadas.keys() - vivas.keys() - {COLUMNA_SOLO_DEL_HISTORICO}:
+                yield DerivaDeEsquema(
+                    tabla, historico,
+                    '%s tiene la columna "%s" que ya no existe en %s'
+                    % (historico, columna, tabla))
+            if COLUMNA_SOLO_DEL_HISTORICO not in archivadas:
+                yield DerivaDeEsquema(
+                    tabla, historico,
+                    '%s no tiene la columna "%s"' % (historico, COLUMNA_SOLO_DEL_HISTORICO))
+            for columna in sorted(vivas.keys() & archivadas.keys()):
+                if vivas[columna] != archivadas[columna]:
+                    yield DerivaDeEsquema(
+                        tabla, historico,
+                        'la columna "%s" es %s en %s y %s en %s'
+                        % (columna, _forma(vivas[columna]), tabla,
+                           _forma(archivadas[columna]), historico))
+
+
 class Command(BaseCommand):
     help = 'Informa (y opcionalmente da de baja) los registros inconsistentes.'
 
@@ -163,6 +262,24 @@ class Command(BaseCommand):
                     continue
                 vistos.add(marca)
                 hallazgos.append(hallazgo)
+
+        # Las derivas de esquema se informan siempre y aparte: no son filas,
+        # no se dan de baja, se arreglan con una migración.
+        derivas = list(derivas_de_esquema())
+        if derivas:
+            self.stdout.write(self.style.ERROR(
+                'DERIVAS DE ESQUEMA ENTRE TABLAS VIVAS E HISTÓRICO: %d' % len(derivas)))
+            self.stdout.write('')
+            for deriva in derivas:
+                self.stdout.write('  ' + str(deriva))
+            self.stdout.write('')
+            self.stdout.write(self.style.WARNING(
+                'Esto no se corrige con --dar-de-baja: hace falta una '
+                'migración que iguale la tabla hist_* a su tabla viva.'))
+            self.stdout.write('')
+        else:
+            self.stdout.write(self.style.SUCCESS(
+                'Esquema del histórico: cada hist_* coincide con su tabla viva.'))
 
         if not hallazgos:
             self.stdout.write(self.style.SUCCESS(

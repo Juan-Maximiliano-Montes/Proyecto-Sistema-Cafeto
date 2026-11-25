@@ -16,7 +16,9 @@ En orden:
      y que no lleve demasiado tiempo sin uso. Si no vale, se cierra y se
      avisa por qué.
   4. Si el usuario arrastra una clave provisoria (``debe_cambiar_clave``)
-     -> SIEMPRE a la pantalla de cambio de clave, hasta que la cambie.
+     -> SIEMPRE a la pantalla de cambio de clave, hasta que la cambie. Si
+     el pedido espera JSON, en vez de la redirección se contesta un 403 con
+     el motivo (SEG-01).
 
 Deja disponibles ``request.usuario_actual`` y ``request.sesion_negocio``
 para que las vistas y los templates los usen sin volver a consultarlos.
@@ -99,6 +101,15 @@ class SeguridadMiddleware:
         # 4) Interceptor de clave provisoria
         url_cambio = reverse('seguridad:cambiar_clave')
         if usuario.debe_cambiar_clave and ruta != url_cambio:
+            # SEG-01: a un pedido que espera JSON (fetch, XHR) un 302 a la
+            # pantalla de cambio de clave le llega como un HTML que no puede
+            # leer, y la pantalla se queda colgada sin decir por qué. Se le
+            # contesta con el motivo y un 403 que el cliente sabe mostrar.
+            if _espera_json(request):
+                return JsonResponse(
+                    {'ok': False,
+                     'error': 'Tenés que cambiar tu clave provisoria antes de continuar.'},
+                    status=403)
             return redirect('seguridad:cambiar_clave')
 
         return self.get_response(request)

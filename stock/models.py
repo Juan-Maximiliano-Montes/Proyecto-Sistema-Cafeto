@@ -199,6 +199,10 @@ class Marca(Maestra):
     nombre_marca = models.CharField('Marca', max_length=50)
     descripcion_marca = models.CharField(
         'Descripción', max_length=120, null=True, blank=True)
+    # Marca del propio local («Genérica», «Sin marca», «Cafeto»): la única
+    # que admiten los productos que se preparan en el local (ELABORADO y
+    # PRODUCIDO), que no tienen un fabricante externo.
+    es_propia = models.BooleanField('Marca propia del local', default=False)
     usuario_modificacion = sello_usuario_modificacion('marcas_modificadas')
 
     class Meta:
@@ -233,6 +237,8 @@ class Marca(Maestra):
                 'que todavía no tienen la suya: no se le cambia el nombre.')})
         self.descripcion_marca = texto_de_catalogo(
             self.descripcion_marca, 1, 120, 'La descripción', obligatorio=False)
+        if self.nombre_marca == MARCA_GENERICA:
+            self.es_propia = True      # la reservada es siempre del local
         # "Coca Cola", "coca cola" y "Coca-cola" son la misma marca. Se
         # corta acá para que el aviso salga en el campo y no como un
         # error 500 del índice único.
@@ -493,7 +499,7 @@ class Producto(ConSaldosDerivados, Maestra):
         Precio = Costo × (1 + IVA/100) × (1 + Utilidad/100). None si no
         hay costo: no se puede dividir por cero.
         """
-        base = (self.precio_costo or CERO) * (1 + (self.alicuota_iva or CERO) / 100)
+        base = (self.costo_vigente() or CERO) * (1 + (self.alicuota_iva or CERO) / 100)
         if not base or not self.precio_venta:
             return None
         return ((self.precio_venta / base - 1) * 100).quantize(Decimal('0.01'))
@@ -610,9 +616,14 @@ class Producto(ConSaldosDerivados, Maestra):
         con leche es lo que cuestan su café y su leche hoy. Se congela en
         el renglón de la venta, así el margen de ayer no cambia mañana.
         """
-        if not self.es_compuesto:
+        if not self.es_compuesto or self.pk is None:
             return self.precio_costo
-        renglones = list(self.composicion.select_related('id_componente'))
+        # Con ``prefetch_related('composicion__id_componente')`` se usa lo ya
+        # traído (listados, buscador, API de margen): sin N+1.
+        if 'composicion' in getattr(self, '_prefetched_objects_cache', {}):
+            renglones = list(self.composicion.all())
+        else:
+            renglones = list(self.composicion.select_related('id_componente'))
         # Un elaborado todavía sin receta conserva el costo que se le
         # cargó a mano (o el que trajo la planilla): devolver $0 inflaba el
         # margen al 100 % en el tablero y en los reportes de ganancia.
@@ -673,6 +684,7 @@ class Producto(ConSaldosDerivados, Maestra):
             decimales=3, etiqueta='El contenido', incluye_minimo=False)
 
         self._validar_matriz_del_tipo()
+        self._validar_marca_propia()
         _validar_rebaja(self)
 
         # La identidad de un producto es la TERNA marca + presentación
@@ -685,6 +697,17 @@ class Producto(ConSaldosDerivados, Maestra):
 
         self._validar_cambio_de_tipo()
         self._validar_cambio_de_control_de_vencimiento()
+
+    def _validar_marca_propia(self):
+        """Lo que se prepara en el local lleva una marca propia del local."""
+        if self.tipo_producto not in TIPOS_CON_RECETA or not self.id_marca_id:
+            return
+        if not Marca._base_manager.filter(
+                pk=self.id_marca_id, es_propia=True).exists():
+            raise ValidationError({'id_marca': (
+                'Un producto elaborado o producido en el local lleva una marca '
+                'propia ("Genérica", "Sin marca", "Cafeto"): elegí una de '
+                'esas o marcá la marca como propia del local.')})
 
     def _validar_matriz_del_tipo(self):
         """Lo que la tabla de la cabecera del módulo permite a cada tipo."""

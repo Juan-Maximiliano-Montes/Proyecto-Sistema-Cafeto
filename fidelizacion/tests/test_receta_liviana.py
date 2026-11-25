@@ -137,7 +137,7 @@ class BuscadorDeProductosTest(BaseReceta):
         codigo, datos = self._buscar()
         self.assertEqual(codigo, 200)
         self.assertEqual(set(datos), {'results', 'pagination'})
-        self.assertEqual(set(datos['results'][0]), {'id', 'text'})
+        self.assertEqual(set(datos['results'][0]), {'id', 'text', 'unidad', 'costo_unitario'})
         self.assertIn('more', datos['pagination'])
 
     def test_cada_pagina_trae_como_mucho_una_tanda(self):

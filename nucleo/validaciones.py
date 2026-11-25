@@ -533,9 +533,15 @@ def validar_codigo_barras(valor):
     if not (digitos.isascii() and digitos.isdigit()):
         raise ValidationError('El código sólo admite dígitos.')
     if not CODIGO_MINIMO <= len(digitos) <= CODIGO_MAXIMO:
+        aclaracion = ''
+        if len(digitos) < CODIGO_MINIMO:
+            # Una planilla de cálculo se come los ceros de la izquierda:
+            # "007" llega como "7".
+            aclaracion = (' Si empezaba con ceros, puede que la planilla los '
+                          'haya perdido: escribilo completo.')
         raise ValidationError(
             f'El código tiene que tener entre {CODIGO_MINIMO} y {CODIGO_MAXIMO} '
-            f'dígitos; el que escribiste tiene {len(digitos)}.')
+            f'dígitos; el que escribiste tiene {len(digitos)}.{aclaracion}')
     return digitos
 
 

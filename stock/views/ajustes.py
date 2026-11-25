@@ -136,12 +136,18 @@ def ajuste(request, pk):
 def resolver(request, pk):
     ajuste = get_object_or_404(AjusteStock, pk=pk)
     antes = instantanea(ajuste)
+    decision = request.POST.get('decision')
+    # Una decisión que no es ninguna de las dos NO se toma por un rechazo
+    # (y no gasta el token: el mismo formulario se puede reenviar).
+    if decision not in ('aprobar', 'rechazar'):
+        messages.error(request, 'Elegí si aprobás o rechazás el ajuste.')
+        return redirect('stock:ajuste', pk=pk)
     if not idempotencia.consumir(request, request.POST.get('token_operacion')):
         messages.info(request, 'Esa resolución ya se había procesado.')
         return redirect('stock:ajuste', pk=pk)
     observacion = request.POST.get('observacion', '')
     try:
-        if request.POST.get('decision') == 'aprobar':
+        if decision == 'aprobar':
             ajuste = servicios.aprobar(ajuste, request.usuario_actual, observacion)
         else:
             ajuste = servicios.rechazar(ajuste, request.usuario_actual, observacion)
@@ -169,6 +175,12 @@ def conteo(request):
     abierto = _conteo_abierto()
     if request.method == 'POST':
         accion = request.POST.get('accion')
+        # Si el formulario trae ``token_operacion``, un doble clic o un
+        # reenvío no repite la carga (un conteo sumado dos veces).
+        token = request.POST.get('token_operacion')
+        if token and not idempotencia.consumir(request, token):
+            messages.info(request, 'Esa operación ya se había procesado.')
+            return redirect('stock:conteo')
         try:
             if accion == 'empezar':
                 abierto = servicios.iniciar_conteo(
@@ -229,6 +241,8 @@ def conteo(request):
                 messages.success(request, 'Conteo enviado. Ahora lo revisa quien autoriza los ajustes.')
                 return redirect('stock:ajustes')
         except ValidationError as error:
+            if token:
+                idempotencia.devolver(request, token)
             messages.error(request, _texto(error))
         return redirect('stock:conteo')
 
@@ -286,8 +300,12 @@ def _alta_rapida(request):
     # campo. Ahora cada uno dice qué pasa.
     precio = _numero_del_alta(datos.get('precio'), 'El precio de venta')
     costo = _numero_del_alta(datos.get('costo'), 'El costo')
+    # Lo contado con decimales (2,350) es peso: entra por kilo y fraccionable.
+    # Por unidad no hay medio sobre.
+    por_peso = contada != contada.to_integral_value()
     producto = Producto(
         codigo_barras=datos.get('codigo'), nombre_producto=datos.get('nombre', ''),
+        **({'unidad_medida': 'KG', 'fraccionable': True} if por_peso else {}),
         id_rubro=Rubro.objects.filter(pk=id_valido(datos.get('rubro')),
                                       borrado_logico=False, activo=True).first(),
         id_marca=marca_generica(), id_proveedor=proveedor_general(),
