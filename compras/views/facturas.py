@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
@@ -118,12 +119,37 @@ def rubro_sugerido(proveedor_id=None):
         'pk', flat=True).first()
 
 
+TIPOS_DE_ALTA = ('REVENTA', 'INSUMO')
+UNIDADES_DE_ALTA = ('UNIDAD', 'KG', 'L')
+
+
+def _alicuota(valor):
+    """La alícuota como ``Decimal`` de ``ALICUOTAS_IVA`` (21.0, 10.5, 0.0).
+
+    Se normaliza acá y no se la pasa como texto a ``ProductoForm``: con
+    ``localize=True`` el punto de "10.5" es separador de miles y el valor
+    entraba multiplicado por 100 (CMP-01).
+    """
+    from stock.models import ALICUOTAS_IVA
+
+    if valor in (None, ''):
+        return Decimal('21.0')
+    numero = leer_numero(str(valor), 1)
+    for permitida, _etiqueta in ALICUOTAS_IVA:
+        if numero is not None and numero == permitida:
+            return permitida
+    raise ValidationError('El IVA tiene que ser 21, 10,5 o 0.')
+
+
 @require_POST
 @requiere_permiso('crear_producto', redirigir_a='compras:recepcion')
 def alta_producto(request):
     """Un renglón que no está en el catálogo, dado de alta con lo que dice la
-    factura. Pasa por el mismo formulario que el alta de productos."""
-    from stock.forms import ProductoForm
+    factura. Las reglas son las del modelo (``full_clean``), con los números
+    ya como ``Decimal``: no pasan por un formulario con ``localize`` que los
+    reinterprete."""
+    from stock.models import TipoProducto, UnidadMedida
+    from stock.reservados import marca_generica, proveedor_general
 
     try:
         datos = json_seguro.del_pedido(request)
@@ -135,25 +161,46 @@ def alta_producto(request):
         return JsonResponse({'ok': False, 'error': 'El costo leído no es un número.'})
     if precio is None or precio <= 0:
         precio = (costo * (1 + UTILIDAD_SUGERIDA)).quantize(Decimal('0.01'), ROUND_HALF_UP)
-    proveedor = id_valido(datos.get('proveedor'))
-    formulario = ProductoForm({
-        'codigo_barras': str(datos.get('codigo') or ''), 'nombre_producto': str(datos.get('nombre') or '')[:100],
-        'id_rubro': str(datos.get('rubro') or rubro_sugerido(proveedor) or ''),
-        'precio_costo': str(costo), 'precio_venta': str(precio),
-        # IVA general en Argentina; se corrige en la ficha si es 10,5 o exento.
-        'alicuota_iva': '21.0',
-        'tipo_producto': 'REVENTA', 'contenido': '1', 'unidad_medida': 'UNIDAD', 'stock_minimo': '0',
-        'id_proveedor': str(proveedor or ''),
-        'controla_vencimiento': 'on' if datos.get('controla') else '',
-    })
-    if not formulario.is_valid():
-        errores = [f'{formulario.fields[c].label if c in formulario.fields else ""}: {" ".join(e)}'.strip(': ')
-                   for c, e in formulario.errors.items()]
-        return JsonResponse({'ok': False, 'error': ' '.join(errores)})
+    tipo = str(datos.get('tipo_producto') or TipoProducto.REVENTA).strip().upper()
+    unidad = str(datos.get('unidad_medida') or UnidadMedida.UNIDAD).strip().upper()
+    if tipo not in TIPOS_DE_ALTA:
+        return JsonResponse({'ok': False, 'error': 'Desde la factura sólo se dan de alta productos de reventa o insumos.'})
+    if unidad not in UNIDADES_DE_ALTA:
+        return JsonResponse({'ok': False, 'error': 'La unidad tiene que ser unidad, kilo o litro.'})
     try:
-        producto = formulario.save()
+        alicuota = _alicuota(datos.get('alicuota_iva'))
+        id_proveedor = id_valido(datos.get('proveedor'))
+        proveedor = (Proveedor.objects.filter(pk=id_proveedor, borrado_logico=False)
+                     .exclude(tipo_proveedor=TipoProveedor.SERVICIOS).first()) if id_proveedor else None
+        id_rubro = id_valido(datos.get('rubro')) or rubro_sugerido(id_proveedor)
+        rubro = Rubro.objects.filter(pk=id_rubro, borrado_logico=False, activo=True).first() if id_rubro else None
+        if rubro is None:
+            raise ValidationError('Elegí el rubro del producto.')
+        if tipo != TipoProducto.INSUMO and precio < costo:
+            raise ValidationError(
+                f'El precio de venta ({pesos(precio)}) es menor que el costo ({pesos(costo)}): '
+                'cargalo desde Productos si es a propósito.')
+        producto = Producto(
+            codigo_barras=str(datos.get('codigo') or '').strip() or None,
+            nombre_producto=str(datos.get('nombre') or '')[:100],
+            id_rubro=rubro, id_marca=marca_generica(),
+            id_proveedor=proveedor or proveedor_general(),
+            precio_costo=costo, precio_venta=precio,
+            # IVA general en Argentina por defecto; se corrige en la ficha si es 10,5 o exento.
+            alicuota_iva=alicuota, tipo_producto=tipo, unidad_medida=unidad,
+            contenido=Decimal('1'), stock_minimo=Decimal('0'),
+            controla_vencimiento=bool(datos.get('controla')))
+        producto.full_clean(validate_constraints=False)
+        if producto.codigo_barras and Producto.objects.filter(
+                codigo_barras=producto.codigo_barras).exists():
+            raise ValidationError(
+                f'El código {producto.codigo_barras} ya lo tiene otro producto.')
+        with transaction.atomic():
+            producto.save()
     except ValidationError as error:
         return JsonResponse({'ok': False, 'error': _texto(error)})
+    except IntegrityError:
+        return JsonResponse({'ok': False, 'error': 'Ese producto ya está cargado (código o nombre repetido).'})
     registrar_auditoria(request, 'ALTA', 'PRODUCTO', instancia=producto, nuevo=instantanea(producto),
                         detalle=f'Alta de {producto} desde la factura escaneada en "Recibir mercadería": '
                                 f'costo {pesos(producto.precio_costo)}, precio {pesos(producto.precio_venta)}.')

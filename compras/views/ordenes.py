@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from compras import servicios
-from compras.models import OrdenCompra, Proveedor
+from compras.models import CUIT_PROVEEDOR_GENERAL, OrdenCompra, Proveedor
 from negocio.models import ParametrosNegocio
 from nucleo import idempotencia
 from nucleo.formularios import leer_numero
@@ -44,7 +44,8 @@ def ordenes(request):
 @requiere_permiso('gestionar_ordenes', redirigir_a='home')
 def nueva_orden(request):
     proveedores = Proveedor.objects.filter(borrado_logico=False).exclude(
-        tipo_proveedor='SERVICIOS').order_by('nombre_proveedor')
+        tipo_proveedor='SERVICIOS').exclude(
+        cuit_proveedor=CUIT_PROVEEDOR_GENERAL).order_by('nombre_proveedor')
     contexto = {'proveedores': proveedores, 'datos': request.POST,
                 'renglones_json': request.POST.get('renglones') or '[]',
                 'catalogo': reverse('stock:buscar_productos') + '?tipos=REVENTA,INSUMO'}

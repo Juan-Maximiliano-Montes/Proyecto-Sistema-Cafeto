@@ -31,6 +31,7 @@ from compras.models import (
     DetalleOrdenCompra,
     OrdenCompra,
     TipoComprobante,
+    exigir_proveedor_real,
 )
 from stock.models import (
     Lote,
@@ -60,6 +61,7 @@ def emitir_orden(proveedor, usuario, items):
         raise ValidationError(
             f'"{proveedor}" es un proveedor de servicios: no se le piden '
             'productos.')
+    exigir_proveedor_real(proveedor.pk)    # CMP-02 (esta alta no pasa por clean)
     vistos = set()
     for item in items:
         producto = item['producto']

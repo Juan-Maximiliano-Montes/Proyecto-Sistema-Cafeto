@@ -29,8 +29,9 @@ from django.utils import timezone
 from negocio.models import ParametrosNegocio
 from nucleo.modelos import redondear_importe
 from stock import servicios as stock
-from stock.models import MovimientoStock, TipoMovimientoStock
+from stock.models import MovimientoStock, Producto, TipoMovimientoStock
 from ventas import caja as servicio_caja
+from ventas.servicios import _exigir_stock_total, _exigir_vendible
 from ventas.models import (
     Cambio,
     DetalleCambio,
@@ -69,7 +70,23 @@ def devolvible(detalle_venta):
     return detalle_venta.cantidad - ya_devuelto(detalle_venta)
 
 
-def balance(venta, devueltos, entregados):
+def precio_de_entrega(producto, cantidad, bloquear=False):
+    """Precio unitario al que se lleva ``producto``: el de hoy, con la misma
+    rebaja por vencimiento que tendría en una venta (VEN-04). Si el producto
+    no tiene rebaja vigente, es el precio de lista."""
+    precio = producto.precio_venta
+    if not producto.controla_vencimiento or producto.rebaja_vigente() is None:
+        return precio
+    plan = stock.planificar_salida(producto, Decimal(cantidad),
+                                   bloquear=bloquear)
+    porcentaje = plan.rebaja_ponderada
+    if not porcentaje:
+        return precio
+    return (precio * (Decimal('100') - porcentaje)
+            / Decimal('100')).quantize(CENTAVO)
+
+
+def balance(venta, devueltos, entregados, bloquear=False):
     """(total devuelto, total entregado, saldo redondeado).
 
     saldo > 0: el cliente paga la diferencia; < 0: se le devuelve.
@@ -82,8 +99,9 @@ def balance(venta, devueltos, entregados):
         valor_devuelto += (Decimal(item.cantidad)
                            * item.detalle_venta.precio_reintegrable)
     valor_entregado = sum(
-        (Decimal(e.cantidad) * e.producto.precio_venta for e in entregados),
-        CERO)
+        ((Decimal(e.cantidad)
+          * precio_de_entrega(e.producto, e.cantidad, bloquear)).quantize(CENTAVO)
+         for e in entregados), CERO)
     paso = ParametrosNegocio.vigentes().redondeo_ventas
     saldo = redondear_importe(valor_entregado - valor_devuelto, paso)
     return (valor_devuelto.quantize(CENTAVO),
@@ -232,13 +250,19 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
             raise ValidationError(
                 f'"{renglon.descripcion_item}" se prepara al momento: lo '
                 'devuelto no vuelve al stock.')
+    # Lo que se lleva pasa por las mismas reglas que una venta (VEN-04): el
+    # estado del producto se lee de la base ahora, es vendible, y el stock
+    # alcanza para la SUMA de lo que se lleva (un combo y sus partes sueltas
+    # piden, juntos, más de lo que cada renglón pide por sí solo).
     for item in entregados:
-        if item.producto.borrado_logico or not item.producto.es_vendible:
-            raise ValidationError(f'"{item.producto}" no se puede entregar.')
-        stock.exigir_cantidad_valida(item.producto, item.cantidad)
-        stock.exigir_disponible(item.producto, Decimal(item.cantidad))
+        item.producto = Producto.objects.select_related(
+            'id_rubro', 'id_marca').get(pk=item.producto.pk)
+        _exigir_vendible(item.producto)
+        item.cantidad = stock.exigir_cantidad_valida(item.producto,
+                                                     item.cantidad)
+    _exigir_stock_total(entregados)
 
-    _, _, saldo = balance(venta, devueltos, entregados)
+    _, _, saldo = balance(venta, devueltos, entregados, bloquear=True)
     importe_cobrado = saldo if saldo > 0 else CERO
     importe_devuelto = -saldo if saldo < 0 else CERO
     if saldo and medio_pago is None:
@@ -247,6 +271,26 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
             f'se {"cobra" if saldo > 0 else "devuelve"}.')
     if not saldo:
         medio_pago = None
+    if importe_cobrado and medio_pago.es_cuenta_corriente:
+        # VEN-01: la diferencia a cuenta corriente es un fiado. Sin cliente
+        # no hay a quién anotárselo; con cliente pasa por ``registrar_fiado``
+        # (cliente bloqueado, tope, mora e incobrable) más abajo.
+        if venta.id_cliente_id is None:
+            raise ValidationError(
+                f'La venta N° {venta.pk} no tiene cliente: la diferencia no '
+                'se puede dejar en cuenta corriente. Cobrala con otro medio.')
+        if medio_pago.cantidad_cuotas > 1:
+            raise ValidationError(
+                'La diferencia de un cambio se cobra en un solo pago: elegí '
+                'un medio sin cuotas.')
+        from fidelizacion import credito
+        from fidelizacion.models import MovimientoCuenta
+
+        if MovimientoCuenta.objects.filter(
+                id_venta=venta, tipo_movimiento=credito.FIADO).exists():
+            raise ValidationError(
+                f'La venta N° {venta.pk} ya quedó fiada: la diferencia del '
+                'cambio no se suma a esa deuda. Cobrala con otro medio.')
     if importe_devuelto:
         from fidelizacion import credito
 
@@ -294,7 +338,7 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
 
     for item in entregados:
         cantidad = Decimal(item.cantidad)
-        precio = item.producto.precio_venta
+        precio = precio_de_entrega(item.producto, cantidad, bloquear=True)
         DetalleCambio.objects.create(
             id_cambio=cambio, sentido='ENTREGA', id_producto=item.producto,
             cantidad=cantidad, precio_unitario=precio,
@@ -321,6 +365,15 @@ def _registrar(turno, usuario, venta, motivo, devueltos, entregados,
                 turno, usuario, TipoMovimientoCaja.DEVOLUCION,
                 -importe_devuelto, f'Devolución N° {cambio.pk} (venta '
                 f'N° {venta.pk})', id_cambio=cambio)
+    # VEN-01: la diferencia que se deja en cuenta corriente es un fiado como
+    # cualquier otro: cliente bloqueado y con todos sus controles. Si no se
+    # le puede fiar, se cae el cambio entero.
+    cambio.deuda_generada = None
+    if importe_cobrado and medio_pago.es_cuenta_corriente:
+        from fidelizacion import credito
+
+        cambio.deuda_generada = credito.registrar_fiado(
+            venta, importe_cobrado, usuario, autorizante)
     # DD-91: lo devuelto de una compra fiada achica la deuda; del cajón no
     # sale plata por mercadería que todavía no se pagó.
     cambio.deuda_cancelada = None

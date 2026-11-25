@@ -827,6 +827,13 @@ def dar_de_baja(request, configuracion, pk):
     anterior = instantanea(instancia)
     with transaction.atomic():
         configuracion.modelo.objects.select_for_update().get(pk=pk)
+        # Con la fila bloqueada se vuelve a preguntar: entre la primera
+        # consulta y el bloqueo otra caja pudo fiarle al cliente (FID-03).
+        motivos = instancia.motivos_que_impiden_la_baja()
+        if motivos:
+            messages.error(request, redactar(
+                f'No se puede dar de baja "{instancia}"', motivos))
+            return redirect(configuracion.url('lista'))
         instancia.borrado_logico = True
         instancia.save(update_fields=['borrado_logico'])
         registrar_auditoria(
@@ -865,6 +872,13 @@ def reactivar(request, configuracion, pk):
     anterior = instantanea(instancia)
     with transaction.atomic():
         configuracion.modelo.objects.select_for_update().get(pk=pk)
+        # Misma razón que en la baja: con el bloqueo puesto, se revisa de
+        # nuevo (otro beneficio pudo quedar vigente en el medio, FID-04).
+        motivos = instancia.motivos_que_impiden_reactivar()
+        if motivos:
+            messages.error(request, redactar(
+                f'No se puede reactivar "{instancia}"', motivos))
+            return redirect(configuracion.url('lista'))
         instancia.borrado_logico = False
         instancia.save(update_fields=['borrado_logico'])
         registrar_auditoria(

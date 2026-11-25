@@ -22,7 +22,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from compras import egresos as servicio
-from compras.models import Compra, Egreso, Proveedor, TipoEgreso
+from compras.models import CUIT_PROVEEDOR_GENERAL, Compra, Egreso, Proveedor, TipoEgreso
 from nucleo import idempotencia
 from nucleo.exportar import ColumnaExportable, exportar
 from nucleo.formularios import leer_numero
@@ -61,7 +61,9 @@ def _contexto_formularios(request):
         'medios': MedioPago.objects.filter(borrado_logico=False)
                   .exclude(nombre_medio_pago=MedioPago.NOMBRE_CUENTA_CORRIENTE)
                   .order_by('-afecta_caja', 'nombre_medio_pago'),
-        'proveedores': Proveedor.objects.filter(borrado_logico=False).order_by('nombre_proveedor'),
+        # El proveedor reservado no cobra (CMP-02).
+        'proveedores': Proveedor.objects.filter(borrado_logico=False).exclude(
+            cuit_proveedor=CUIT_PROVEEDOR_GENERAL).order_by('nombre_proveedor'),
         'turno': puesto.turno_de(request),
         'token': idempotencia.emitir(request),
         'hoy': timezone.localdate(),
@@ -91,8 +93,9 @@ def _pestania(request):
     return pestania, consulta, urlencode({'ver': pestania, **parametros})
 
 
-@requiere_alguno(*PERMISOS)
-def egresos(request):
+def _contexto_pantalla(request):
+    """Todo lo que dibuja ``compras/egresos.html``: la misma pantalla para
+    el GET y para volver de un alta que no pasó una regla."""
     hoy = timezone.localdate()
     contexto = _contexto_formularios(request)
     base = Egreso.objects.all()
@@ -115,7 +118,12 @@ def egresos(request):
                                                tipo_movimiento='GASTO').first()
                  if id_valido(request.GET.get('vale')) else None),
     })
-    return render(request, 'compras/egresos.html', contexto)
+    return contexto
+
+
+@requiere_alguno(*PERMISOS)
+def egresos(request):
+    return render(request, 'compras/egresos.html', _contexto_pantalla(request))
 
 
 def _proveedor_y_compra(request):
@@ -174,8 +182,15 @@ def registrar(request):
                     usuario=usuario)
     except ValidationError as error:
         idempotencia.devolver(request, token)
+        # CMP-04: se vuelve a la misma pantalla con lo tipeado y el modal
+        # abierto; redirigir hacía perder todo el formulario por un error.
+        contexto = _contexto_pantalla(request)
+        if token:
+            contexto['token'] = token
+        contexto.update({'abrir_modal_egreso': True, 'datos': request.POST,
+                         'error': _texto(error)})
         messages.error(request, _texto(error))
-        return redirect('compras:egresos')
+        return render(request, 'compras/egresos.html', contexto)
     registrar_auditoria(request, 'ALTA', 'EGRESO', instancia=egreso,
                         nuevo=instantanea(egreso),
                         detalle=f'{egreso.get_estado_pago_display()}: {pesos(egreso.monto)} · {egreso.concepto}.')
@@ -222,14 +237,26 @@ def pagar(request, pk):
 def conciliar(request, pk):
     egreso = get_object_or_404(Egreso, pk=pk)
     antes = instantanea(egreso)
-    acreditado = request.POST.get('resultado') == 'acreditado'
+    resultado = request.POST.get('resultado')
+    token = request.POST.get('token_operacion')
+    destino = f"{reverse('compras:egresos')}?ver=por_acreditar"
+    # CMP-05: un resultado que no sea uno de los dos ya no se toma como
+    # "rechazado" por descarte: se pide de nuevo.
+    if resultado not in ('acreditado', 'rechazado'):
+        messages.error(request, 'Indicá si el banco acreditó o rechazó el pago.')
+        return redirect(destino)
+    acreditado = resultado == 'acreditado'
+    if token and not idempotencia.consumir(request, token):
+        messages.info(request, 'Esa conciliación ya se había registrado.')
+        return redirect(destino)
     try:
         egreso = servicio.conciliar(
             egreso, acreditado, _fecha(request.POST.get('fecha')) or timezone.localdate(),
             request.POST.get('referencia'))
     except ValidationError as error:
+        idempotencia.devolver(request, token)
         messages.error(request, _texto(error))
-        return redirect(f"{reverse('compras:egresos')}?ver=por_acreditar")
+        return redirect(destino)
     registrar_auditoria(request, 'CONCILIACION', 'EGRESO', instancia=egreso,
                         anterior=antes, nuevo=instantanea(egreso),
                         detalle=f'{egreso.get_estado_pago_display()}: {pesos(egreso.monto)} · '

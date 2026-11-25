@@ -10,8 +10,11 @@ from nucleo.formularios import FormularioMaestro
 from nucleo.validaciones import normalizar_cuit, validar_telefono
 
 
-class ProveedorForm(forms.ModelForm):
-    """Formulario de alta y edición. Se usa dentro de los modales."""
+class ProveedorForm(FormularioMaestro):
+    """Formulario de alta y edición. Se usa dentro de los modales.
+
+    Hereda de ``FormularioMaestro``: trae el bloqueo optimista de V-G11
+    (``version_leida``) para que dos personas no se pisen la edición."""
 
     def clean_tipo_proveedor(self):
         return (self.cleaned_data.get('tipo_proveedor')

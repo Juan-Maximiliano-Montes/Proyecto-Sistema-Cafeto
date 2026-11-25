@@ -555,6 +555,7 @@ def registrar(turno, usuario, items, pagos, token=None, autorizante=None,
     token = token or uuid.uuid4()
     existente = Venta.objects.filter(token_operacion=token).first()
     if existente is not None:
+        _exigir_mismo_pedido(existente, items, cliente)
         return existente, None
     try:
         with transaction.atomic():
@@ -563,8 +564,36 @@ def registrar(turno, usuario, items, pagos, token=None, autorizante=None,
     except IntegrityError:
         existente = Venta.objects.filter(token_operacion=token).first()
         if existente is not None:
+            _exigir_mismo_pedido(existente, items, cliente)
             return existente, None
         raise
+
+
+def _huella_de_items(items):
+    """{id_producto: cantidad} de lo pedido, con el mismo producto sumado."""
+    huella = {}
+    for item in items:
+        clave = item.producto.pk
+        huella[clave] = huella.get(clave, CERO) + Decimal(item.cantidad)
+    return {k: v.quantize(Decimal('0.001')) for k, v in huella.items()}
+
+
+def _exigir_mismo_pedido(venta, items, cliente):
+    """VEN-02: un ``token_operacion`` ya usado sólo es un reintento si el
+    pedido es EL MISMO. Si la pantalla reusó el token con otro cliente u
+    otros productos (un ticket viejo sin recargar), devolver la venta previa
+    como si fuera éxito le haría creer al cajero que cobró lo que cargó."""
+    id_cliente = getattr(cliente, 'pk', cliente)
+    previos = {}
+    for d in venta.detalles.filter(id_beneficio__isnull=True):
+        previos[d.id_producto_id] = previos.get(d.id_producto_id, CERO) + d.cantidad
+    previos = {k: v.quantize(Decimal('0.001')) for k, v in previos.items()}
+    if (venta.id_cliente_id != id_cliente
+            or previos != _huella_de_items(items)):
+        raise ValidationError(
+            f'Ese ticket ya se había cobrado como la venta N° {venta.pk} con '
+            'otro cliente o con otros productos. Recargá la pantalla o '
+            'iniciá una venta nueva.')
 
 
 def _registrar(turno, usuario, items, pagos, token, autorizante, cliente,

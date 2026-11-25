@@ -365,6 +365,13 @@ class Beneficio(Maestra):
         if self.id_categoria.borrado_logico:
             return [f'su categoría "{self.id_categoria}" está dada de baja: '
                     'reactivala primero']
+        # FID-04: al volver a estar vigente no puede pisar a otro automático
+        # de descuento de la misma categoría (``clean`` sólo mira a los
+        # vigentes, y éste, dado de baja, no se comparaba con nadie).
+        try:
+            self._validar_superposicion()
+        except ValidationError as error:
+            return list(error.messages)
         return []
 
     def validar_receta(self):
@@ -726,6 +733,15 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
     #  Baja lógica (RN-8.1.1): la historia de puntos queda
     # ------------------------------------------------------------------
     def motivos_que_impiden_la_baja(self):
+        """FID-03: un cliente que debe plata no se da de baja: la deuda
+        quedaría sin dueño visible y fuera de la gestión de cobranza."""
+        from fidelizacion import credito
+        from nucleo.templatetags.cafeto import pesos
+
+        debe = credito.saldo(self)
+        if debe > 0:
+            return [f'tiene una deuda de {pesos(debe)} en cuenta corriente: '
+                    'cobrala o cancelala primero']
         return []
 
     def motivos_que_impiden_reactivar(self):
