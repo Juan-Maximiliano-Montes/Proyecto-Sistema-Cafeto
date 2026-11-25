@@ -133,6 +133,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
             {% if not cfg.tiene_baja or not fila.borrado_logico %}
                 {% if puede_editar %}
                 <button type="button" class="btn btn-sm btn-secundario boton-editar"
+                        data-pk="{{ fila.pk|stringformat:'d' }}"
                         data-remoto="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_editar' fila.pk %}?formulario=1"
                         data-accion="{% url cfg.espacio|add:':'|add:cfg.clave|add:'_editar' fila.pk %}"
                         data-modal="#modalEditar" data-titulo="Editar: {{ fila }}" title="Editar">
@@ -200,7 +201,7 @@ vista, que corta el acceso aunque alguien escriba la URL a mano.
 
 {# ---------- MODAL: ALTA ---------- #}
 {% if puede_crear %}
-<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true"{% if abrir_modal_crear %} data-modal-auto{% endif %}>
+<div class="modal fade" id="modalCrear" tabindex="-1" aria-hidden="true"{% if abrir_modal_crear %} data-modal-auto data-con-errores="1"{% endif %}>
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <form method="post" action="{{ url_crear }}" class="modal-content form-una-vez" novalidate>
             {% csrf_token %}

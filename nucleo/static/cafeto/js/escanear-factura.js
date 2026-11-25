@@ -92,6 +92,23 @@
         nombre.setAttribute('aria-label', 'Nombre del producto nuevo');
         var grupoNombre = el('label', 'flex-grow-1 small text-secondary', 'Producto' + (nuevo.codigo ? ' · código ' + nuevo.codigo : ''));
         grupoNombre.appendChild(nombre);
+
+        var tipo = el('select', 'form-select form-select-sm'); tipo.setAttribute('aria-label', 'Tipo de artículo');
+        [['REVENTA', 'Para vender'], ['INSUMO', 'Insumo (uso interno)']].forEach(function (par) {
+            var op = el('option', null, par[1]); op.value = par[0]; tipo.appendChild(op);
+        });
+        if (nuevo.tipo_producto === 'INSUMO') { tipo.value = 'INSUMO'; }
+        var grupoTipo = el('label', 'small text-secondary', 'Uso'); grupoTipo.appendChild(tipo);
+
+        var unidad = el('select', 'form-select form-select-sm'); unidad.setAttribute('aria-label', 'Unidad de medida');
+        [['UNIDAD', 'Unidad'], ['KG', 'Kilo (kg)'], ['L', 'Litro (l)']].forEach(function (par) {
+            var opU = el('option', null, par[1]); opU.value = par[0]; unidad.appendChild(opU);
+        });
+        if (nuevo.unidad && ['UNIDAD', 'KG', 'L'].indexOf(String(nuevo.unidad).toUpperCase()) !== -1) {
+            unidad.value = String(nuevo.unidad).toUpperCase();
+        }
+        var grupoUnidad = el('label', 'small text-secondary', 'Unidad'); grupoUnidad.appendChild(unidad);
+
         var rubro = el('select', 'form-select form-select-sm'); rubro.setAttribute('aria-label', 'Rubro');
         var sugerido = el('option', null, 'Rubro sugerido'); sugerido.value = ''; rubro.appendChild(sugerido);
         rubros.forEach(function (r) { var o = el('option', null, r.nombre); o.value = r.id; rubro.appendChild(o); });
@@ -100,6 +117,14 @@
         var precio = el('input', 'form-control form-control-sm'); precio.inputMode = 'decimal'; precio.style.width = '8rem';
         precio.value = coma((costo * 1.4).toFixed(2)); precio.setAttribute('aria-label', 'Precio de venta');
         var grupoPrecio = el('label', 'small text-secondary', 'Precio de venta'); grupoPrecio.appendChild(precio);
+
+        function sincronizarTipo() {
+            var esInsumo = tipo.value === 'INSUMO';
+            grupoPrecio.classList.toggle('d-none', esInsumo);
+        }
+        tipo.addEventListener('change', sincronizarTipo);
+        sincronizarTipo();
+
         var datos = el('span', 'small text-secondary align-self-center', nuevo.cantidad + ' × $ ' + coma(nuevo.costo));
         var boton = el('button', 'btn btn-sm btn-primary js-dar-alta', 'Dar de alta y sumar'); boton.type = 'button';
         var quitar = el('button', 'btn btn-sm btn-link text-secondary', 'No va en esta compra'); quitar.type = 'button';
@@ -110,17 +135,22 @@
         boton.addEventListener('click', function () {
             boton.disabled = true;
             var proveedor = (document.getElementById('proveedor') || {}).value || '';
+            var esInsumo = tipo.value === 'INSUMO';
             postJson(raiz.dataset.altaProducto, {nombre: nombre.value, codigo: nuevo.codigo, costo: nuevo.costo,
-                                                 precio_venta: precio.value, rubro: rubro.value, proveedor: proveedor,
+                                                 tipo_producto: tipo.value, unidad_medida: unidad.value,
+                                                 precio_venta: esInsumo ? '' : precio.value, rubro: rubro.value, proveedor: proveedor,
                                                  controla: (nuevo.lotes || []).length > 0}).then(function (r) {
                 if (!r.ok) { boton.disabled = false; aviso('error', r.error, 'bi-x-circle-fill'); return; }
                 sumarRenglones([{producto: r.producto, nombre: r.nombre, controla: r.controla, unidad: r.unidad,
                                  cantidad: nuevo.cantidad, costo: nuevo.costo, lotes: r.controla ? nuevo.lotes : []}]);
                 fila.textContent = '';
-                fila.appendChild(el('span', 'text-exito small', '✓ ' + r.nombre + ' quedó dado de alta (' + r.rubro + ', precio $ ' + coma(r.precio_venta) + ') y se sumó a la compra.'));
+                var detalleAlta = esInsumo
+                    ? (r.rubro + ', insumo')
+                    : (r.rubro + ', precio $ ' + coma(r.precio_venta));
+                fila.appendChild(el('span', 'text-exito small', '✓ ' + r.nombre + ' quedó dado de alta (' + detalleAlta + ') y se sumó a la compra.'));
             }).catch(function () { boton.disabled = false; aviso('error', 'No se pudo dar de alta. Revisá la conexión.', 'bi-wifi-off'); });
         });
-        fila.append(grupoNombre, datos, grupoRubro, grupoPrecio);
+        fila.append(grupoNombre, datos, grupoTipo, grupoUnidad, grupoRubro, grupoPrecio);
         if (raiz.dataset.puedeProducto === '1') { fila.appendChild(boton); }
         fila.appendChild(quitar);
         return fila;

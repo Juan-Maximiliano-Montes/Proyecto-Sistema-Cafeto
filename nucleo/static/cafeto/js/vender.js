@@ -11,7 +11,9 @@
     var estado = {items: [], pagos: [], token: raiz.dataset.token, cliente: null, beneficios: []};
     try {
         var guardado = JSON.parse(window.sessionStorage.getItem(CLAVE) || 'null');
-        if (guardado && Array.isArray(guardado.items)) {
+        if (guardado && guardado.cobrada) {
+            window.sessionStorage.removeItem(CLAVE);
+        } else if (guardado && Array.isArray(guardado.items)) {
             estado = guardado;
             if (!Array.isArray(estado.beneficios)) { estado.beneficios = []; }
         }
@@ -859,7 +861,12 @@
             var b = document.querySelector('.js-medio[data-medio="' + p.medio + '"]');
             return b && b.dataset.efectivo === '1' && p.recibido;
         })[0];
-        if (efectivo) { filas.push(['Efectivo recibido', plata(String(efectivo.recibido).replace(',', '.'))]); }
+        if (efectivo) {
+            var recNum = (window.Cafeto && window.Cafeto.leerNumero)
+                ? window.Cafeto.leerNumero(efectivo.recibido, 2)
+                : Number(String(efectivo.recibido).replace(',', '.'));
+            filas.push(['Efectivo recibido', (typeof recNum === 'number' && isFinite(recNum)) ? plata(recNum) : String(efectivo.recibido)]);
+        }
         if (Number(r.vuelto) > 0) { filas.push(['Vuelto', plata(r.vuelto)]); }
         if (estado.cliente) { filas.push(['Cliente', estado.cliente.nombre]); }
         if (hayFiado()) { filas.push(['Cuenta corriente', 'Se anota en la cuenta' + (estado.cliente ? ' de ' + estado.cliente.nombre : '')]); }
@@ -883,6 +890,8 @@
         enviar(raiz.dataset.cobrar, pedido()).then(function (r) {
             boton.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Cobrar';
             if (!r.ok) { mostrarError(r.error); boton.disabled = false; return; }
+            estado.cobrada = true;
+            persistir();
             pararRemota(); remota = {id: null, estado: null, reloj: null, cobrarAlAprobar: false};
             delete estado.remota;
             $('remota').classList.add('d-none'); $('remotaPedir').classList.remove('d-none');
@@ -931,14 +940,21 @@
         $('buscar').value = ''; $('buscar').focus();
         filtro.q = ''; filtro.pagina = 1; cargarCatalogo(false);
     }
-    $('nuevaVenta').addEventListener('click', function () { bootstrap.Modal.getInstance($('modalCobrado')).hide(); nuevaVenta(); });
+    $('nuevaVenta').addEventListener('click', function () {
+        nuevaVenta();
+        var inst = bootstrap.Modal.getInstance($('modalCobrado'));
+        if (inst) { inst.hide(); }
+    });
 
     // ------------------------------------------------------------------
     //  Teclado de caja: F2 buscar, F4 efectivo, F9 cobrar. Con la venta
     //  cobrada a la vista: Enter o espacio = nueva venta, P = ticket.
     // ------------------------------------------------------------------
     $('modalCobrado').addEventListener('shown.bs.modal', function () { $('nuevaVenta').focus(); });
-    $('modalCobrado').addEventListener('hidden.bs.modal', function () { $('buscar').focus(); });
+    $('modalCobrado').addEventListener('hidden.bs.modal', function () {
+        if (estado.cobrada) { nuevaVenta(); return; }
+        $('buscar').focus();
+    });
     document.addEventListener('keydown', function (e) {
         if (e.ctrlKey || e.altKey || e.metaKey) { return; }
         var cobrado = $('modalCobrado').classList.contains('show');
@@ -966,7 +982,15 @@
     $('vaciar').addEventListener('click', function () {
         if (!estado.items.length) { return; }
         Cafeto.confirmar({titulo: '¿Vaciar el ticket?', texto: 'Se quitan todos los productos cargados.', aceptar: 'Sí, vaciar', peligro: true})
-            .then(function (ok) { if (ok) { estado.items = []; estado.pagos = []; estado.cliente = null; estado.beneficios = []; pintarCliente(); cambio(); } });
+            .then(function (ok) {
+                if (!ok) { return; }
+                estado.items = []; estado.pagos = []; estado.cliente = null; estado.beneficios = [];
+                $('autorizaUsuario').value = ''; $('autorizaClave').value = '';
+                $('autorizacion').classList.add('d-none');
+                $('venceFiado').value = ''; venceAutomatico = true;
+                olvidarRemota('');
+                pintarCliente(); cambio();
+            });
     });
     $('autorizaClave').addEventListener('change', cotizarPronto);
 

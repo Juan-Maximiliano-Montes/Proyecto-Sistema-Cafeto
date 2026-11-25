@@ -40,7 +40,7 @@
         raiz.setAttribute('data-tema', tema);
         raiz.setAttribute('data-bs-theme', tema === 'claro' ? 'light' : 'dark');
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) { meta.setAttribute('content', tema === 'claro' ? '#F4F1EA' : '#121128'); }
+        if (meta) { meta.setAttribute('content', tema === 'claro' ? '#E6E0D4' : '#121128'); }
         document.dispatchEvent(new CustomEvent('cafeto:tema', {detail: {tema: tema}}));
     }
     document.addEventListener('click', function (evento) {
@@ -120,12 +120,19 @@
             var cuerpo = modal.querySelector('.js-cuerpo');
             cuerpo.innerHTML = opciones.html || (opciones.texto ? '<p class="mb-0">' + escapar(opciones.texto) + '</p>' : '');
             var aceptar = modal.querySelector('.js-aceptar');
+            aceptar.disabled = false;
             aceptar.textContent = opciones.aceptar || 'Sí, continuar';
             aceptar.className = 'btn js-aceptar ' + (opciones.peligro ? 'btn-danger' : 'btn-primary');
             var instancia = bootstrap.Modal.getOrCreateInstance(modal);
             var respuesta = false;
-            function alAceptar() { respuesta = true; instancia.hide(); }
+            function alAceptar() {
+                if (aceptar.disabled) { return; }
+                aceptar.disabled = true;
+                respuesta = true;
+                instancia.hide();
+            }
             function alCerrar() {
+                aceptar.disabled = false;
                 aceptar.removeEventListener('click', alAceptar);
                 modal.removeEventListener('hidden.bs.modal', alCerrar);
                 // Se abrió encima de otro modal (un formulario, un egreso):
@@ -175,8 +182,9 @@
     window.addEventListener('pageshow', function (evento) {
         if (!evento.persisted) { return; }
         encenderBotones(document);
-        document.querySelectorAll('form[data-confirmado]').forEach(function (form) {
+        document.querySelectorAll('form[data-confirmado], form[data-enviando]').forEach(function (form) {
             delete form.dataset.confirmado;
+            delete form.dataset.enviando;
         });
     });
 
@@ -186,9 +194,20 @@
     document.addEventListener('submit', function (evento) {
         var form = evento.target;
         if (!form.matches || !form.matches('form')) { return; }
+        if (form.dataset.enviando === '1') {
+            evento.preventDefault();
+            evento.stopImmediatePropagation();
+            return;
+        }
         var boton = evento.submitter && evento.submitter.form === form ? evento.submitter : null;
         var origen = boton && boton.dataset.confirmar ? boton : form;
-        if (!origen.dataset.confirmar || form.dataset.confirmado === '1') { return; }
+        if (!origen.dataset.confirmar) { return; }
+        if (form.dataset.confirmado === '1') {
+            form.dataset.enviando = '1';
+            // Diferir un microturno conserva name=value del submitter en requestSubmit(boton)
+            window.setTimeout(function () { apagarBotones(form); }, 0);
+            return;
+        }
         evento.preventDefault();
         // Un form.form-una-vez con pregunta propia (abrir la caja, el arqueo
         // parcial) muestra también lo cargado, y no se confirma un monto mal
@@ -551,9 +570,52 @@
             var cuerpo = bloque.querySelector('.js-renglones-cuerpo');
             var molde = bloque.querySelector('.js-molde-renglon');
             var vacio = bloque.querySelector('.js-renglones-vacio');
+            var tituloNodo = bloque.querySelector('.js-renglones-titulo');
+
+            function actualizarMetaRenglon(renglon) {
+                if (!renglon) { return; }
+                var meta = renglon.querySelector('.js-renglon-meta');
+                var sel = renglon.querySelector('select.js-catalogo');
+                if (!meta || !sel) { return; }
+                var opt = sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+                var unidad = (opt && opt.dataset && opt.dataset.unidad) || '';
+                var costoStr = (opt && opt.dataset && opt.dataset.costoUnitario) || '';
+                var partes = [];
+                if (unidad) { partes.push('Unidad: ' + unidad); }
+                var campoCant = renglon.querySelector('input[name$="-cantidad"]');
+                var cant = campoCant ? leerNumero(campoCant.value, 3) : NaN;
+                var costo = costoStr !== '' ? Number(costoStr) : NaN;
+                if (isFinite(costo) && costo > 0 && isFinite(cant) && cant > 0) {
+                    partes.push('Costo estimado: ' + pesosDeNumero(cant * costo));
+                }
+                meta.textContent = partes.join(' · ');
+                meta.classList.toggle('d-none', partes.length === 0);
+            }
 
             function repintar() {
                 vacio.classList.toggle('d-none', cuerpo.querySelectorAll('.js-renglon:not(.d-none)').length > 0);
+                cuerpo.querySelectorAll('.js-renglon:not(.d-none)').forEach(actualizarMetaRenglon);
+            }
+            cuerpo.addEventListener('input', function (ev) {
+                var r = ev.target && ev.target.closest && ev.target.closest('.js-renglon');
+                if (r) { actualizarMetaRenglon(r); }
+            });
+            cuerpo.addEventListener('change', function (ev) {
+                var r = ev.target && ev.target.closest && ev.target.closest('.js-renglon');
+                if (r) { actualizarMetaRenglon(r); }
+            });
+            if (typeof jQuery !== 'undefined') {
+                jQuery(cuerpo).on('select2:select select2:clear', 'select.js-catalogo', function (ev) {
+                    var datos = ev.params && ev.params.data;
+                    var opt = this.options && this.selectedIndex >= 0 ? this.options[this.selectedIndex] : null;
+                    if (opt && datos) {
+                        if (datos.unidad) { opt.dataset.unidad = datos.unidad; }
+                        if (datos.costo_unitario !== undefined && datos.costo_unitario !== null) {
+                            opt.dataset.costoUnitario = String(datos.costo_unitario);
+                        }
+                    }
+                    actualizarMetaRenglon(this.closest('.js-renglon'));
+                });
             }
             bloque.addEventListener('click', function (evento) {
                 var boton = evento.target.closest('.js-quitar-renglon');
@@ -584,6 +646,13 @@
                     var sincronizar = function () {
                         var hace_falta = bloque.dataset.visibleSi.split(',').indexOf(control.value) !== -1;
                         bloque.classList.toggle('d-none', !hace_falta);
+                        if (tituloNodo && campo === 'tipo_producto') {
+                            tituloNodo.textContent = control.value === 'COMBO'
+                                ? 'Productos que componen el combo'
+                                : (control.value === 'ELABORADO' || control.value === 'PRODUCIDO'
+                                    ? 'Insumos de la receta'
+                                    : (tituloNodo.dataset.tituloBase || tituloNodo.textContent));
+                        }
                         if (hace_falta) { Cafeto.enchufarCatalogo(bloque); }
                         cuerpo.querySelectorAll('[name$="-DELETE"]').forEach(function (tilde) {
                             var renglon = tilde.closest('.js-renglon');
@@ -752,22 +821,88 @@
     //  Fragmentos que llegan por fetch (ficha, formulario de edición)
     // ---------------------------------------------------------------------
     Cafeto.cargar = function (url, destino) {
+        var modal = destino.closest && destino.closest('.modal');
+        var pieGuardar = modal && modal.querySelector('.modal-footer button[type="submit"]');
+        if (pieGuardar) { pieGuardar.hidden = false; }
         destino.innerHTML = '<div class="text-center text-secondary py-4">' +
             '<div class="spinner-border"></div><p class="mt-2 mb-0">Cargando…</p></div>';
         return fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}, credentials: 'same-origin'})
             .then(function (r) {
                 if (r.status === 401) { window.location.reload(); throw new Error('sesión'); }
+                var ct = (r.headers.get('content-type') || '').toLowerCase();
+                if (ct.indexOf('application/json') !== -1) {
+                    return r.json().then(function (datos) {
+                        var msg = (datos && (datos.error || datos.mensaje || datos.detail)) ||
+                            'No tenés permiso o la operación no está disponible.';
+                        var err = new Error(msg);
+                        err.esAvisoServidor = true;
+                        throw err;
+                    });
+                }
+                if (r.redirected) {
+                    window.location.assign(r.url);
+                    var redir = new Error('redirigido');
+                    redir.silencioso = true;
+                    throw redir;
+                }
+                if (!r.ok) {
+                    var httpErr = new Error(r.status === 403
+                        ? 'No tenés permiso para realizar esta acción.'
+                        : (r.status === 404 ? 'El registro buscado ya no está disponible.' : 'No se pudo cargar el contenido solicitado.'));
+                    httpErr.esAvisoServidor = true;
+                    throw httpErr;
+                }
                 return r.text();
             })
             .then(function (html) {
+                if (/<html[\s>]/i.test(html) && /<body[\s>]/i.test(html)) {
+                    var fullErr = new Error('La sesión cambió o la pantalla requiere recargarse. Recargá la página e intentá de nuevo.');
+                    fullErr.esAvisoServidor = true;
+                    throw fullErr;
+                }
                 destino.innerHTML = html;
                 Cafeto.inicializar(destino);
             })
-            .catch(function () {
-                destino.innerHTML = '<div class="aviso aviso-error mb-0"><i class="bi bi-wifi-off"></i>' +
-                    '<span>No se pudo cargar. Revisá la conexión y probá de nuevo.</span></div>';
+            .catch(function (err) {
+                if (err && err.silencioso) { return; }
+                if (pieGuardar) { pieGuardar.hidden = true; }
+                var icono = (err && err.esAvisoServidor) ? 'bi-exclamation-octagon-fill' : 'bi-wifi-off';
+                var texto = (err && err.esAvisoServidor && err.message)
+                    ? err.message
+                    : 'No se pudo cargar. Revisá la conexión y probá de nuevo.';
+                destino.innerHTML = '<div class="aviso aviso-error mb-0" role="alert"><i class="bi ' + icono + '"></i>' +
+                    '<span>' + escapar(texto) + '</span></div>';
             });
     };
+
+    document.addEventListener('hidden.bs.modal', function (evento) {
+        var modal = evento.target;
+        if (!modal || modal.id !== 'modalCrear') { return; }
+        if (modal.dataset.conErrores === '1') {
+            delete modal.dataset.conErrores;
+            return;
+        }
+        var form = modal.querySelector('form');
+        if (!form) { return; }
+        form.reset();
+        form.querySelectorAll('.is-invalid').forEach(function (c) {
+            c.classList.remove('is-invalid');
+            c.removeAttribute('aria-invalid');
+        });
+        form.querySelectorAll('.error-campo.js-numero, .error-campo.js-acreedor, .aviso-parecidos').forEach(function (n) {
+            n.remove();
+        });
+        form.querySelectorAll('.alta-rapida-panel').forEach(function (p) {
+            p.hidden = true;
+            p.innerHTML = '';
+        });
+        if (typeof jQuery !== 'undefined' && jQuery.fn.select2) {
+            jQuery(form).find('select.js-catalogo').val(null).trigger('change');
+        }
+        form.querySelectorAll('[name="tipo_producto"], [name="modo_entrega"], [name="tipo_beneficio"]').forEach(function (c) {
+            c.dispatchEvent(new Event('change', {bubbles: true}));
+        });
+    });
 
     document.addEventListener('shown.bs.modal', function (evento) {
         var modal = evento.target;
@@ -824,6 +959,50 @@
         return lista;
     }
 
+    Cafeto.activarMarcasSegunTipo = function (contenedor) {
+        todos(contenedor, 'form').forEach(function (formulario) {
+            var tipo = formulario.querySelector('[name="tipo_producto"]');
+            var marca = formulario.querySelector('[name="id_marca"]');
+            if (!tipo || !marca || marca.dataset.filtroPropiaActivo === '1') { return; }
+            if (!marca.querySelector('option[data-propia="1"]')) { return; }
+            marca.dataset.filtroPropiaActivo = '1';
+            var sincronizarMarca = function () {
+                var soloPropia = tipo.value === 'ELABORADO' || tipo.value === 'PRODUCIDO';
+                var primeraPropia = null;
+                Array.prototype.forEach.call(marca.options, function (opt) {
+                    if (!opt.value) { return; }
+                    var esPropia = opt.dataset.propia === '1';
+                    opt.disabled = soloPropia && !esPropia;
+                    opt.hidden = soloPropia && !esPropia;
+                    if (esPropia && !primeraPropia) { primeraPropia = opt.value; }
+                });
+                var elegida = marca.options[marca.selectedIndex];
+                if (soloPropia && elegida && elegida.value && elegida.dataset.propia !== '1') {
+                    marca.value = primeraPropia || '';
+                    marca.dispatchEvent(new Event('change', {bubbles: true}));
+                }
+            };
+            tipo.addEventListener('change', sincronizarMarca);
+            sincronizarMarca();
+        });
+    };
+
+    function abrirDesdeParametro() {
+        try {
+            var url = new URL(window.location.href);
+            var pk = url.searchParams.get('abrir');
+            if (!pk || !/^\d+$/.test(pk)) { return; }
+            var boton = document.querySelector('.boton-editar[data-pk="' + pk + '"]') ||
+                        document.querySelector('.boton-editar[data-accion$="/' + pk + '/editar/"]');
+            if (!boton) { return; }
+            url.searchParams.delete('abrir');
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState(null, '', url.pathname + (url.search ? url.search : '') + url.hash);
+            }
+            boton.click();
+        } catch (e) { /* URL no estándar */ }
+    }
+
     // ---------------------------------------------------------------------
     //  Cafeto.inicializar(raiz): todo lo que se engancha a un pedazo nuevo.
     //  Cafeto.limpiar(raiz): lo que hay que soltar antes de reemplazarlo.
@@ -832,6 +1011,7 @@
         contenedor = contenedor || document;
         Cafeto.activarRenglones(contenedor);
         Cafeto.activarDependencias(contenedor);
+        Cafeto.activarMarcasSegunTipo(contenedor);
         Cafeto.enchufarCatalogo(contenedor);
         estadoDeRed();
         todos(contenedor, 'select[data-lotes]').forEach(function (s) {
@@ -848,6 +1028,9 @@
             modal.dataset.abiertaSola = '1';
             bootstrap.Modal.getOrCreateInstance(modal).show();
         });
+        if (contenedor === document || (contenedor.id && contenedor.id === 'contenido')) {
+            abrirDesdeParametro();
+        }
         if (tamanios) {
             todos(contenedor, '.table-responsive').forEach(function (caja) { tamanios.observe(caja); });
         }
@@ -992,6 +1175,14 @@
         if (nuevo) { nuevo.focus({preventScroll: true}); }
     }
 
+    function cajaScroll() {
+        var cont = document.querySelector('.contenido');
+        if (cont && window.getComputedStyle && window.getComputedStyle(cont).overflowY === 'auto') {
+            return cont;
+        }
+        return null;
+    }
+
     var enCurso = null;
     document.addEventListener('htmx:confirm', function (evento) {
         var elemento = evento.detail.elt;
@@ -1003,8 +1194,9 @@
     document.addEventListener('htmx:beforeRequest', function (evento) {
         var elemento = evento.detail.elt;
         var desdeMenu = !!(elemento && elemento.closest && elemento.closest('.lateral'));
+        var sc = cajaScroll();
         enCurso = {desdeMenu: desdeMenu, foco: desdeMenu ? null : descripcionDelFoco(), menu: null,
-                   desplazado: window.scrollY};
+                   desplazado: sc ? sc.scrollTop : window.scrollY};
         if (desdeMenu) {
             var lateral = document.querySelector('.lateral.abierta');
             if (lateral) { lateral.classList.remove('abierta'); }
@@ -1042,7 +1234,11 @@
         if (!nuevo || !nuevo.isConnected) { return; }
         if (enCurso && nuevo.id !== 'barra') {
             if (enCurso.menu) { marcarMenu(enCurso.menu); enCurso.menu = null; }
-            if (!enCurso.desdeMenu) { window.scrollTo({top: enCurso.desplazado, behavior: 'instant'}); }
+            if (!enCurso.desdeMenu) {
+                var scSwap = cajaScroll();
+                if (scSwap) { scSwap.scrollTo({top: enCurso.desplazado, behavior: 'instant'}); }
+                else { window.scrollTo({top: enCurso.desplazado, behavior: 'instant'}); }
+            }
         }
         Cafeto.inicializar(nuevo);
     });
@@ -1058,7 +1254,10 @@
         if (hecho.desdeMenu) {
             var contenido = document.getElementById('contenido');
             if (contenido) { contenido.focus({preventScroll: true}); }
-            window.scrollTo({top: 0, behavior: reducirMovimiento() ? 'auto' : 'smooth'});
+            var scTop = cajaScroll();
+            var modoScroll = reducirMovimiento() ? 'auto' : 'smooth';
+            if (scTop) { scTop.scrollTo({top: 0, behavior: modoScroll}); }
+            else { window.scrollTo({top: 0, behavior: modoScroll}); }
         } else {
             devolverFoco(hecho.foco);
         }

@@ -37,7 +37,7 @@ El bloque se muestra y se esconde solo según el campo que declare
     {{ formset.management_form }}
 
     <h6 class="subtitulo mb-2">
-        <i class="bi bi-list-ul me-1"></i>{{ cfg.formset_titulo }}
+        <i class="bi bi-list-ul me-1"></i><span class="js-renglones-titulo" data-titulo-base="{{ cfg.formset_titulo }}">{{ cfg.formset_titulo }}</span>
     </h6>
 
     {% if formset.non_form_errors %}
@@ -72,6 +72,7 @@ El bloque se muestra y se esconde solo según el campo que declare
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
+            <div class="col-12 small text-secondary js-renglon-meta d-none"></div>
         </div>
         {% endfor %}
     </div>
@@ -106,6 +107,7 @@ El bloque se muestra y se esconde solo según el campo que declare
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
+            <div class="col-12 small text-secondary js-renglon-meta d-none"></div>
         </div>
     </template>
 </div>

@@ -84,4 +84,55 @@
             abrir('modalTemporal');
         }
     });
+
+    // Cuando un modal reabre con errores del servidor ([data-modal-auto]),
+    // rehidrata los textos del usuario desde su tarjeta para que no queden vacíos.
+    function tarjetaPorAccion(form, selectorBoton) {
+        if (!form) { return null; }
+        var accion = form.getAttribute('action') || '';
+        if (!accion) { return null; }
+        var ruta = accion;
+        try { ruta = new URL(accion, window.location.origin).pathname; } catch (e) { /* relativo */ }
+        var btn = document.querySelector(selectorBoton + '[data-url="' + CSS.escape(ruta) + '"]');
+        return btn ? tarjeta(btn) : null;
+    }
+
+    var fEditar = document.getElementById('formEditar');
+    var tEditar = tarjetaPorAccion(fEditar, '.btn-editar');
+    if (tEditar) {
+        texto('edit_dni_txt', tEditar.dataset.dni);
+        texto('edit_usuario_txt', tEditar.dataset.usuario);
+        texto('edit_nombre_txt', tEditar.dataset.nombre);
+    }
+
+    var fPerfil = document.getElementById('formPerfil');
+    var tPerfil = tarjetaPorAccion(fPerfil, '.btn-perfil');
+    if (tPerfil) {
+        texto('perfil_usuario_txt', tPerfil.dataset.nombre + ' (hoy: ' + tPerfil.dataset.perfil + ')');
+        marcarPerfilActual(fPerfil, tPerfil.dataset.perfil);
+    }
+
+    var fTemporal = document.getElementById('formTemporal');
+    var tTemporal = tarjetaPorAccion(fTemporal, '.btn-temporal');
+    if (tTemporal) {
+        texto('temporal_usuario_txt', tTemporal.dataset.nombre);
+        marcarPerfilActual(fTemporal, tTemporal.dataset.perfil);
+    }
+
+    var modalCrear = document.getElementById('modalCrear');
+    if (modalCrear) {
+        modalCrear.addEventListener('hidden.bs.modal', function () {
+            if (modalCrear.hasAttribute('data-modal-auto')) {
+                modalCrear.removeAttribute('data-modal-auto');
+                return;
+            }
+            var fCrear = document.getElementById('formCrear');
+            if (!fCrear) { return; }
+            fCrear.reset();
+            var aviso = document.getElementById('avisoDni');
+            if (aviso) { aviso.classList.add('d-none'); }
+            var guardar = document.getElementById('btnGuardarCrear');
+            if (guardar) { guardar.disabled = false; }
+        });
+    }
 })();
