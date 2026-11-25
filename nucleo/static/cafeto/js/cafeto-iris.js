@@ -23,6 +23,7 @@
 
     var CLAVE_SONIDO = 'cafeto.iris.sonido';
     var CLAVE_RAIL_MODO = 'cafeto.iris.railModo';
+    var CLAVE_RAIL_COLAPSADO = 'cafeto.iris.railColapsado';
     var CLAVE_AUTH_VISTO = 'cafeto.iris.authUltimoId';
     var CLAVE_AUTH_SYNC = 'cafeto.iris.authSync';
     var CLAVE_AVISO_ACTIVO = 'cafeto.iris.aviso.v1';
@@ -48,6 +49,10 @@
         return leer(CLAVE_RAIL_MODO) === 'areas' ? 'areas' : 'completo';
     }
 
+    function railColapsadoActual() {
+        return leer(CLAVE_RAIL_COLAPSADO) === '1';
+    }
+
     function aplicarModoRail(modo) {
         var valor = modo === 'areas' ? 'areas' : 'completo';
         document.documentElement.setAttribute('data-iris-rail', valor);
@@ -56,8 +61,21 @@
         });
     }
 
-    // Aplicar de inmediato para evitar parpadeo al cargar
+    function aplicarColapsoRail(colapsado) {
+        var activo = Boolean(colapsado);
+        document.documentElement.setAttribute('data-iris-rail-colapsado', activo ? '1' : '0');
+        document.querySelectorAll('[data-iris-rail-colapsar]').forEach(function (btn) {
+            btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
+            var ic = btn.querySelector('i');
+            if (ic) {
+                ic.className = activo ? 'bi bi-layout-sidebar' : 'bi bi-layout-sidebar-inset';
+            }
+        });
+    }
+
+    // Aplicar de inmediato para evitar parpadeo al cargar (desplegado por defecto para adultos)
     aplicarModoRail(modoRailActual());
+    aplicarColapsoRail(railColapsadoActual());
 
     function normalizar(texto) {
         return String(texto || '')
@@ -127,6 +145,13 @@
     var avisoActual = null;
     var temporizadorAviso = null;
     var anchoMinimoNotch = 0;
+    var buscadorNotchAbierto = false;
+
+    function actualizarIndicadorColaBuscador() {
+        var dot = document.getElementById('irisNotchColaDot');
+        if (!dot) { return; }
+        dot.hidden = !(buscadorNotchAbierto && (avisoActual || colaAvisos.length > 0));
+    }
 
     function limpiarTemporizador() {
         if (temporizadorAviso) {
@@ -200,6 +225,7 @@
             partes.notch.style.minWidth = '';
         }
         persistirEstadoAvisos();
+        actualizarIndicadorColaBuscador();
         if (colaAvisos.length > 0) {
             mostrarSiguienteAviso();
         }
@@ -358,6 +384,11 @@
     function mostrarSiguienteAviso() {
         var partes = obtenerNotch();
         if (!partes.notch || !partes.host || colaAvisos.length === 0) { return; }
+        if (buscadorNotchAbierto) {
+            persistirEstadoAvisos();
+            actualizarIndicadorColaBuscador();
+            return;
+        }
 
         var item = colaAvisos.shift();
         var texto = item.texto;
@@ -471,6 +502,11 @@
     function encolarAviso(texto, tono, opciones) {
         if (!texto) { return; }
         colaAvisos.push({ texto: texto, tono: tono || 'exito', opciones: opciones || {} });
+        if (buscadorNotchAbierto) {
+            persistirEstadoAvisos();
+            actualizarIndicadorColaBuscador();
+            return;
+        }
         if (!avisoActual) {
             mostrarSiguienteAviso();
         } else {
@@ -853,12 +889,14 @@
         }
 
         var grilla = document.createElement('div');
-        grilla.className = 'iris-paleta-grilla';
+        grilla.className = 'iris-notch-lista';
 
         itemsPaletaActuales.forEach(function (item, idx) {
             var a = document.createElement('a');
             a.className = 'iris-paleta-item' + (idx === indicePaleta ? ' is-seleccionado' : '');
             a.href = item.href;
+            a.setAttribute('role', 'option');
+            a.setAttribute('aria-selected', idx === indicePaleta ? 'true' : 'false');
             a.dataset.irisPaletaIdx = String(idx);
 
             var icWrap = document.createElement('span');
@@ -883,8 +921,7 @@
             a.appendChild(txt);
 
             a.addEventListener('click', function (ev) {
-                var dlg = document.getElementById('irisPaleta');
-                if (dlg && dlg.open) { dlg.close(); }
+                cerrarBuscadorNotch();
                 if (item.enlace && item.enlace.isConnected) {
                     ev.preventDefault();
                     item.enlace.click();
@@ -902,23 +939,84 @@
         nodos.forEach(function (nodo, idx) {
             var sel = idx === indicePaleta;
             nodo.classList.toggle('is-seleccionado', sel);
+            nodo.setAttribute('aria-selected', sel ? 'true' : 'false');
             if (sel) { nodo.scrollIntoView({ block: 'nearest' }); }
         });
     }
 
+    function cerrarBuscadorNotch() {
+        if (!buscadorNotchAbierto) { return; }
+        buscadorNotchAbierto = false;
+        var notch = document.getElementById('irisNotch');
+        var panel = document.getElementById('irisNotchBuscador');
+        var lupa = document.getElementById('irisNotchLupa');
+        var hostAviso = document.getElementById('irisNotchAviso');
+        if (panel) { panel.hidden = true; }
+        if (lupa) { lupa.setAttribute('aria-expanded', 'false'); }
+        if (notch) {
+            notch.classList.remove('es-buscando');
+            notch.style.width = '';
+        }
+        actualizarIndicadorColaBuscador();
+        if (avisoActual) {
+            if (hostAviso && (hostAviso.hidden || !hostAviso.firstElementChild)) {
+                pintarAvisoEnNotch(avisoActual, true);
+            } else if (notch) {
+                if (hostAviso) { hostAviso.hidden = false; }
+                sincronizarClasesNotch(notch, avisoActual);
+            }
+            if (!avisoActual.fijo) {
+                reanudarAviso();
+            }
+        } else if (colaAvisos.length > 0) {
+            mostrarSiguienteAviso();
+        }
+    }
+
     function abrirPaleta() {
-        var dialogo = document.getElementById('irisPaleta');
+        var notch = document.getElementById('irisNotch');
+        var panel = document.getElementById('irisNotchBuscador');
         var input = document.getElementById('irisPaletaBuscar');
-        if (!dialogo) { return; }
-        if (dialogo.open) {
-            dialogo.close();
+        var lupa = document.getElementById('irisNotchLupa');
+        var hostAviso = document.getElementById('irisNotchAviso');
+        if (!notch || !panel) { return; }
+        if (buscadorNotchAbierto) {
+            cerrarBuscadorNotch();
             return;
         }
-        cerrarOtrosDialogos(dialogo);
+        cerrarOtrosDialogos(null);
+        cerrarAreaPopover();
+
+        // Fijar el ancho del propio Notch en reposo para no expandirse a los costados
+        var anchoReposo = notch.offsetWidth || 0;
+        if (window.innerWidth >= 640 && anchoReposo > 0) {
+            var topeAncho = Math.min(Math.max(300, anchoReposo), Math.max(300, window.innerWidth - 48));
+            notch.style.width = topeAncho + 'px';
+        } else {
+            notch.style.width = '';
+        }
+
+        // Regla estricta buscador <-> notificaciones: pausar y ocultar sin perder estado ni timer
+        if (avisoActual) {
+            if (avisoActual.fijo) {
+                limpiarTemporizador();
+            } else {
+                pausarAviso();
+            }
+            if (hostAviso) { hostAviso.hidden = true; }
+            notch.classList.remove('tiene-aviso', 'tiene-aviso-largo');
+            notch.style.minWidth = '';
+        }
+
+        buscadorNotchAbierto = true;
+        notch.classList.add('es-buscando');
+        panel.hidden = false;
+        if (lupa) { lupa.setAttribute('aria-expanded', 'true'); }
+        actualizarIndicadorColaBuscador();
+
         indicePaleta = 0;
         if (input) { input.value = ''; }
         pintarResultadosPaleta('');
-        dialogo.showModal();
         if (input) { input.focus(); }
     }
 
@@ -1106,7 +1204,7 @@
                 'Buscá por nombre o escaneá el código en el buscador (atajo F2). También podés filtrar por Más vendidos, Cafetería o Minisuper.',
                 'Tocá cada producto para sumarlo al ticket; ajustá cantidades con los botones − y + o escribiendo el peso/cantidad.',
                 'Si el cliente pertenece al Club Cafeto, identificalo por teléfono, DNI o QR para aplicar sus beneficios.',
-                'Elegí cómo paga (F4 selecciona Efectivo). Con Efectivo aparecen los billetes rápidos (Exacto, $ 2.000, $ 5.000, $ 10.000, $ 20.000) o podés escribir cualquier monto. Pulsá Cobrar (F9).'
+                'Elegí cómo paga (F4 selecciona Efectivo). Si dejás el monto recibido vacío cobra exacto; si escribís con cuánto paga, el servidor calcula el vuelto. Pulsá Cobrar (F9).'
             ],
             consejo: 'Si un cliente paga con dos medios (por ejemplo Efectivo + Transferencia), tocá "Pagar con dos medios" debajo de Efectivo.',
             interactiva: true,
@@ -1151,7 +1249,7 @@
                         return document.querySelector('.js-medio[data-efectivo="1"]') || document.getElementById('medios');
                     },
                     titulo: 'Elegí Efectivo',
-                    texto: 'Tocá Efectivo (o presioná la tecla F4) para que aparezcan los billetes rápidos y el campo de efectivo recibido.',
+                    texto: 'Tocá Efectivo (o presioná la tecla F4) para habilitar el cobro inmediato o ingresar con cuánto te pagan.',
                     espera: 'Tocá Efectivo o presioná F4…',
                     condicion: function () {
                         return Boolean(document.querySelector('#pagos input[aria-label="Efectivo recibido"]'));
@@ -1160,32 +1258,22 @@
                 {
                     dinamico: true,
                     obtenerNodo: function () {
-                        sincronizarBilletesRapidos();
-                        var totalNodo = document.getElementById('tTotal');
-                        var totalNum = leerMontoFormateado(totalNodo ? totalNodo.textContent : '') || 0;
-                        var selectorBtn = totalNum >= 20000
-                            ? '#irisBilletes [data-iris-billete="exacto"]'
-                            : '#irisBilletes [data-iris-billete="20000"]';
-                        return document.querySelector(selectorBtn) || document.getElementById('irisBilletes') || document.getElementById('pago');
+                        return document.querySelector('#pagos input[aria-label="Efectivo recibido"]') || document.getElementById('pago');
                     },
                     alEntrar: function (ctx) {
                         var totalNodo = document.getElementById('tTotal');
                         ctx.totalAlEntrar = leerMontoFormateado(totalNodo ? totalNodo.textContent : '') || 0;
                     },
-                    titulo: 'Probá un billete rápido',
-                    texto: 'Tocá "$ 20.000" (o "Exacto") y mirá cómo el servidor calcula el vuelto al instante. Siempre podés escribir otro monto a mano.',
-                    espera: 'Tocá un billete rápido o Exacto…',
+                    titulo: 'Monto recibido o pago exacto',
+                    texto: 'Si paga justo no hace falta escribir nada. Para calcular vuelto, escribí acá con cuánto te paga (por ejemplo 20000) y salí del campo o pulsá Tab.',
+                    espera: 'Escribí un monto recibido (o tocá Saltar paso para pago exacto)…',
                     condicion: function (ctx) {
                         var filaVuelto = document.getElementById('filaVuelto');
                         var tVuelto = document.getElementById('tVuelto');
                         if (filaVuelto && !filaVuelto.classList.contains('d-none') && tVuelto && tVuelto.textContent.trim().length > 0) {
                             return true;
                         }
-                        var exactoBtn = document.querySelector('#irisBilletes [data-iris-billete="exacto"]');
                         var cobrarBtn = document.getElementById('cobrar');
-                        if (exactoBtn && exactoBtn.getAttribute('aria-pressed') === 'true' && cobrarBtn && !cobrarBtn.disabled) {
-                            return true;
-                        }
                         var campo = document.querySelector('#pagos input[aria-label="Efectivo recibido"]');
                         var recibido = leerMontoInput(campo ? campo.value : '');
                         return Boolean(recibido !== null && ctx.totalAlEntrar > 0 && recibido >= ctx.totalAlEntrar && cobrarBtn && !cobrarBtn.disabled);
@@ -1198,7 +1286,7 @@
                         if (vuelto && !vuelto.classList.contains('d-none') && esVisibleEnPantalla(vuelto)) {
                             return vuelto;
                         }
-                        return document.getElementById('pago') || document.getElementById('ticket');
+                        return document.getElementById('cobrar') || document.getElementById('pago') || document.getElementById('ticket');
                     },
                     titulo: '¡Listo! Ya sabés armar y cotizar',
                     texto: 'En una venta real acá apretarías Cobrar (F9). En modo práctica nunca cobramos nada real: tocá abajo y te dejamos el mostrador limpio en cero.',
@@ -1214,13 +1302,13 @@
             pasos: [
                 'Si el equipo todavía no está vinculado a un cajón, elegí primero en qué caja estás (Cafetería o Minisuper).',
                 'Para abrir el turno, cargá el fondo inicial en efectivo que hay en el cajón y confirmá.',
-                'Durante el turno podés registrar refuerzos o retiros de efectivo con comprobante imprimible.',
+                'Durante el turno usá los botones superiores para registrar refuerzos o retiros, hacer un arqueo parcial (Corte X) o cerrar el turno.',
                 'Al cerrar, contá la plata real del cajón e ingresala sin ver lo esperado (arqueo ciego). Si la diferencia supera la tolerancia, podés pedir autorización a distancia.'
             ],
             consejo: 'Si cerrás con diferencia y el supervisor no está presente, usá "Pedir autorización a distancia": le llegará el aviso en vivo al Notch y por correo/WhatsApp.',
             tour: [
                 { selector: '.encabezado', titulo: 'Puesto de caja actual', texto: 'Muestra el cajón vinculado a este dispositivo y si el turno está abierto o cerrado.' },
-                { selector: 'main.pagina form', titulo: 'Operación del turno', texto: 'Desde acá abrís el turno, declarás el arqueo ciego o registrás movimientos de efectivo.' }
+                { selector: '.iris-caja-acciones, main.pagina form', titulo: 'Operación del turno', texto: 'Desde acá abrís el turno o abrís en un clic Refuerzo o retiro, Cerrar turno o Arqueo parcial.' }
             ]
         },
         {
@@ -2309,11 +2397,16 @@
     }
 
     function sincronizarBilletesRapidos() {
-        var barra = document.getElementById('irisBilletes');
         var pagos = document.getElementById('pagos');
-        if (!barra || !pagos) { return; }
+        if (!pagos) { return; }
 
         var campoEfectivo = pagos.querySelector('input[aria-label="Efectivo recibido"]');
+        if (campoEfectivo && campoEfectivo.placeholder !== 'Exacto (o monto recibido)') {
+            campoEfectivo.placeholder = 'Exacto (o monto recibido)';
+        }
+
+        var barra = document.getElementById('irisBilletes');
+        if (!barra) { return; }
         var ticketVacio = document.getElementById('ticketVacio');
         var hayItems = Boolean(ticketVacio && ticketVacio.classList.contains('d-none'));
         var mostrar = Boolean(campoEfectivo && hayItems);
@@ -2402,8 +2495,7 @@
         desconectarMostrador();
         var mostrador = document.getElementById('mostrador');
         var pagos = document.getElementById('pagos');
-        var barra = document.getElementById('irisBilletes');
-        if (!mostrador || !pagos || !barra) { return; }
+        if (!mostrador || !pagos) { return; }
 
         sincronizarMostrador();
         if (window.MutationObserver) {
@@ -2775,6 +2867,16 @@
             return;
         }
 
+        var btnRailColapsar = evento.target.closest('[data-iris-rail-colapsar]');
+        if (btnRailColapsar) {
+            evento.preventDefault();
+            cerrarAreaPopover();
+            var nuevoColapso = !railColapsadoActual();
+            guardar(CLAVE_RAIL_COLAPSADO, nuevoColapso ? '1' : '0');
+            aplicarColapsoRail(nuevoColapso);
+            return;
+        }
+
         var btnRailModo = evento.target.closest('[data-iris-rail-modo]');
         if (btnRailModo) {
             evento.preventDefault();
@@ -2791,14 +2893,15 @@
             return;
         }
 
-        // En PC (>= 1100px) en modo "Solo 9 áreas": clic en título navega al 1° ítem;
-        // clic en la flechita ▾ despliega el popover flotante de sub-pantallas.
+        // En PC (>= 1100px) en modo "Solo 9 áreas" o con el Rail contraído (< 140px):
+        // con Rail contraído despliega el popover flotante; en "Solo 9 áreas" expandido,
+        // clic en título va al 1° ítem y clic en la flechita ▾ abre el popover.
         var resumenArea = evento.target.closest('.lateral details.lateral-desplegable > summary');
-        if (resumenArea && window.innerWidth >= 1100 && modoRailActual() === 'areas') {
+        if (resumenArea && window.innerWidth >= 1100 && (modoRailActual() === 'areas' || railColapsadoActual())) {
             evento.preventDefault();
             var detalles = resumenArea.closest('details.lateral-desplegable');
             if (!detalles) { return; }
-            if (evento.target.closest('[data-iris-area-popover]')) {
+            if (railColapsadoActual() || evento.target.closest('[data-iris-area-popover]')) {
                 abrirAreaPopover(detalles, resumenArea);
             } else {
                 cerrarAreaPopover();
@@ -2816,12 +2919,25 @@
             }
         }
 
+        if (evento.target.closest('[data-iris-paleta-cerrar]')) {
+            evento.preventDefault();
+            cerrarBuscadorNotch();
+            return;
+        }
+
         var btnPaleta = evento.target.closest('[data-iris-paleta-abrir]');
         if (btnPaleta) {
             evento.preventDefault();
             cerrarDrawer();
             abrirPaleta();
             return;
+        }
+
+        if (buscadorNotchAbierto) {
+            var notchCont = document.getElementById('irisNotch');
+            if (!notchCont || !notchCont.contains(evento.target)) {
+                cerrarBuscadorNotch();
+            }
         }
 
         var btnAtajos = evento.target.closest('[data-iris-atajos-abrir]');
@@ -2950,7 +3066,7 @@
             return;
         }
 
-        if (evento.key === 'ArrowRight' && window.innerWidth >= 1100 && modoRailActual() === 'areas') {
+        if (evento.key === 'ArrowRight' && window.innerWidth >= 1100 && (modoRailActual() === 'areas' || railColapsadoActual())) {
             var resumenFoco = evento.target && evento.target.closest && evento.target.closest('.lateral details.lateral-desplegable > summary');
             if (resumenFoco) {
                 evento.preventDefault();
@@ -2962,6 +3078,13 @@
         }
 
         if (evento.key === 'Escape') {
+            if (buscadorNotchAbierto) {
+                evento.preventDefault();
+                cerrarBuscadorNotch();
+                var btnLupa = document.getElementById('irisNotchLupa');
+                if (btnLupa) { btnLupa.focus(); }
+                return;
+            }
             var tourCaja = document.getElementById('irisTourCaja');
             if (tourCaja && !tourCaja.hidden) {
                 evento.preventDefault();
@@ -3125,8 +3248,7 @@
         } else if (evento.key === 'Enter') {
             evento.preventDefault();
             var elegido = itemsPaletaActuales[indicePaleta];
-            var dlg = document.getElementById('irisPaleta');
-            if (dlg && dlg.open) { dlg.close(); }
+            cerrarBuscadorNotch();
             if (elegido && elegido.enlace && elegido.enlace.isConnected) {
                 elegido.enlace.click();
             } else if (elegido) {
@@ -3152,6 +3274,11 @@
             cerrarAreaPopover();
             return;
         }
+        if (evento.key === CLAVE_RAIL_COLAPSADO) {
+            aplicarColapsoRail(evento.newValue === '1');
+            cerrarAreaPopover();
+            return;
+        }
         if (evento.key !== 'cafeto.tema') { return; }
         var tema = evento.newValue;
         if (tema !== 'claro' && tema !== 'oscuro') { return; }
@@ -3159,7 +3286,7 @@
         raiz.setAttribute('data-tema', tema);
         raiz.setAttribute('data-bs-theme', tema === 'claro' ? 'light' : 'dark');
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) { meta.setAttribute('content', tema === 'claro' ? '#F4F1EA' : '#121128'); }
+        if (meta) { meta.setAttribute('content', tema === 'claro' ? '#E6E0D4' : '#121128'); }
         document.dispatchEvent(new CustomEvent('cafeto:tema', { detail: { tema: tema } }));
     });
 
@@ -3203,6 +3330,7 @@
        ---------------------------------------------------------------------- */
     function inicializarShell(raiz) {
         aplicarModoRail(modoRailActual());
+        aplicarColapsoRail(railColapsadoActual());
         conectarLightDismissDialogos();
         conectarModalComprobante();
         actualizarBotonesSonido();
@@ -3221,6 +3349,9 @@
     });
 
     document.addEventListener('htmx:oobBeforeSwap', function (evento) {
+        if (buscadorNotchAbierto) {
+            buscadorNotchAbierto = false;
+        }
         var fragmento = evento.detail && evento.detail.fragment;
         if (!fragmento || !fragmento.querySelector) { return; }
         var nuevoNotch = fragmento.querySelector('#irisNotch');
@@ -3231,6 +3362,7 @@
 
     document.addEventListener('htmx:beforeSwap', function (evento) {
         if (evento.target && evento.target.id === 'contenido') {
+            cerrarBuscadorNotch();
             desconectarMostrador();
             cerrarTour(false);
         }

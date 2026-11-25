@@ -245,3 +245,42 @@ class PreciosTest(Base):
                                                     'token_operacion': previa.context['token']})
         a.refresh_from_db()
         self.assertEqual(a.precio_venta, D('1100'))
+
+
+class ShellIrisYCajaModalesTest(Base):
+
+    def test_shell_iris_rail_cuatro_filas_y_notch_unico_con_lupa(self):
+        cajon_ajeno = f.caja_minisuper()
+        f.entrar(self.client, self.operador)
+        resp_op = self.client.get(reverse('home'))
+        self.assertEqual(resp_op.status_code, 200)
+        self.assertContains(resp_op, 'cafeto-icono-ambar.svg')
+        self.assertContains(resp_op, 'cafeto-horizontal-negativo.svg')
+        self.assertContains(resp_op, 'cafeto-horizontal-positivo.svg')
+        self.assertContains(resp_op, 'data-iris-rail-colapsar')
+        self.assertContains(resp_op, 'data-iris-rail-modo')
+        self.assertContains(resp_op, 'iris-rail-perfil')
+        self.assertContains(resp_op, 'id="irisNotchLupa"')
+        self.assertContains(resp_op, 'id="irisNotchBuscador"')
+        self.assertNotContains(resp_op, 'iris-isla-derecha')
+        # El operador sin ver_caja jamás recibe enlaces a turnos de cajas ajenas
+        self.assertNotContains(resp_op, f"?caja={cajon_ajeno.pk}")
+
+        self.client.logout()
+        f.entrar(self.client, self.admin)
+        resp_adm = self.client.get(reverse('home'))
+        self.assertContains(resp_adm, f"?caja={cajon_ajeno.pk}")
+
+    def test_caja_con_turno_abierto_usa_tres_modales_y_tabla_ancho_completo(self):
+        cajon = f.caja_cafeteria()
+        f.abrir_turno(self.admin, cajon=cajon)
+        f.entrar(self.client, self.admin)
+        self.client.post(reverse('ventas:elegir_caja'), {'caja': cajon.pk})
+        resp = self.client.get(reverse('ventas:caja'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'iris-caja-acciones')
+        self.assertContains(resp, 'id="modalMovimientoCaja"')
+        self.assertContains(resp, 'id="modalCerrarCaja"')
+        self.assertContains(resp, 'id="modalCorteCaja"')
+        self.assertContains(resp, 'id="cerrar"')
+

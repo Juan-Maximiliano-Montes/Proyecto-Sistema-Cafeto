@@ -2,7 +2,7 @@
 <html lang="es-AR" data-tema="oscuro" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#121128">
     <title>{% block titulo %}Cafeto{% endblock %}</title>
     <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": true, "scrollIntoViewOnBoost": false, "includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true}'>
@@ -14,13 +14,14 @@
     <link rel="stylesheet" href="{% static 'cafeto/vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
     <link rel="stylesheet" href="{% static 'cafeto/vendor/select2/select2.min.css' %}">
     <link rel="stylesheet" href="{% static 'cafeto/css/cafeto.css' %}">
-    <link rel="stylesheet" href="{% static 'cafeto/css/cafeto-iris.css' %}?v=20261124b">
+    <link rel="stylesheet" href="{% static 'cafeto/css/cafeto-iris.css' %}?v=20261125a">
     {% block estilos %}{% endblock %}
 </head>
 <body hx-history="false">
 {% block pantalla %}
 <div class="app">
     {% if request.usuario_actual %}
+    {% with u=request.usuario_actual %}
     <a class="iris-skip-link visually-hidden-focusable" href="#contenido">Ir al contenido principal</a>
     {% comment %}
     Rail lateral Cafeto × iRiS. El menú lo arma seguridad/menu.py, agrupado por
@@ -29,28 +30,22 @@
     {% endcomment %}
     <aside class="lateral" id="menuPrincipal" aria-label="Menú principal" hx-boost="true" hx-target="#contenido" hx-select="#contenido" hx-select-oob="#barra" hx-swap="outerHTML show:none" hx-push-url="true">
         <div class="lateral-cabecera">
-            <a class="lateral-marca" href="{% url 'home' %}" aria-label="Inicio">
+            <a class="lateral-marca" href="{% url 'home' %}" aria-label="Inicio" title="Ir al Inicio · Cafeto Las Lomitas">
                 <img class="logo-para-oscuro" src="{% static 'cafeto/marca/cafeto-horizontal-negativo.svg' %}" alt="Cafeto Las Lomitas">
                 <img class="logo-para-claro" src="{% static 'cafeto/marca/cafeto-horizontal-positivo.svg' %}" alt="Cafeto Las Lomitas">
+                <img class="logo-isotipo-colapsado" src="{% static 'cafeto/marca/cafeto-icono-ambar.svg' %}" alt="Cafeto Las Lomitas">
             </a>
+            <button type="button" class="iris-rail-colapsar" data-iris-rail-colapsar aria-pressed="false" aria-label="Contraer o expandir menú lateral" title="Contraer o expandir menú lateral">
+                <i class="bi bi-layout-sidebar-inset" aria-hidden="true"></i>
+            </button>
             <button type="button" class="iris-lateral-cerrar" data-lateral-cerrar aria-label="Cerrar el menú">
                 <i class="bi bi-x-lg" aria-hidden="true"></i>
             </button>
         </div>
 
-        <div class="iris-rail-buscar-wrap">
-            <button type="button" class="iris-rail-buscar" data-iris-paleta-abrir aria-haspopup="dialog" aria-controls="irisPaleta">
-                <span class="iris-rail-buscar-texto">
-                    <i class="bi bi-search" aria-hidden="true"></i>
-                    <span>Buscar pantalla…</span>
-                </span>
-                <kbd class="iris-keycap iris-keycap-chassis">Ctrl+K</kbd>
-            </button>
-        </div>
-
         <nav class="flex-grow-1" aria-label="Áreas del sistema">
             <div class="lateral-grupo">
-                <a class="lateral-link lateral-inicio-link{% if request.path == '/' %} activo{% endif %}" href="{% url 'home' %}"{% if request.path == '/' %} aria-current="page"{% endif %}>
+                <a class="lateral-link lateral-inicio-link{% if request.path == '/' %} activo{% endif %}" href="{% url 'home' %}" title="Inicio"{% if request.path == '/' %} aria-current="page"{% endif %}>
                     <i class="bi bi-house-door" aria-hidden="true"></i><span>Inicio</span>
                 </a>
             </div>
@@ -62,18 +57,18 @@
             {% for grupo in menu_sistema %}
             {% if grupo.items|length == 1 %}{% with item=grupo.items.0 %}
             <div class="lateral-grupo">
-                <a class="lateral-link{% if item.activo %} activo{% endif %}" href="{{ item.url }}"{% if item.activo %} aria-current="page"{% endif %}>
+                <a class="lateral-link{% if item.activo %} activo{% endif %}" href="{{ item.url }}" title="{{ item.titulo }}"{% if item.activo %} aria-current="page"{% endif %}>
                     <i class="bi {{ item.icono }}" aria-hidden="true"></i><span>{{ item.titulo }}</span>
                 </a>
             </div>
             {% endwith %}{% else %}
             <details class="lateral-grupo lateral-desplegable" data-grupo="{{ grupo.titulo|slugify }}"{% if grupo.activo %} open data-actual{% endif %}>
-                <summary class="lateral-titulo">
+                <summary class="lateral-titulo" title="{{ grupo.titulo }}">
                     <i class="bi {{ grupo.icono }}" aria-hidden="true"></i><span>{{ grupo.titulo }}</span>
                     <span class="lateral-flecha-hit" data-iris-area-popover aria-hidden="true"><i class="bi bi-chevron-down lateral-flecha"></i></span>
                 </summary>
                 {% for item in grupo.items %}
-                <a class="lateral-link{% if item.activo %} activo{% endif %}" href="{{ item.url }}"{% if item.activo %} aria-current="page"{% endif %}>
+                <a class="lateral-link{% if item.activo %} activo{% endif %}" href="{{ item.url }}" title="{{ item.titulo }}"{% if item.activo %} aria-current="page"{% endif %}>
                     <i class="bi {{ item.icono }}" aria-hidden="true"></i><span>{{ item.titulo }}</span>
                 </a>
                 {% endfor %}
@@ -83,38 +78,67 @@
         </nav>
 
         <div class="lateral-pie">
-            <button type="button" class="iris-rail-modo-btn" data-iris-rail-modo aria-pressed="false" title="Alternar menú lateral entre vista completa y vista compacta de 9 áreas">
+            <button type="button" class="iris-rail-fila iris-rail-modo-btn" data-iris-rail-modo aria-pressed="false" title="Alternar menú lateral entre vista completa y vista compacta de 9 áreas">
                 <i class="bi bi-layers" aria-hidden="true"></i>
-                <span class="iris-modo-a-areas">Solo 9 áreas</span>
-                <span class="iris-modo-a-completo">Menú completo</span>
+                <span class="iris-rail-fila-txt iris-modo-a-areas">Solo 9 áreas</span>
+                <span class="iris-rail-fila-txt iris-modo-a-completo">Menú completo</span>
             </button>
-            <div class="iris-rail-utilidades">
-                <button type="button" class="iris-rail-btn" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Cambiar entre tema claro y oscuro">
-                    <i class="bi bi-circle-half" aria-hidden="true"></i>
-                    <span class="iris-tema-a-claro">Claro</span>
-                    <span class="iris-tema-a-oscuro">Oscuro</span>
+            <button type="button" class="iris-rail-fila" data-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Cambiar entre tema claro y oscuro">
+                <i class="bi bi-circle-half" aria-hidden="true"></i>
+                <span class="iris-rail-fila-txt iris-tema-a-claro">Claro</span>
+                <span class="iris-rail-fila-txt iris-tema-a-oscuro">Oscuro</span>
+            </button>
+            <button type="button" class="iris-rail-fila" data-iris-ayuda-abrir="pantalla" aria-haspopup="dialog" aria-controls="irisModalAyuda" aria-label="Abrir centro de ayuda, práctica guiada y atajos (F1)" title="Ayuda, práctica guiada y atajos (F1)">
+                <i class="bi bi-question-circle" aria-hidden="true"></i>
+                <span class="iris-rail-fila-txt">Ayuda</span>
+                <kbd class="iris-keycap iris-keycap-chassis ms-auto">F1</kbd>
+            </button>
+            <div class="dropup iris-rail-perfil-wrap" hx-boost="false">
+                <button type="button" class="iris-rail-perfil" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Cuenta de {{ u.nombre }} {{ u.apellido }}" title="{{ u.nombre }} {{ u.apellido }} · {{ u.perfil_efectivo.nombre }}">
+                    <span class="avatar iris-rail-avatar" aria-hidden="true">{{ u.nombre|slice:":1"|upper }}{{ u.apellido|slice:":1"|upper }}</span>
+                    <span class="iris-rail-perfil-datos">
+                        <span class="iris-rail-perfil-nombre">{{ u.nombre }}</span>
+                        <span class="iris-rail-perfil-rol">{{ u.perfil_efectivo.nombre }}</span>
+                    </span>
+                    <i class="bi bi-chevron-up iris-rail-perfil-flecha" aria-hidden="true"></i>
                 </button>
-                <button type="button" class="iris-rail-btn" data-iris-ayuda-abrir="pantalla" aria-haspopup="dialog" aria-controls="irisModalAyuda" aria-label="Abrir centro de ayuda, práctica guiada y atajos (F1)" title="Ayuda, práctica guiada y atajos (F1)">
-                    <i class="bi bi-question-circle" aria-hidden="true"></i>
-                    <span>Ayuda</span>
-                    <kbd class="iris-keycap iris-keycap-chassis">F1</kbd>
-                </button>
-            </div>
-            {# Salir va por POST: un enlace ajeno no puede cerrarle la sesión a nadie. #}
-            <form method="post" action="{% url 'seguridad:logout' %}" class="iris-rail-salir-form" hx-boost="false">
-                {% csrf_token %}
-                <button type="submit" class="iris-rail-salir">
-                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Cerrar sesión</span>
-                </button>
-            </form>
-            <div class="iris-rail-estado" id="irisRailEstado">
-                <span class="iris-rail-estado-punto" aria-hidden="true"></span>
-                <span class="js-rail-red-texto">Cafeto · NAS Local</span>
+                <ul class="dropdown-menu iris-rail-perfil-menu">
+                    <li class="iris-perfil-cabecera">
+                        <span class="d-block text-body fw-semibold">{{ u.nombre }} {{ u.apellido }}</span>
+                        <span class="d-block small text-secondary">
+                            {{ u.perfil_efectivo.nombre }}{% if u.tiene_perfil_temporal_vigente %} <span class="insignia insignia-aviso">temporal</span>{% endif %}
+                        </span>
+                        <span class="iris-rail-estado mt-1 px-0" id="irisRailEstado">
+                            <span class="iris-rail-estado-punto" aria-hidden="true"></span>
+                            <span class="js-rail-red-texto">Cafeto · NAS Local</span>
+                        </span>
+                    </li>
+                    <li><a class="dropdown-item" href="{% url 'mi_perfil' %}"><i class="bi bi-person-badge" aria-hidden="true"></i><span>Mi perfil</span></a></li>
+                    <li><a class="dropdown-item" href="{% url 'seguridad:cambiar_clave' %}"><i class="bi bi-key" aria-hidden="true"></i><span>Cambiar mi clave</span></a></li>
+                    <li>
+                        <button type="button" class="dropdown-item" data-iris-sonido-alternar aria-pressed="true">
+                            <i class="bi bi-volume-up" aria-hidden="true"></i>
+                            <span>Sonido avisos</span>
+                            <span class="ms-auto small text-secondary js-sonido-estado">Activado</span>
+                        </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        {# Salir va por POST: un enlace ajeno no puede cerrarle la sesión a nadie. #}
+                        <form method="post" action="{% url 'seguridad:logout' %}" class="iris-rail-salir-form">
+                            {% csrf_token %}
+                            <button type="submit" class="dropdown-item text-peligro fw-bold">
+                                <i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Cerrar sesión</span>
+                            </button>
+                        </form>
+                    </li>
+                </ul>
             </div>
         </div>
     </aside>
     <script src="{% static 'cafeto/js/menu.js' %}" data-global></script>
     <div class="velo" aria-hidden="true"></div>
+    {% endwith %}
     {% endif %}
 
     <div class="contenido">
@@ -140,6 +164,7 @@
                         {# Las cajas del local a la vista, sin desplegable (DD-101): verde = turno abierto. Arqueo ciego: jamás montos $. #}
                         <nav class="chips-cajas{% if not cajas_abiertas %} sin-abiertas{% endif %}" aria-label="Cajas del local">
                             {% for caja, turno, propia in cajas_del_local %}
+                            {% if propia or es_administrador or 'ver_caja' in permisos_usuario %}
                             <a class="chip-caja{% if turno %} abierta{% endif %}{% if propia %} propia{% endif %}"
                                href="{% if propia %}{% url 'ventas:caja' %}{% else %}{% url 'ventas:turnos' %}?caja={{ caja.pk|stringformat:"d" }}{% if turno %}&amp;estado=abiertos{% endif %}{% endif %}"
                                {% if propia %}aria-current="true"{% endif %}
@@ -149,6 +174,15 @@
                                 <i class="bi bi-display iris-caja-ic" aria-hidden="true"></i>
                                 <span>{{ caja }} <span class="chip-caja-quien">({% if turno %}{{ turno.id_usuario_apertura.nombre }}{% else %}Cerrada{% endif %})</span></span>{% if propia %}<span class="iris-chip-este-equipo" aria-hidden="true">Este equipo</span>{% endif %}
                             </a>
+                            {% else %}
+                            <span class="chip-caja{% if turno %} abierta{% endif %} iris-chip-estatico" role="status"
+                                  aria-label="{{ caja }}: {% if turno %}abierta por {{ turno.id_usuario_apertura.nombre }} desde el {{ turno.fecha_apertura|date:'d/m H:i' }}{% else %}cerrada{% endif %}"
+                                  title="{% if turno %}Abierta por {{ turno.id_usuario_apertura.nombre }} {{ turno.id_usuario_apertura.apellido }} desde el {{ turno.fecha_apertura|date:'d/m H:i' }}{% else %}Cerrada{% endif %} · Otro equipo">
+                                <span class="punto" aria-hidden="true"></span>
+                                <i class="bi bi-display iris-caja-ic" aria-hidden="true"></i>
+                                <span>{{ caja }} <span class="chip-caja-quien">({% if turno %}{{ turno.id_usuario_apertura.nombre }}{% else %}Cerrada{% endif %})</span></span>
+                            </span>
+                            {% endif %}
                             {% endfor %}
                             {% if not caja_de_la_sesion %}<a class="chip-caja chip-caja-elegir" href="{% url 'ventas:caja' %}" title="Elegir la caja de este equipo" aria-label="Elegir la caja de este equipo"><i class="bi bi-plus-circle" aria-hidden="true"></i><span>Elegir caja</span></a>{% endif %}
                         </nav>
@@ -172,57 +206,36 @@
                             <span>{{ autorizaciones_pendientes }}<span class="d-none d-md-inline"> por autorizar</span></span>
                         </a>
                         {% endif %}
+
+                        <button type="button" class="iris-notch-lupa" id="irisNotchLupa" data-iris-paleta-abrir
+                                aria-label="Buscar pantalla (Ctrl+K)" aria-expanded="false" aria-controls="irisNotchBuscador"
+                                title="Buscar pantalla (Ctrl+K)">
+                            <i class="bi bi-search" aria-hidden="true"></i>
+                            <kbd class="iris-keycap iris-keycap-chassis d-none d-xl-inline-flex">Ctrl+K</kbd>
+                        </button>
                     </div>
+
+                    <div class="iris-notch-buscador" id="irisNotchBuscador" role="search" aria-label="Buscar pantalla" hidden>
+                        <div class="iris-notch-buscador-barra">
+                            <i class="bi bi-search iris-notch-buscador-ic" aria-hidden="true"></i>
+                            <label for="irisPaletaBuscar" class="visually-hidden">Escribí el nombre de la pantalla</label>
+                            <input id="irisPaletaBuscar" type="search" class="iris-notch-buscador-input" autocomplete="off" placeholder="Buscar pantalla…">
+                            <span id="irisNotchColaDot" class="iris-notch-cola-dot" title="Hay avisos en espera" aria-label="Hay avisos en espera" hidden></span>
+                            <button type="button" class="iris-notch-buscador-cerrar" data-iris-paleta-cerrar aria-label="Cerrar buscador">
+                                <kbd class="iris-keycap iris-keycap-chassis">Esc</kbd>
+                            </button>
+                        </div>
+                        <div class="iris-notch-resultados" id="irisNotchResultados">
+                            <p id="irisPaletaCuenta" class="iris-paleta-cuenta" aria-live="polite"></p>
+                            <div id="irisPaletaLista" role="listbox" aria-label="Pantallas encontradas"></div>
+                        </div>
+                    </div>
+
                     <div class="iris-notch-aviso" id="irisNotchAviso" role="status" aria-live="polite" hx-preserve hidden></div>
                 </div>
             </div>
 
-            <div class="iris-barra-der">
-                <div class="iris-isla-derecha">
-                    <button type="button" class="iris-tema-movil-btn" data-iris-tema-alternar aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
-                        <i class="bi bi-circle-half" aria-hidden="true"></i>
-                    </button>
-                    <div class="dropdown">
-                        <button type="button" class="btn btn-link usuario text-decoration-none" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Cuenta de {{ u.nombre }} {{ u.apellido }}">
-                            <span class="avatar" aria-hidden="true">{{ u.nombre|slice:":1"|upper }}{{ u.apellido|slice:":1"|upper }}</span>
-                            <span class="iris-usuario-nombre">{{ u.nombre }}</span>
-                            <i class="bi bi-chevron-down iris-usuario-flecha" aria-hidden="true"></i>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li class="iris-perfil-cabecera">
-                                <span class="d-block text-body fw-semibold">{{ u.nombre }} {{ u.apellido }}</span>
-                                <span class="d-block small text-secondary">
-                                    {{ u.perfil_efectivo.nombre }}{% if u.tiene_perfil_temporal_vigente %} <span class="insignia insignia-aviso">temporal</span>{% endif %}
-                                </span>
-                            </li>
-                            <li><a class="dropdown-item" href="{% url 'mi_perfil' %}"><i class="bi bi-person-badge" aria-hidden="true"></i><span>Mi perfil</span></a></li>
-                            <li><a class="dropdown-item" href="{% url 'seguridad:cambiar_clave' %}"><i class="bi bi-key" aria-hidden="true"></i><span>Cambiar mi clave</span></a></li>
-                            <li>
-                                <button type="button" class="dropdown-item" data-iris-ayuda-abrir="pantalla">
-                                    <i class="bi bi-question-circle" aria-hidden="true"></i>
-                                    <span>Ayuda y atajos</span>
-                                    <kbd class="iris-keycap">F1</kbd>
-                                </button>
-                            </li>
-                            <li>
-                                <button type="button" class="dropdown-item" data-iris-sonido-alternar aria-pressed="true">
-                                    <i class="bi bi-volume-up" aria-hidden="true"></i>
-                                    <span>Sonido avisos</span>
-                                    <span class="ms-auto small text-secondary js-sonido-estado">Activado</span>
-                                </button>
-                            </li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li>
-                                {# Salir va por POST: un enlace ajeno no puede cerrarle la sesión a nadie. #}
-                                <form method="post" action="{% url 'seguridad:logout' %}">
-                                    {% csrf_token %}
-                                    <button type="submit" class="dropdown-item text-peligro"><i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Salir</span></button>
-                                </form>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
+            <div class="iris-barra-der"></div>
         </header>
         {% endwith %}
         {% endif %}
@@ -244,7 +257,7 @@
                         </a>
                         {% endfor %}
                     </nav>
-                    <span class="iris-subnav-meta d-none d-xxl-inline" aria-hidden="true">{{ grupo.titulo }} · {{ grupo.items|length }}</span>
+                    <span class="iris-subnav-meta d-none d-lg-inline" aria-hidden="true">{{ grupo.titulo }} · {{ grupo.items|length }}</span>
                 </div>
                 <button type="button" class="iris-subnav-selector" data-iris-subnav-abrir aria-haspopup="dialog" aria-controls="irisSubnavSheet" aria-expanded="false">
                     <span class="iris-subnav-selector-izq">
@@ -391,25 +404,6 @@
     </div>
 </div>
 
-{# Paleta nativa Ctrl+K: Buscador rápido de pantallas (filtrado por permisos reales) #}
-<dialog id="irisPaleta" class="iris-dialog iris-dialog-paleta" closedby="any" aria-labelledby="irisPaletaTitulo">
-    <h2 id="irisPaletaTitulo" class="visually-hidden">Buscar pantalla</h2>
-    <div class="iris-paleta-buscador">
-        <i class="bi bi-search" aria-hidden="true"></i>
-        <label for="irisPaletaBuscar" class="visually-hidden">Escribí el nombre de la pantalla</label>
-        <input id="irisPaletaBuscar" type="search" class="iris-paleta-input" autocomplete="off" autofocus placeholder="Escribí el nombre de una pantalla (ej. caja, sugerencias, reportes)…">
-        <form method="dialog">
-            <button type="submit" class="iris-dialog-cerrar">
-                <kbd class="iris-keycap">Esc</kbd>
-            </button>
-        </form>
-    </div>
-    <div class="iris-dialog-cuerpo">
-        <p id="irisPaletaCuenta" class="iris-paleta-cuenta" aria-live="polite"></p>
-        <div id="irisPaletaLista"></div>
-    </div>
-</dialog>
-
 {# Bottom Sheet adaptativo para sub-pestañas en celular / tablet vertical / desborde #}
 <dialog id="irisSubnavSheet" class="iris-dialog iris-dialog-sheet" closedby="any" aria-labelledby="irisSubnavTitulo">
     <div class="iris-dialog-cabecera">
@@ -487,7 +481,7 @@
 <script src="{% static 'cafeto/vendor/select2/select2.min.js' %}" data-global></script>
 <script src="{% static 'cafeto/vendor/htmx/htmx.min.js' %}" data-global></script>
 <script src="{% static 'cafeto/js/cafeto.js' %}" data-global></script>
-<script src="{% static 'cafeto/js/cafeto-iris.js' %}?v=20261124b" data-global></script>
+<script src="{% static 'cafeto/js/cafeto-iris.js' %}?v=20261125a" data-global></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

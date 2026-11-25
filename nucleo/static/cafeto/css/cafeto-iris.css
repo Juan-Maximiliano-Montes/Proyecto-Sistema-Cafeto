@@ -20,6 +20,13 @@
     --iris-ease: cubic-bezier(0.16, 1, 0.3, 1);
 
     --cf-chassis: #0B0A19;
+    --cf-chassis-fg: #DCE1F4;
+    --cf-chassis-fg-strong: #F2F5FC;
+    --cf-chassis-muted: #BAC2DC;
+    --cf-chassis-surface: rgba(255, 255, 255, .07);
+    --cf-chassis-surface-hover: rgba(255, 255, 255, .14);
+    --cf-chassis-line: rgba(255, 255, 255, .13);
+    --cf-chassis-pill-fg: #F2E2A4;
     --cf-canvas: #141329;
     --cf-surface: #1E1D3B;
     --cf-surface-2: #27264B;
@@ -81,7 +88,14 @@
 }
 
 [data-tema="claro"] {
-    --cf-chassis: #121128;
+    --cf-chassis: #E6E0D4;
+    --cf-chassis-fg: #161616;
+    --cf-chassis-fg-strong: #161616;
+    --cf-chassis-muted: #474D63;
+    --cf-chassis-surface: rgba(22, 22, 22, .055);
+    --cf-chassis-surface-hover: rgba(22, 22, 22, .11);
+    --cf-chassis-line: rgba(22, 22, 22, .14);
+    --cf-chassis-pill-fg: #161616;
     --cf-canvas: #F4F1EA;
     --cf-surface: #FFFFFF;
     --cf-surface-2: #F6F3EB;
@@ -147,7 +161,13 @@ body {
     line-height: 1.45;
 }
 
+html:has(> body > .app),
 body:has(> .app) {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     background-color: var(--cf-chassis);
 }
 
@@ -157,15 +177,20 @@ thead.table-dark th {
     font-size: 0.75rem; /* mínimo absoluto 12px */
 }
 
-/* En tema Claro, .text-marca amarillo claro sobre blanco baja contraste: usar ocre oscuro AA/AAA */
+/* En tema Claro, NUNCA texto en ámbar #FAB41F (1,81:1): usar Negro Cartel / ocre oscuro AA/AAA */
 [data-tema="claro"] .text-marca {
-    color: #8A6100 !important;
+    color: #7D5600 !important;
 }
 
-/* Foco visible ámbar de alto contraste (outline nativo para Forced Colors) */
+/* Foco visible nítido de alto contraste para teclado y control remoto D-pad (SmartTV) */
 :where(a:any-link, button, input, select, textarea, summary, [tabindex]):focus-visible {
-    outline: 2.5px solid var(--cf-accent);
+    outline: 3px solid var(--cf-accent);
     outline-offset: 2px;
+}
+
+[data-tema="claro"] :where(a:any-link, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid #161616;
+    box-shadow: 0 0 0 5px var(--cf-accent);
 }
 
 main.pagina:focus:not(:focus-visible) {
@@ -222,9 +247,9 @@ main.pagina:focus:not(:focus-visible) {
 }
 
 .iris-keycap-chassis {
-    background: rgba(255, 255, 255, .10);
-    border-color: rgba(242, 245, 252, .26);
-    color: #F2F5FC;
+    background: var(--cf-chassis-surface);
+    border-color: var(--cf-chassis-line);
+    color: var(--cf-chassis-fg-strong);
 }
 
 .iris-keycap-on-accent,
@@ -312,10 +337,15 @@ main.pagina:focus:not(:focus-visible) {
 }
 
 /* ---------- 3. Chasis Surround iRiS (.app + .lateral + .contenido) ---------- */
+/* El marco exterior (--cf-chassis) queda soldado a 0px de los 4 bordes físicos reales de la pantalla.
+   Todo el desplazamiento vertical ocurre dentro de .contenido sin separar jamás el encuadre. */
 .app {
     background: var(--cf-chassis);
-    min-height: 100vh;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
     min-height: 100dvh;
+    overflow: hidden;
     padding: 10px 10px 10px 0;
 }
 
@@ -328,31 +358,52 @@ main.pagina:focus:not(:focus-visible) {
     flex: 1;
     min-width: 0;
     background: var(--cf-canvas);
-    border-radius: 22px 0 22px 22px;
+    border-radius: 22px;
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: calc(100dvh - 20px);
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
     overflow-x: clip;
+    overscroll-behavior-y: contain;
+    scroll-padding-top: calc(var(--alto-barra, 4rem) + 1rem);
+    scrollbar-width: thin;
+    scrollbar-color: var(--cf-line-strong) transparent;
+}
+
+.contenido::-webkit-scrollbar {
+    width: 8px;
+}
+
+.contenido::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 22px;
+}
+
+.contenido::-webkit-scrollbar-thumb {
+    background: var(--cf-line-strong);
+    border-radius: 999px;
 }
 
 .app:not(:has(> .lateral)) .contenido {
     border-radius: 22px;
 }
 
-/* ---------- 4. Rail izquierdo iRiS (PC >= 1100px · siempre con texto en 1 línea) ---------- */
+/* ---------- 4. Rail izquierdo iRiS (PC >= 1100px · desplegado por defecto para adultos) ---------- */
 .lateral {
-    width: 244px;
+    width: 248px;
     flex-shrink: 0;
     background: var(--cf-chassis);
-    color: #DCE1F4;
+    color: var(--cf-chassis-fg);
     border-right: 0;
     padding: 4px 0 6px 10px;
-    height: calc(100dvh - 20px);
-    top: 10px;
+    height: 100%;
+    top: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    transition: width 180ms var(--iris-ease), padding 180ms var(--iris-ease);
 }
 
 .lateral > nav {
@@ -360,12 +411,22 @@ main.pagina:focus:not(:focus-visible) {
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-width: none;
-    padding: 4px 0 14px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--cf-chassis-line) transparent;
+    padding: 4px 0 10px;
 }
 
 .lateral > nav::-webkit-scrollbar {
-    display: none;
+    width: 5px;
+}
+
+.lateral > nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.lateral > nav::-webkit-scrollbar-thumb {
+    background: var(--cf-chassis-line);
+    border-radius: 999px;
 }
 
 .lateral-cabecera {
@@ -373,95 +434,74 @@ main.pagina:focus:not(:focus-visible) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: .5rem;
-    padding: .35rem .65rem .6rem .45rem;
+    gap: .45rem;
+    padding: .35rem .6rem .55rem .35rem;
 }
 
 .lateral-marca {
-    padding: 0;
+    padding: 4px 2px;
     display: inline-flex;
     align-items: center;
     min-width: 0;
 }
 
 .lateral-marca img {
-    height: 36px;
+    height: 40px;
     width: auto;
+    min-width: 140px;
 }
 
-/* El chasis del Rail es siempre oscuro: mostrar logo negativo en ambos temas */
+/* Manual de Marca v3.0: negativo en Oscuro, positivo en Claro; isotipo sólo < 140px */
 .lateral-marca .logo-para-oscuro {
     display: block !important;
 }
 
-.lateral-marca .logo-para-claro {
+.lateral-marca .logo-para-claro,
+.lateral-marca .logo-isotipo-colapsado {
     display: none !important;
+}
+
+[data-tema="claro"] .lateral-marca .logo-para-oscuro {
+    display: none !important;
+}
+
+[data-tema="claro"] .lateral-marca .logo-para-claro {
+    display: block !important;
+}
+
+.iris-rail-colapsar,
+.iris-lateral-cerrar {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid var(--cf-chassis-line);
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.iris-rail-colapsar:hover,
+.iris-lateral-cerrar:hover {
+    background: var(--cf-chassis-surface-hover);
+    border-color: var(--cf-accent);
 }
 
 .iris-lateral-cerrar {
     display: none;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, .16);
-    background: rgba(255, 255, 255, .08);
-    color: #F2F5FC;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.iris-lateral-cerrar:hover {
-    background: rgba(255, 255, 255, .16);
-}
-
-/* Buscador rápido visible (Ctrl+K) en el Rail */
-.iris-rail-buscar-wrap {
-    flex-shrink: 0;
-    padding: 0 10px .5rem 0;
-}
-
-.iris-rail-buscar {
-    width: 100%;
-    min-height: 38px;
-    padding: .45rem .7rem;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, .14);
-    background: rgba(255, 255, 255, .07);
-    color: #E6EAF8;
-    font-size: 0.875rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .5rem;
-    text-align: left;
-    transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.iris-rail-buscar:hover {
-    background: rgba(255, 255, 255, .13);
-    border-color: rgba(250, 180, 31, .45);
-    color: #FFFFFF;
-}
-
-.iris-rail-buscar-texto {
-    display: inline-flex;
-    align-items: center;
-    gap: .45rem;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* Grupos y enlaces del Rail (conservando <details class="lateral-desplegable">) */
 .lateral-grupo {
-    padding: .2rem 0;
+    padding: .18rem 0;
 }
 
 .lateral-grupo + .lateral-grupo {
-    border-top: 1px solid rgba(255, 255, 255, .08);
+    border-top: 1px solid var(--cf-chassis-line);
 }
 
 .lateral-desplegable > summary {
@@ -472,7 +512,7 @@ main.pagina:focus:not(:focus-visible) {
     font-weight: 600;
     letter-spacing: 0;
     text-transform: none;
-    color: #DCE1F4;
+    color: var(--cf-chassis-fg);
     gap: .5rem;
     transition: background-color 150ms ease, color 150ms ease;
 }
@@ -485,8 +525,8 @@ main.pagina:focus:not(:focus-visible) {
 }
 
 .lateral-desplegable > summary:hover {
-    background: rgba(255, 255, 255, .08);
-    color: #FFFFFF;
+    background: var(--cf-chassis-surface-hover);
+    color: var(--cf-chassis-fg-strong);
 }
 
 .lateral-desplegable > summary > .bi:first-child {
@@ -494,8 +534,8 @@ main.pagina:focus:not(:focus-visible) {
     height: 30px;
     flex: 0 0 30px;
     border-radius: 9px;
-    background: rgba(255, 255, 255, .08);
-    color: #DCE1F4;
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -503,7 +543,7 @@ main.pagina:focus:not(:focus-visible) {
 }
 
 .lateral-desplegable[data-actual] > summary {
-    color: #FFFFFF;
+    color: var(--cf-chassis-fg-strong);
     font-weight: 700;
 }
 
@@ -526,8 +566,14 @@ main.pagina:focus:not(:focus-visible) {
 
 .lateral-flecha {
     margin-left: 0;
-    color: #BAC2DC;
+    color: var(--cf-chassis-muted);
     font-size: 0.78rem;
+    display: inline-block;
+    transition: transform 180ms var(--iris-ease), color 150ms ease;
+}
+
+.lateral-desplegable[open] > summary .lateral-flecha {
+    transform: rotate(180deg);
 }
 
 .lateral-link {
@@ -535,10 +581,10 @@ main.pagina:focus:not(:focus-visible) {
     display: flex;
     align-items: center;
     gap: .65rem;
-    padding: .5rem .75rem .5rem .55rem;
-    margin: .12rem 10px .12rem 0;
+    padding: .48rem .75rem .48rem .55rem;
+    margin: .1rem 10px .1rem 0;
     border-radius: 12px;
-    color: #C8D0E8;
+    color: var(--cf-chassis-fg);
     font-weight: 500;
     font-size: 0.875rem;
     line-height: 1.25;
@@ -555,16 +601,16 @@ main.pagina:focus:not(:focus-visible) {
     width: 1.35rem;
     flex: 0 0 1.35rem;
     text-align: center;
-    color: #BAC2DC;
+    color: var(--cf-chassis-muted);
 }
 
 .lateral-link:hover {
-    background: rgba(255, 255, 255, .09);
-    color: #FFFFFF;
+    background: var(--cf-chassis-surface-hover);
+    color: var(--cf-chassis-fg-strong);
 }
 
 .lateral-link:hover i {
-    color: #FFFFFF;
+    color: var(--cf-chassis-fg-strong);
 }
 
 /* Enlace activo soldado al lienzo con curvas cóncavas iRiS en PC */
@@ -582,7 +628,7 @@ main.pagina:focus:not(:focus-visible) {
 }
 
 [data-tema="claro"] .lateral-link.activo i {
-    color: #B07A00;
+    color: #8A6100;
 }
 
 .lateral-link.activo:hover {
@@ -629,12 +675,13 @@ main.pagina:focus:not(:focus-visible) {
         padding: .44rem .45rem .44rem .4rem;
     }
 
+    html[data-iris-rail="areas"] .lateral-desplegable > summary .lateral-flecha,
     html[data-iris-rail="areas"] .lateral-desplegable[open] > summary .lateral-flecha {
-        transform: none;
+        transform: rotate(-90deg);
     }
 
     html[data-iris-rail="areas"] .lateral-desplegable > summary .lateral-flecha-hit:hover {
-        background: rgba(255, 255, 255, .16);
+        background: var(--cf-chassis-surface-hover);
     }
 
     html[data-iris-rail="areas"] .lateral-desplegable[data-actual] > summary {
@@ -697,13 +744,141 @@ main.pagina:focus:not(:focus-visible) {
         bottom: -16px;
         background: radial-gradient(circle at 0 16px, transparent 16px, var(--cf-canvas) 16.5px);
     }
+
+    /* Alto inteligente del Rail: elástico en >= 860px (1080p/2K), encaje compacto en <= 859px (720p) */
+    @media (min-height: 860px) {
+        html[data-iris-rail="areas"] .lateral > nav {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+        }
+
+        .lateral-desplegable > summary {
+            padding-block: .52rem;
+        }
+
+        .lateral-link {
+            padding-block: .52rem;
+        }
+    }
+
+    @media (max-height: 859.98px) {
+        .lateral-cabecera {
+            padding-block: .2rem .35rem;
+        }
+
+        .lateral-marca img {
+            height: 34px;
+        }
+
+        .lateral-grupo {
+            padding: .08rem 0;
+        }
+
+        .lateral-desplegable > summary {
+            padding-block: .34rem;
+        }
+
+        .lateral-link {
+            padding-block: .36rem;
+        }
+
+        .lateral-pie {
+            padding-top: .4rem;
+            gap: .28rem;
+        }
+
+        .iris-rail-fila,
+        .iris-rail-perfil {
+            min-height: 36px;
+            padding-block: .3rem;
+        }
+    }
+
+    /* Rail contraído (< 140px): isotipo cafeto-icono-ambar.svg (>= 32px) + íconos centrados + popover */
+    html[data-iris-rail-colapsado="1"] .lateral {
+        width: 74px;
+        padding-left: 8px;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-cabecera {
+        flex-direction: column;
+        align-items: center;
+        padding: .35rem 8px .45rem 0;
+        gap: .35rem;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-marca .logo-para-oscuro,
+    html[data-iris-rail-colapsado="1"] .lateral-marca .logo-para-claro {
+        display: none !important;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-marca .logo-isotipo-colapsado {
+        display: block !important;
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable > .lateral-link,
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable > summary > span,
+    html[data-iris-rail-colapsado="1"] .lateral-link > span,
+    html[data-iris-rail-colapsado="1"] .iris-rail-fila-txt,
+    html[data-iris-rail-colapsado="1"] .iris-rail-fila kbd,
+    html[data-iris-rail-colapsado="1"] .iris-rail-perfil-datos,
+    html[data-iris-rail-colapsado="1"] .iris-rail-perfil-flecha {
+        display: none !important;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable > summary,
+    html[data-iris-rail-colapsado="1"] .lateral-link {
+        justify-content: center;
+        padding: .46rem 0;
+        margin-left: 0;
+        margin-right: 8px;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable[data-actual] > summary,
+    html[data-iris-rail-colapsado="1"] .lateral-link.activo {
+        background: var(--cf-canvas);
+        color: var(--cf-rail-active-fg);
+        margin-right: 0;
+        padding-right: 8px;
+        border-radius: 16px 0 0 16px;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable[data-actual] > summary::before,
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable[data-actual] > summary::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable[data-actual] > summary::before {
+        top: -14px;
+        background: radial-gradient(circle at 0 0, transparent 14px, var(--cf-canvas) 14.5px);
+    }
+
+    html[data-iris-rail-colapsado="1"] .lateral-desplegable[data-actual] > summary::after {
+        bottom: -14px;
+        background: radial-gradient(circle at 0 14px, transparent 14px, var(--cf-canvas) 14.5px);
+    }
+
+    html[data-iris-rail-colapsado="1"] .iris-rail-fila,
+    html[data-iris-rail-colapsado="1"] .iris-rail-perfil {
+        justify-content: center;
+        padding-inline: 0;
+    }
 }
 
 /* Inicio (ítem raíz sin <details>) con placa de ícono iRiS */
 .lateral-inicio-link {
     padding: .48rem .75rem .48rem .4rem;
     font-weight: 600;
-    color: #DCE1F4;
+    color: var(--cf-chassis-fg);
 }
 
 .lateral-inicio-link > .bi:first-child {
@@ -711,8 +886,8 @@ main.pagina:focus:not(:focus-visible) {
     height: 30px;
     flex: 0 0 30px;
     border-radius: 9px;
-    background: rgba(255, 255, 255, .08);
-    color: #DCE1F4;
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -724,39 +899,53 @@ main.pagina:focus:not(:focus-visible) {
     color: var(--cf-on-accent);
 }
 
-/* Pie del Rail izquierdo (Tema + F1 + Salir + NAS Local · siempre visible) */
+/* Pie del Rail izquierdo en 4 filas apiladas de ancho completo (9 áreas, Tema, Ayuda F1, Perfil) */
 .lateral-pie {
     flex-shrink: 0;
     margin-top: 0;
-    padding: .65rem 10px .2rem 0;
-    border-top: 1px solid rgba(255, 255, 255, .12);
+    padding: .55rem 10px .25rem 0;
+    border-top: 1px solid var(--cf-chassis-line);
     display: flex;
     flex-direction: column;
-    gap: .4rem;
+    gap: .36rem;
 }
 
-.iris-rail-modo-btn {
+.iris-rail-fila {
     width: 100%;
-    min-height: 34px;
-    padding: .35rem .65rem;
-    border-radius: 11px;
-    border: 1px solid rgba(255, 255, 255, .12);
-    background: rgba(255, 255, 255, .05);
-    color: #DCE1F4;
-    font-size: 0.8125rem;
+    min-height: 40px;
+    padding: .42rem .7rem;
+    border-radius: 12px;
+    border: 1px solid var(--cf-chassis-line);
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg-strong);
+    font-size: 0.875rem;
     font-weight: 600;
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    justify-content: center;
-    gap: .45rem;
+    justify-content: flex-start;
+    gap: .55rem;
+    text-align: left;
+    white-space: nowrap;
     cursor: pointer;
     transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-.iris-rail-modo-btn:hover {
-    background: rgba(255, 255, 255, .13);
-    border-color: rgba(250, 180, 31, .45);
-    color: #FFFFFF;
+.iris-rail-fila > i {
+    font-size: 0.98rem;
+    width: 1.25rem;
+    text-align: center;
+    flex-shrink: 0;
+    color: var(--cf-chassis-muted);
+}
+
+.iris-rail-fila:hover {
+    background: var(--cf-chassis-surface-hover);
+    border-color: var(--cf-accent);
+    color: var(--cf-chassis-fg-strong);
+}
+
+.iris-rail-fila:hover > i {
+    color: var(--cf-chassis-fg-strong);
 }
 
 .iris-modo-a-completo {
@@ -772,9 +961,16 @@ html[data-iris-rail="areas"] .iris-modo-a-completo {
 }
 
 html[data-iris-rail="areas"] .iris-rail-modo-btn {
-    border-color: rgba(250, 180, 31, .45);
-    background: rgba(250, 180, 31, .12);
-    color: #F2E2A4;
+    border-color: var(--cf-accent);
+    background: var(--cf-accent-soft);
+    color: var(--cf-title);
+}
+
+[data-tema="claro"] html[data-iris-rail="areas"] .iris-rail-modo-btn,
+html[data-tema="claro"][data-iris-rail="areas"] .iris-rail-modo-btn {
+    background: #FFF3D6;
+    border-color: #C88A00;
+    color: #161616;
 }
 
 /* Popover flotante de sub-pantallas en modo "Solo 9 áreas" */
@@ -882,34 +1078,111 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     flex-shrink: 0;
 }
 
-.iris-rail-utilidades {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: .4rem;
+/* Fila 4 del pie del Rail: Tarjeta de Perfil + Dropup con Cerrar sesión adentro */
+.iris-rail-perfil-wrap {
+    width: 100%;
 }
 
-.iris-rail-btn {
-    min-height: 36px;
-    padding: .4rem .45rem;
-    border-radius: 11px;
-    border: 1px solid rgba(255, 255, 255, .10);
-    background: rgba(255, 255, 255, .07);
-    color: #F2F5FC;
-    font-size: 0.8rem;
-    font-weight: 600;
-    display: inline-flex;
+.iris-rail-perfil {
+    width: 100%;
+    min-height: 44px;
+    padding: .38rem .65rem .38rem .45rem;
+    border-radius: 12px;
+    border: 1px solid var(--cf-chassis-line);
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg-strong);
+    display: flex;
     align-items: center;
-    justify-content: center;
-    gap: .32rem;
-    white-space: nowrap;
+    gap: .55rem;
+    text-align: left;
     cursor: pointer;
     transition: background-color 150ms ease, border-color 150ms ease;
 }
 
-.iris-rail-btn:hover {
-    background: rgba(255, 255, 255, .14);
-    border-color: rgba(255, 255, 255, .22);
-    color: #FFFFFF;
+.iris-rail-perfil:hover,
+.iris-rail-perfil[aria-expanded="true"] {
+    background: var(--cf-chassis-surface-hover);
+    border-color: var(--cf-accent);
+}
+
+.iris-rail-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    background: var(--cf-accent);
+    color: var(--cf-on-accent);
+    flex-shrink: 0;
+}
+
+.iris-rail-perfil-datos {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    line-height: 1.18;
+}
+
+.iris-rail-perfil-nombre {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--cf-chassis-fg-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iris-rail-perfil-rol {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--cf-chassis-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iris-rail-perfil-flecha {
+    font-size: 0.76rem;
+    color: var(--cf-chassis-muted);
+    flex-shrink: 0;
+}
+
+.iris-rail-perfil-menu {
+    min-width: 236px;
+    margin-bottom: .45rem !important;
+    border-radius: 16px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    padding: .45rem;
+    box-shadow: var(--c-sombra);
+}
+
+.iris-rail-perfil-menu .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .55rem .75rem;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--cf-text);
+}
+
+.iris-rail-perfil-menu .dropdown-item:hover,
+.iris-rail-perfil-menu .dropdown-item:focus {
+    background: var(--cf-surface-2);
+    color: var(--cf-text);
+}
+
+.iris-rail-perfil-menu .dropdown-item.text-peligro {
+    color: var(--cf-danger) !important;
+}
+
+.iris-rail-perfil-menu .dropdown-item.text-peligro:hover,
+.iris-rail-perfil-menu .dropdown-item.text-peligro:focus {
+    background: var(--cf-danger-bg);
+    color: var(--cf-danger) !important;
 }
 
 /* Dos ramas del rótulo de tema por CSS (sin parpadeo ni JS) */
@@ -929,51 +1202,29 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     margin: 0;
 }
 
-.iris-rail-salir {
-    width: 100%;
-    min-height: 38px;
-    padding: .45rem .7rem;
-    border-radius: 12px;
-    border: 0;
-    background: transparent;
-    color: #FF7B70;
-    font-size: 0.875rem;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    gap: .55rem;
-    cursor: pointer;
-    transition: background-color 150ms ease;
-}
-
-.iris-rail-salir:hover {
-    background: #3E1D28;
-    color: #FFA096;
-}
-
 .iris-rail-estado {
     display: flex;
     align-items: center;
-    gap: .5rem;
+    gap: .45rem;
     padding: .15rem .55rem;
     font-size: 0.75rem;
-    color: #BAC2DC;
+    color: var(--cf-muted);
 }
 
 .iris-rail-estado-punto {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #4BE38D;
+    background: var(--cf-ok);
     flex-shrink: 0;
 }
 
 .iris-rail-estado.sin-red .iris-rail-estado-punto {
-    background: #FF7B70;
+    background: var(--cf-danger);
 }
 
 .iris-rail-estado.sin-red {
-    color: #FF7B70;
+    color: var(--cf-danger);
     font-weight: 600;
 }
 
@@ -1012,8 +1263,8 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
         padding: .22rem .9rem;
         border-radius: 999px;
         background: var(--cf-chassis);
-        color: #F2E2A4;
-        border: 1px solid rgba(255, 255, 255, .10);
+        color: var(--cf-chassis-pill-fg);
+        border: 1px solid var(--cf-chassis-line);
         font-size: 0.875rem;
         font-weight: 700;
         line-height: 1.2;
@@ -1056,9 +1307,9 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     min-height: 36px;
     padding: 0 .65rem;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, .14);
-    background: rgba(255, 255, 255, .09);
-    color: #F2F5FC;
+    border: 1px solid var(--cf-chassis-line);
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg-strong);
     font-size: 0.875rem;
     font-weight: 700;
     align-items: center;
@@ -1066,11 +1317,11 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
 }
 
 .iris-menu-btn:hover {
-    background: rgba(255, 255, 255, .18);
-    color: #FFFFFF;
+    background: var(--cf-chassis-surface-hover);
+    color: var(--cf-chassis-fg-strong);
 }
 
-/* NOTCH CENTRAL soldado al techo del lienzo */
+/* NOTCH CENTRAL ÚNICO soldado al techo del lienzo + Lupa desplegable integrada */
 .iris-barra-centro {
     position: relative;
     flex: 0 1 auto;
@@ -1085,12 +1336,12 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
 .iris-notch {
     position: relative;
     background-color: var(--cf-chassis);
-    color: #F2F5FC;
+    color: var(--cf-chassis-fg-strong);
     border-radius: 0 0 22px 22px;
     min-height: 44px;
     display: flex;
     align-items: center;
-    max-width: min(74vw, 740px);
+    max-width: min(78vw, 780px);
 }
 
 .iris-notch::before,
@@ -1145,9 +1396,9 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     min-height: 32px;
     padding: .25rem .7rem;
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, .14);
-    background: rgba(255, 255, 255, .08);
-    color: #C4CCE4;
+    border: 1px solid var(--cf-chassis-line);
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg);
     font-size: 0.8125rem;
     font-weight: 600;
     line-height: 1.2;
@@ -1156,33 +1407,50 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
-.barra .chip-caja:hover {
-    background: rgba(255, 255, 255, .16);
+.barra a.chip-caja:hover {
+    background: var(--cf-chassis-surface-hover);
     border-color: rgba(250, 180, 31, .65);
-    color: #FFFFFF;
+    color: var(--cf-chassis-fg-strong);
+}
+
+.barra .chip-caja.iris-chip-estatico {
+    cursor: default;
 }
 
 .barra .chip-caja.abierta {
-    color: #F2F5FC;
+    color: var(--cf-chassis-fg-strong);
+}
+
+[data-tema="claro"] .barra .chip-caja.abierta {
+    background: #FFFFFF;
+    border-color: #9FD9B8;
 }
 
 .barra .chip-caja .iris-caja-ic {
     font-size: 0.85rem;
-    color: #9BA4C4;
+    color: var(--cf-chassis-muted);
     flex-shrink: 0;
 }
 
 .barra .chip-caja.abierta .iris-caja-ic {
-    color: #BAC2DC;
+    color: var(--cf-chassis-fg);
 }
 
 .barra .chip-caja.propia {
-    border-color: rgba(250, 180, 31, .65);
+    border-color: rgba(250, 180, 31, .72);
     box-shadow: none;
+}
+
+[data-tema="claro"] .barra .chip-caja.propia {
+    border-color: #B87D00;
 }
 
 .barra .chip-caja.propia .iris-caja-ic {
     color: var(--cf-accent);
+}
+
+[data-tema="claro"] .barra .chip-caja.propia .iris-caja-ic {
+    color: #8A6100;
 }
 
 .iris-chip-este-equipo {
@@ -1200,6 +1468,12 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     flex-shrink: 0;
 }
 
+[data-tema="claro"] .iris-chip-este-equipo {
+    background: #FFF3D6;
+    border-color: #C88A00;
+    color: #5C3D00;
+}
+
 /* Estado 0 cajas abiertas: resaltar en ámbar cálido para notarlo al abrir a la mañana */
 .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir),
 .barra .chip-caja.sin-abiertas {
@@ -1208,11 +1482,25 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     color: #FFE08A;
 }
 
-.barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir):hover,
-.barra .chip-caja.sin-abiertas:hover {
+.barra .chips-cajas.sin-abiertas a.chip-caja:not(.chip-caja-elegir):hover,
+.barra a.chip-caja.sin-abiertas:hover {
     background: #4E3910;
     border-color: var(--cf-accent);
     color: #FFFFFF;
+}
+
+[data-tema="claro"] .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir),
+[data-tema="claro"] .barra .chip-caja.sin-abiertas {
+    background: #FFF3D6;
+    border-color: #C88A00;
+    color: #161616;
+}
+
+[data-tema="claro"] .barra .chips-cajas.sin-abiertas a.chip-caja:not(.chip-caja-elegir):hover,
+[data-tema="claro"] .barra a.chip-caja.sin-abiertas:hover {
+    background: #FFE8B3;
+    border-color: #8A6100;
+    color: #161616;
 }
 
 .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .punto,
@@ -1221,9 +1509,19 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     background: rgba(250, 180, 31, .28);
 }
 
+[data-tema="claro"] .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .punto,
+[data-tema="claro"] .barra .chip-caja.sin-abiertas .punto {
+    border-color: #8A6100;
+}
+
 .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .iris-caja-ic,
 .barra .chip-caja.sin-abiertas .iris-caja-ic {
     color: var(--cf-accent);
+}
+
+[data-tema="claro"] .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .iris-caja-ic,
+[data-tema="claro"] .barra .chip-caja.sin-abiertas .iris-caja-ic {
+    color: #8A6100;
 }
 
 .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .chip-caja-quien,
@@ -1231,12 +1529,17 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     color: #F7D47A;
 }
 
+[data-tema="claro"] .barra .chips-cajas.sin-abiertas .chip-caja:not(.chip-caja-elegir) .chip-caja-quien,
+[data-tema="claro"] .barra .chip-caja.sin-abiertas .chip-caja-quien {
+    color: #5C3D00;
+}
+
 .barra .chip-caja .punto {
     width: 9px;
     height: 9px;
     border-radius: 50%;
     background: transparent;
-    border: 1.5px solid #9BA4C4;
+    border: 1.5px solid var(--cf-chassis-muted);
     flex-shrink: 0;
 }
 
@@ -1246,25 +1549,36 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     box-shadow: none;
 }
 
+[data-tema="claro"] .barra .chip-caja.abierta .punto {
+    background: #0F8A47;
+    border-color: #0F8A47;
+}
+
 .barra .chip-caja-quien {
-    color: #BAC2DC;
+    color: var(--cf-chassis-muted);
     font-weight: 500;
 }
 
 .barra .chip-caja.abierta .chip-caja-quien {
-    color: #DCE1F4;
+    color: var(--cf-chassis-fg);
 }
 
 .barra .chip-caja-elegir {
     border-style: dashed;
-    border-color: rgba(250, 180, 31, .45);
-    color: #F2E2A4;
+    border-color: rgba(250, 180, 31, .55);
+    color: var(--cf-chassis-pill-fg);
     background: rgba(250, 180, 31, .08);
+}
+
+[data-tema="claro"] .barra .chip-caja-elegir {
+    border-color: #9A6700;
+    background: #FFF3D6;
+    color: #161616;
 }
 
 .barra .chip-caja-elegir:hover {
     background: rgba(250, 180, 31, .18);
-    color: #FFFFFF;
+    color: var(--cf-chassis-fg-strong);
 }
 
 .iris-notch-vacio {
@@ -1273,9 +1587,133 @@ html[data-iris-rail="areas"] .iris-rail-modo-btn {
     gap: .45rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #DCE1F4;
+    color: var(--cf-chassis-fg);
     padding: .2rem .35rem;
     white-space: nowrap;
+}
+
+/* Lupa integrada en el Notch + Buscador del ancho exacto del Notch */
+.iris-notch-lupa {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .38rem;
+    min-height: 32px;
+    min-width: 34px;
+    padding: .22rem .6rem;
+    border-radius: 999px;
+    border: 1px solid var(--cf-chassis-line);
+    background: var(--cf-chassis-surface);
+    color: var(--cf-chassis-fg-strong);
+    font-size: 0.85rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.iris-notch-lupa:hover {
+    background: var(--cf-chassis-surface-hover);
+    border-color: var(--cf-accent);
+}
+
+.iris-notch.es-buscando .iris-notch-reposo {
+    display: none;
+}
+
+.iris-notch-buscador {
+    position: relative;
+    width: 100%;
+    padding: 5px 10px;
+}
+
+.iris-notch-buscador[hidden] {
+    display: none;
+}
+
+.iris-notch-buscador-barra {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    min-height: 34px;
+    padding: .2rem .35rem .2rem .75rem;
+    border-radius: 999px;
+    border: 1px solid var(--cf-accent);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+}
+
+.iris-notch-buscador-ic {
+    font-size: 0.92rem;
+    color: var(--cf-muted);
+    flex-shrink: 0;
+}
+
+.iris-notch-buscador-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--cf-text);
+    font-size: 0.9rem;
+    font-weight: 600;
+    outline: none;
+}
+
+.iris-notch-buscador-input:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
+.iris-notch-buscador-input::placeholder {
+    color: var(--cf-muted);
+    font-weight: 500;
+}
+
+.iris-notch-cola-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--cf-accent);
+    flex-shrink: 0;
+    animation: irisGentlePulse 2s ease-in-out infinite;
+}
+
+.iris-notch-cola-dot[hidden] {
+    display: none;
+}
+
+.iris-notch-buscador-cerrar {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.iris-notch-resultados {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: min(62dvh, 420px);
+    overflow-y: auto;
+    padding: .65rem;
+    border-radius: 16px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    box-shadow: var(--c-sombra);
+    z-index: 45;
+}
+
+.iris-notch-lista {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
 }
 
 .iris-notch-vacio .punto {
@@ -2242,14 +2680,14 @@ dialog.iris-dialog-sheet {
 
 /* ---------- 8. Breakpoints Responsivos (PC / Tablet H / Tablet V / Celular) ---------- */
 
-/* Tablet Horizontal + Tablet Vertical + Celular (< 1100px): Rail pasa a drawer */
+/* Tablet Horizontal + Tablet Vertical + Celular (< 1100px): Rail pasa a drawer con Surround fijo */
 @media (max-width: 1099.98px) {
     .app {
         padding: 8px;
     }
 
     .contenido {
-        border-radius: 0 0 22px 22px;
+        border-radius: 0 22px 22px 22px;
     }
 
     .lateral {
@@ -2275,12 +2713,12 @@ dialog.iris-dialog-sheet {
         border-radius: 12px;
     }
 
-    .iris-lateral-cerrar {
-        display: inline-flex;
+    .iris-rail-colapsar {
+        display: none;
     }
 
-    .iris-rail-modo-btn {
-        display: none;
+    .iris-lateral-cerrar {
+        display: inline-flex;
     }
 
     .velo {
@@ -2317,7 +2755,7 @@ dialog.iris-dialog-sheet {
         position: relative;
         pointer-events: auto;
         background: var(--cf-chassis);
-        color: #F2F5FC;
+        color: var(--cf-chassis-fg-strong);
         border-radius: 0 0 22px 0;
         min-height: 44px;
         padding: 5px 12px 5px 8px;
@@ -2353,7 +2791,7 @@ dialog.iris-dialog-sheet {
     }
 
     .iris-barra-izq .subtitulo {
-        color: #F2E2A4;
+        color: var(--cf-chassis-pill-fg);
         font-size: 0.95rem;
     }
 
@@ -2411,15 +2849,16 @@ dialog.iris-dialog-sheet {
     }
 }
 
-/* Celular (< 640px): BARRA SUPERIOR UNIFICADA soldada al chasis (0 esquineros!) */
+/* Celular (< 640px): BARRA SUPERIOR UNIFICADA soldada al chasis Surround en los 4 bordes */
 @media (max-width: 639.98px) {
     .app {
-        padding: 0 6px 6px;
+        padding: env(safe-area-inset-top, 0px) max(6px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
     }
 
     .contenido {
         border-radius: 0 0 22px 22px;
-        min-height: calc(100dvh - 6px);
+        height: 100%;
+        min-height: 0;
     }
 
     .barra {
@@ -2541,7 +2980,8 @@ dialog.iris-dialog-sheet {
         padding: 3px 7px 3px 3px !important;
     }
 
-    /* Aviso en el Notch en celular: baja limpio ocupando todo el ancho */
+    /* Aviso o buscador en el Notch en celular: baja limpio ocupando todo el ancho */
+    .iris-notch.es-buscando,
     .iris-notch.tiene-aviso,
     .iris-notch.tiene-aviso-largo,
     .iris-notch:has(> .iris-notch-aviso:not([hidden])),
@@ -2551,13 +2991,14 @@ dialog.iris-dialog-sheet {
         left: 0;
         right: 0;
         transform: none;
-        width: 100%;
+        width: 100% !important;
         background: var(--cf-chassis);
         border-radius: 0 0 20px 20px;
         box-shadow: 0 14px 36px rgba(0, 0, 0, .5);
         z-index: 40;
     }
 
+    .iris-barra-centro:has(.iris-notch.es-buscando),
     .iris-barra-centro:has(.iris-notch.tiene-aviso),
     .iris-barra-centro:has(.iris-notch-aviso:not([hidden])) {
         position: static;
@@ -2586,7 +3027,7 @@ dialog.iris-dialog-sheet {
 }
 
 [data-tema="claro"] {
-    --cf-login-frame: #F4F1EA;
+    --cf-login-frame: #E6E0D4;
     --cf-login-input: #FFFFFF;
 }
 
@@ -4817,14 +5258,242 @@ body > .select2-container--open,
     flex-shrink: 0;
 }
 
-/* Objetivos táctiles cómodos en pantallas touch (WCAG 2.5.8) */
+/* Objetivos táctiles cómodos y anti-zoom iOS Safari en pantallas touch (WCAG 2.5.8) */
 @media (pointer: coarse) {
-    .iris-rail-btn,
+    .iris-rail-fila,
+    .iris-rail-perfil,
+    .iris-notch-lupa,
     .iris-menu-btn,
-    .iris-tema-movil-btn,
     .iris-dialog-cerrar {
-        min-height: 40px;
-        min-width: 40px;
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+@media (pointer: coarse) and (max-width: 991.98px) {
+    input,
+    select,
+    textarea,
+    .form-control,
+    .form-select,
+    .select2-container--default .select2-selection--single .select2-selection__rendered,
+    .select2-search--dropdown .select2-search__field {
+        font-size: max(1rem, 16px) !important;
+    }
+
+    dialog.iris-dialog-sheet .iris-dialog-cuerpo {
+        padding-bottom: max(1.25rem, calc(env(safe-area-inset-bottom, 0px) + .75rem));
+    }
+
+    .modal-footer {
+        padding-bottom: max(.75rem, env(safe-area-inset-bottom, 0px));
+    }
+
+    .barra-ticket {
+        bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px));
+    }
+}
+
+/* ---------- 8f. Caja en modales + Mostrador sin scroll (720p/Tablet H) + 2K + SmartTV ---------- */
+#irisBilletes {
+    display: none !important;
+}
+
+.iris-caja-acciones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: .75rem;
+}
+
+.iris-caja-accion-btn {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .9rem 1.05rem;
+    border-radius: 16px;
+    border: 1px solid var(--cf-line-strong);
+    background: var(--cf-surface);
+    color: var(--cf-text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.iris-subnav-wrap + .iris-pantalla-cuerpo .iris-caja-accion-btn:not(.iris-caja-accion-principal) {
+    background: var(--cf-surface-2);
+}
+
+.iris-caja-accion-btn:hover {
+    border-color: var(--cf-accent);
+    background: var(--cf-surface-2);
+}
+
+.iris-caja-accion-ic {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--cf-accent-soft);
+    color: var(--cf-accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+[data-tema="claro"] .iris-caja-accion-btn:not(.iris-caja-accion-principal) .iris-caja-accion-ic {
+    color: #8A6100;
+}
+
+.iris-caja-accion-txt {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    min-width: 0;
+}
+
+.iris-caja-accion-txt strong {
+    font-size: 0.98rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.iris-caja-accion-txt small {
+    font-size: 0.82rem;
+    color: var(--cf-muted);
+    line-height: 1.3;
+}
+
+.iris-caja-accion-principal {
+    background: var(--cf-accent);
+    border-color: var(--cf-accent);
+    color: var(--cf-on-accent);
+}
+
+.iris-caja-accion-principal:hover {
+    background: var(--cf-accent-hover);
+    border-color: var(--cf-accent-hover);
+    color: var(--cf-on-accent);
+}
+
+.iris-caja-accion-principal .iris-caja-accion-ic {
+    background: rgba(18, 17, 40, .14);
+    color: var(--cf-on-accent);
+}
+
+.iris-caja-accion-principal .iris-caja-accion-txt small {
+    color: rgba(18, 17, 40, .82);
+    font-weight: 600;
+}
+
+/* Mostrador en Tablet Horizontal (900px–1199px) y PC: 2 columnas + Ticket con Cobrar siempre visible */
+@media (min-width: 900px) {
+    .mostrador {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 370px);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    #barraTicket {
+        display: none !important;
+    }
+
+    .ticket {
+        position: sticky;
+        top: 8px;
+    }
+
+    .ticket > .tarjeta {
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100dvh - 104px);
+        overflow: hidden;
+        gap: .55rem;
+    }
+
+    #renglones {
+        flex: 1 1 auto;
+        min-height: 44px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+}
+
+/* Densidad vertical adaptativa para notebooks 720p (1280×720 / 1366×768) sin perder botones ni lectura */
+@media (max-height: 800px) {
+    main.pagina {
+        padding-top: .7rem;
+        padding-bottom: 1.2rem;
+    }
+
+    .iris-subnav-wrap + .iris-pantalla-cuerpo {
+        padding: .95rem 1.1rem 1.05rem;
+    }
+
+    .encabezado {
+        margin-bottom: .75rem;
+    }
+
+    .herramientas {
+        padding: .55rem .75rem;
+        margin-bottom: .75rem;
+    }
+
+    @media (min-width: 900px) {
+        .ticket > .tarjeta {
+            padding: .8rem .95rem;
+            gap: .4rem;
+            max-height: calc(100dvh - 86px);
+        }
+
+        #ticketVacio {
+            padding-block: .55rem !important;
+        }
+
+        #club {
+            padding-top: .4rem !important;
+        }
+
+        #totales {
+            margin-block: 0;
+        }
+
+        .ticket .total {
+            font-size: clamp(1.6rem, 2.5vw, 2.05rem);
+        }
+
+        #cobrar {
+            min-height: 46px;
+        }
+    }
+}
+
+/* Monitores 2K / Ultrawide (>= 1600px) y SmartTV 1080p/4K (>= 1920px) + D-pad */
+@media (min-width: 1600px) {
+    main.pagina {
+        max-width: min(2240px, 100%);
+        padding-inline: clamp(1.5rem, 2vw, 2.75rem);
+    }
+
+    .catalogo {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+
+    .grilla:not(.grilla-compacta) {
+        grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    }
+}
+
+@media (min-width: 1920px) {
+    html {
+        font-size: clamp(16px, 0.92vw, 22px);
+    }
+
+    :where(.producto-boton, .tarjeta-accion, .iris-caja-accion-btn, .iris-subtab, .lateral-link, .lateral-desplegable > summary, .chip-caja, .btn, .iris-rail-fila, .iris-rail-perfil, .iris-notch-lupa):focus-visible {
+        outline-width: 3.5px;
+        outline-offset: 3px;
     }
 }
 
