@@ -482,6 +482,16 @@ FAMILIA_AUDITORIA = {
                 AND NOT EXISTS (SELECT 1 FROM log_auditoria l
                                  WHERE l.id_sesion = s.id_sesion
                                    AND l.fecha_hora >= %(log)s)""",
+        # Lo que se copia y lo que se borra sale de estas listas, no de un
+        # ``fecha_hora < corte`` repetido en cada sentencia: un asiento que
+        # entrara entre la copia y el borrado se borraría sin haberse
+        # copiado (regla 3).
+        """CREATE TEMP TABLE tmp_log ON COMMIT DROP AS
+             SELECT l.id_auditoria FROM log_auditoria l
+              WHERE l.fecha_hora < %(log)s""",
+        """CREATE TEMP TABLE tmp_intentos ON COMMIT DROP AS
+             SELECT i.id_intento FROM intentos_acceso i
+              WHERE i.fecha_hora < %(log)s""",
     ],
     'copias': [
         # El log primero: DD-23, una sesión sólo se archiva cuando ya no la
@@ -489,7 +499,7 @@ FAMILIA_AUDITORIA = {
         ('log_auditoria',
          """INSERT INTO hist_log_auditoria (""" + COLUMNAS_LOG + """, fecha_archivo)
             SELECT """ + COLUMNAS_LOG + """, CURRENT_TIMESTAMP FROM log_auditoria l
-             WHERE fecha_hora < %(log)s"""),
+             WHERE id_auditoria IN (SELECT id_auditoria FROM tmp_log)"""),
         ('sesiones',
          """INSERT INTO hist_sesiones
             SELECT s.*, CURRENT_TIMESTAMP FROM sesiones s
@@ -497,12 +507,19 @@ FAMILIA_AUDITORIA = {
         ('intentos_acceso',
          """INSERT INTO hist_intentos_acceso
             SELECT i.*, CURRENT_TIMESTAMP FROM intentos_acceso i
-             WHERE fecha_hora < %(log)s"""),
+             WHERE id_intento IN (SELECT id_intento FROM tmp_intentos)"""),
+    ],
+    # Regla 3, igual que en las demás familias, pero con tres tablas: cada
+    # una se cuenta contra su propia lista.
+    'verificacion': [
+        ('log_auditoria', 'SELECT COUNT(*) FROM tmp_log'),
+        ('sesiones', 'SELECT COUNT(*) FROM tmp_sesiones'),
+        ('intentos_acceso', 'SELECT COUNT(*) FROM tmp_intentos'),
     ],
     'borrados': [
-        "DELETE FROM log_auditoria WHERE fecha_hora < %(log)s",
+        "DELETE FROM log_auditoria WHERE id_auditoria IN (SELECT id_auditoria FROM tmp_log)",
         "DELETE FROM sesiones WHERE id_sesion IN (SELECT id_sesion FROM tmp_sesiones)",
-        "DELETE FROM intentos_acceso WHERE fecha_hora < %(log)s",
+        "DELETE FROM intentos_acceso WHERE id_intento IN (SELECT id_intento FROM tmp_intentos)",
     ],
 }
 
@@ -603,9 +620,12 @@ class Command(BaseCommand):
 
         # Regla 3: si lo copiado no coincide con lo seleccionado, se aborta
         # ANTES de borrar. La transacción se encarga del resto.
-        verificacion = familia.get('verificacion')
-        if verificacion:
-            etiqueta, consulta = verificacion
+        # Una verificación es ``(etiqueta, consulta)``; una familia que
+        # copia varias tablas de listas distintas lleva una lista de ellas.
+        verificacion = familia.get('verificacion') or []
+        if isinstance(verificacion, tuple):
+            verificacion = [verificacion]
+        for etiqueta, consulta in verificacion:
             cursor.execute(self._con_cortes(consulta, cortes))
             esperadas = cursor.fetchone()[0]
             if copiadas.get(etiqueta, 0) != esperadas:

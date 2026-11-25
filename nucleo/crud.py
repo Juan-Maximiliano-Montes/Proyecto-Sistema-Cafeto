@@ -25,6 +25,7 @@ Lo que esta máquina garantiza para todas, sin excepción:
 """
 from dataclasses import dataclass
 from functools import wraps
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -703,6 +704,32 @@ def crear(request, configuracion):
     return render(request, 'crud/lista.html', contexto)
 
 
+#  Los campos que son el código de la fila (se busca por él antes que por el
+#  nombre: es lo que la identifica sin dudas).
+CAMPOS_DE_CODIGO = ('codigo_barras', 'codigo')
+
+
+def _termino_de_busqueda(configuracion, instancia):
+    """Qué escribir en el buscador de la lista para que aparezca ESTA fila:
+    su código si lo tiene y la lista busca por él, y si no su nombre."""
+    buscables = [c for c in configuracion.campos_busqueda if '__' not in c]
+    candidatos = ([c for c in CAMPOS_DE_CODIGO if c in buscables]
+                  + [configuracion.campo_nombre]
+                  + buscables)
+    for campo in candidatos:
+        valor = str(getattr(instancia, campo, '') or '').strip()
+        if valor:
+            return valor
+    return str(instancia)
+
+
+def _url_para_abrir(configuracion, instancia):
+    """``{lista}?busqueda={código o nombre}&abrir={pk}``."""
+    return '{}?{}'.format(configuracion.url('lista'), urlencode(
+        {'busqueda': _termino_de_busqueda(configuracion, instancia),
+         'abrir': instancia.pk}))
+
+
 @exige('editar')
 def editar(request, configuracion, pk):
     """Modificación. Guarda la foto de antes para la auditoría."""
@@ -729,7 +756,11 @@ def editar(request, configuracion, pk):
                                    configuracion.formulario(instance=instancia)),
                 'formset': armar_formset(
                     configuracion, instancia=instancia)})
-        return redirect(configuracion.url('lista'))
+        # API-01 / HTX-01: abrir /<id>/editar/ a mano (un favorito, un enlace
+        # pegado, F5 sobre la dirección) no tiene página propia: vuelve a la
+        # lista, buscando esta fila y avisando cuál abrir, en vez de dejar a
+        # la persona en una lista cualquiera sin saber qué pasó.
+        return redirect(_url_para_abrir(configuracion, instancia))
 
     if request.method != 'POST':
         return redirect(configuracion.url('lista'))

@@ -109,8 +109,7 @@ class FiarTest(Base):
     def test_en_mora_no_se_fia_ni_se_canjea_sin_autorizacion(self):
         self.habilitar()
         venta = self.fiar()
-        MovimientoCuenta.objects.filter(id_venta=venta).update(
-            fecha_vencimiento=timezone.localdate() - timedelta(days=5))
+        f.atrasar_fiados(MovimientoCuenta.objects.filter(id_venta=venta), 5)
         aviso = credito.aviso_de_mora(self.elsa)
         self.assertIn('Elsa Gómez debe', aviso)
         self.assertIn('vencidos hace 5 días', aviso)
@@ -187,13 +186,11 @@ class CobrarTest(Base):
         self.assertEqual(MovimientoCuenta.objects.filter(tipo_movimiento='INTERES').get().monto, D('100'))
 
     def test_pagando_tarde_los_puntos_vienen_destildados_pero_se_pueden_dar(self):
-        MovimientoCuenta.objects.filter(id_venta=self.venta).update(
-            fecha_vencimiento=timezone.localdate() - timedelta(days=3))
+        f.atrasar_fiados(MovimientoCuenta.objects.filter(id_venta=self.venta), 3)
         r = credito.cobrar(self.elsa, '5000', f.efectivo(), self.cajera, turno=self.turno)
         self.assertEqual(r['puntos'], 0)                                    # por defecto, no
         otra = self.fiar('2')
-        MovimientoCuenta.objects.filter(id_venta=otra).update(
-            fecha_vencimiento=timezone.localdate() - timedelta(days=3))
+        f.atrasar_fiados(MovimientoCuenta.objects.filter(id_venta=otra), 3)
         r = credito.cobrar(self.elsa, '2000', f.efectivo(), self.cajera, turno=self.turno, acreditar_puntos=True)
         self.assertEqual(r['puntos'], 20)                                   # lo decidió la dueña
 
@@ -384,8 +381,7 @@ class PantallasTest(Base):
     def test_radar_y_parecidos(self):
         self.habilitar()
         venta = self.fiar('2')
-        MovimientoCuenta.objects.filter(id_venta=venta).update(
-            fecha_vencimiento=timezone.localdate() - timedelta(days=4))
+        f.atrasar_fiados(MovimientoCuenta.objects.filter(id_venta=venta), 4)
         credito.cambiar_estado(self.elsa, 'HABILITADO', self.admin, nota='Cobra la jubilación el 10')
         self.entrar(self.cajera)
         mostrador = self.client.get(reverse('ventas:mostrador'))
@@ -407,8 +403,7 @@ class AutomatizacionTest(Base):
     def test_el_resumen_avisa_los_fiados_atrasados_y_los_que_vencen(self):
         self.habilitar()
         atrasado = self.fiar('2')
-        MovimientoCuenta.objects.filter(id_venta=atrasado).update(
-            fecha_vencimiento=timezone.localdate() - timedelta(days=2))
+        f.atrasar_fiados(MovimientoCuenta.objects.filter(id_venta=atrasado), 2)
         self.fiar('1', vence=timezone.localdate() + timedelta(days=1), autorizante=self.admin)
         datos = self.client.get(reverse('api_servicio:resumen'), HTTP_AUTHORIZATION=f'Bearer {TOKEN}').json()
         cc = datos['cuentas_corrientes']
@@ -488,8 +483,7 @@ class EstadoEnPantallaTest(Base):
 
     def test_el_inicio_avisa_el_fiado_vencido(self):
         from negocio import panel
-        MovimientoCuenta.objects.filter(id_cliente=self.elsa, tipo_movimiento='FIADO').update(
-            fecha_vencimiento=timezone.localdate() - timedelta(days=4))
+        f.atrasar_fiados(MovimientoCuenta.objects.filter(id_cliente=self.elsa, tipo_movimiento='FIADO'), 4)
         _numeros, avisos = panel.del_dia(self.admin)
         aviso = next(a for a in avisos if a['clave'] == 'FIADO_VENCIDO')
         self.assertEqual(aviso['tipo'], 'error')

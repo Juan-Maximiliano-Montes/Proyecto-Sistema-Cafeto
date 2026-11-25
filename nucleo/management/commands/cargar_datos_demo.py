@@ -397,7 +397,16 @@ class Command(BaseCommand):
         for nombre in ('Sin marca', 'La Serenísima', 'Cabrales', 'Coca-Cola', 'Arcor',
                        'Havanna', 'Terrabusi', 'Taragüí', 'Ledesma', 'Villavicencio',
                        'Tregar', 'Paladini', 'Pureza', 'Cafeto'):
-            self.marcas[nombre] = self.buscar_o_alta('marcas', Marca, {'nombre_marca': nombre})
+            self.marcas[nombre] = self.buscar_o_alta(
+                'marcas', Marca, {'nombre_marca': nombre},
+                es_propia=(nombre == 'Cafeto'))
+        # «Cafeto» es la marca de la casa: lo que se prepara en el local
+        # (café, medialunas, el combo) tiene que llevar una marca propia
+        # (STK-01). Si ya existía cargada a mano sin la marca, se la pone.
+        cafeto = self.marcas['Cafeto']
+        if not cafeto.es_propia:
+            Marca.objects.filter(pk=cafeto.pk).update(es_propia=True)
+            cafeto.es_propia = True
 
         # -- Proveedores -----------------------------------------------------
         quijano = self.localidades['Campo Quijano']

@@ -149,3 +149,28 @@ def entrar(cliente, usuario_):
     vincular_sesion(sesion, usuario_, sesion_negocio)
     sesion.save()
     return sesion_negocio
+
+
+def atrasar_fiados(consulta, dias):
+    """Hace que los fiados de ``consulta`` (un queryset de ``MovimientoCuenta``)
+    hayan vencido hace ``dias`` días.
+
+    La cuenta corriente es un libro inalterable también en la base
+    (``tr_movimientos_cuenta_inalterable``): de un fiado sólo cambian el saldo y
+    los puntos. Para armar un fiado atrasado sin esperar, la prueba apaga ese
+    trigger durante el UPDATE. Es DDL transaccional: lo deshace el rollback de
+    la prueba y nada de esto existe fuera de ella.
+    """
+    from django.db import connection
+
+    vence = timezone.localdate() - timedelta(days=dias)
+    with connection.cursor() as cursor:
+        # Las claves foráneas de Django se verifican al final de la transacción:
+        # con eventos pendientes, PostgreSQL no deja hacer el ALTER TABLE.
+        cursor.execute('SET CONSTRAINTS ALL IMMEDIATE')
+        cursor.execute('ALTER TABLE movimientos_cuenta DISABLE TRIGGER tr_movimientos_cuenta_inalterable')
+        try:
+            consulta.update(fecha_vencimiento=vence)
+        finally:
+            cursor.execute('ALTER TABLE movimientos_cuenta ENABLE TRIGGER tr_movimientos_cuenta_inalterable')
+            cursor.execute('SET CONSTRAINTS ALL DEFERRED')
