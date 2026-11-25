@@ -435,6 +435,22 @@ class BeneficioProducto(models.Model):
     def __str__(self):
         return f'{self.cantidad} × {self.id_producto}'
 
+    def _exigir_vendible(self):
+        """Un beneficio en especie entrega algo que se vende (FID-01).
+
+        Un insumo (harina, café en grano) se usa para preparar: el mostrador
+        lo rechaza con «es un insumo», así que el beneficio quedaría
+        imposible de canjear.
+        """
+        if self.id_producto_id and not self.id_producto.es_vendible:
+            raise ValidationError({'id_producto': (
+                f'"{self.id_producto}" es un insumo: se usa para preparar, no '
+                'se vende. Elegí un producto que se venda en el mostrador.')})
+
+    def save(self, *args, **kwargs):
+        self._exigir_vendible()
+        return super().save(*args, **kwargs)
+
     def clean(self):
         super().clean()
         self.cantidad = validar_entero(
@@ -443,6 +459,7 @@ class BeneficioProducto(models.Model):
             raise ValidationError({'id_producto': (
                 f'El producto "{self.id_producto}" está dado de baja: elegí '
                 'uno vigente.')})
+        self._exigir_vendible()
 
 
 # ===========================================================================

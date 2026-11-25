@@ -15,7 +15,7 @@ from fidelizacion.models import (
 from geografia.models import Localidad
 from nucleo.formularios import FormularioMaestro, SelectorConBusqueda, vigentes_mas_el_actual
 from nucleo.validaciones import nombre_de_persona, normalizar_telefono
-from stock.models import Producto
+from stock.models import TIPOS_VENDIBLES, Producto
 
 
 class CategoriaFidelizacionForm(FormularioMaestro):
@@ -111,11 +111,14 @@ class BeneficioProductoForm(FormularioMaestro):
         # el id que llegue. Lo que no se dibuja son sus 5.000 opciones
         # (ver SelectorConBusqueda).
         campo = self.fields['id_producto']
+        # Sólo lo que se puede vender: un insumo (harina, leche de cocina)
+        # no se entrega en el mostrador y haría fallar el canje (FID-01).
         vigentes_mas_el_actual(self, 'id_producto', Producto.objects.filter(
-            borrado_logico=False).select_related('id_marca'))
+            borrado_logico=False, tipo_producto__in=TIPOS_VENDIBLES
+        ).select_related('id_marca'))
         campo.widget = SelectorConBusqueda(
             url_busqueda=reverse_lazy('stock:buscar_productos'),
-            attrs={'class': 'form-select js-catalogo'})
+            attrs={'class': 'form-select js-catalogo', 'data-para': 'beneficio'})
         campo.widget.choices = campo.choices
         campo.empty_label = '— Buscá un producto —'
         self.fields['cantidad'].widget.attrs.update({'min': 1, 'max': 99})

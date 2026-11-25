@@ -592,8 +592,27 @@
                         });
                         repintar();
                     };
+                    // Si al cambiar el tipo cambia el selector (de receta a
+                    // combo), lo ya elegido deja de valer: se limpia, para
+                    // que no quede un yogur en la receta de una pizza.
+                    var marcarSelectores = function () {
+                        cuerpo.querySelectorAll('select.js-catalogo').forEach(function (sel) {
+                            sel.dataset.paraUsado = Cafeto.paraDelCatalogo(sel);
+                        });
+                    };
+                    control.addEventListener('change', function () {
+                        cuerpo.querySelectorAll('select.js-catalogo').forEach(function (sel) {
+                            var ahora = Cafeto.paraDelCatalogo(sel);
+                            if (sel.value && sel.dataset.paraUsado !== undefined &&
+                                    sel.dataset.paraUsado !== ahora && typeof jQuery !== 'undefined') {
+                                jQuery(sel).val(null).trigger('change');
+                            }
+                            sel.dataset.paraUsado = ahora;
+                        });
+                    });
                     control.addEventListener('change', sincronizar);
                     sincronizar();
+                    marcarSelectores();
                 }
             }
             repintar();
@@ -635,11 +654,30 @@
     // ---------------------------------------------------------------------
     //  Combo con búsqueda (Select2 + AJAX), para catálogos grandes
     // ---------------------------------------------------------------------
+    //  ``data-para`` fija el selector; si además trae ``data-para-segun``
+    //  (nombre de otro campo del formulario) y ``data-para-mapa``
+    //  ("VALOR:selector,VALOR:selector"), el selector cambia con ese campo:
+    //  la receta de un elaborado ofrece insumos; el combo, lo vendible.
+    Cafeto.paraDelCatalogo = function (combo) {
+        var para = combo.getAttribute('data-para') || '';
+        var segun = combo.getAttribute('data-para-segun');
+        if (!segun) { return para; }
+        var formulario = combo.closest('form');
+        var control = formulario && formulario.querySelector('[name="' + segun + '"]');
+        var mapa = {};
+        (combo.getAttribute('data-para-mapa') || '').split(',').forEach(function (par) {
+            var kv = par.split(':');
+            if (kv.length === 2) { mapa[kv[0]] = kv[1]; }
+        });
+        return (control && mapa[control.value]) || para;
+    };
+
     Cafeto.enchufarCatalogo = function (contenedor) {
         if (typeof jQuery === 'undefined' || !jQuery.fn.select2) { return; }
         jQuery(contenedor).find('select.js-catalogo').each(function () {
             var combo = jQuery(this);
             if (combo.data('select2') || !this.isConnected || this.offsetParent === null) { return; }
+            if (this.dataset.paraUsado === undefined) { this.dataset.paraUsado = Cafeto.paraDelCatalogo(this); }
             combo.select2({
                 width: '100%',
                 placeholder: combo.find('option[value=""]').text() || 'Buscá un producto',
@@ -653,7 +691,14 @@
                     dataType: 'json',
                     delay: 250,
                     cache: true,
-                    data: function (p) { return {q: p.term || '', page: p.page || 1}; }
+                    data: function (p) {
+                        var datos = {q: p.term || '', page: p.page || 1};
+                        // Qué selector es (receta, combo, beneficio): el
+                        // servidor decide qué tipos de producto ofrece.
+                        var para = Cafeto.paraDelCatalogo(combo[0]);
+                        if (para) { datos.para = para; }
+                        return datos;
+                    }
                 },
                 language: {
                     noResults: function () { return 'Sin resultados'; },
