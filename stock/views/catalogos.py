@@ -13,10 +13,30 @@ from compras.models import Proveedor
 from nucleo.busqueda import filtrar_por_texto
 from nucleo.crud import Columna, ConfiguracionCRUD, Filtro, registrar
 from seguridad.servicios import registrar_acceso_denegado
-from stock.models import Marca, Producto, Rubro, TipoProducto
+from stock.models import (
+    COMPONENTES_ADMITIDOS,
+    TIPOS_VENDIBLES,
+    Marca,
+    Producto,
+    Rubro,
+    TipoProducto,
+)
 
 from stock import forms
 from nucleo.validaciones import id_valido
+
+# Qué tipos de producto ofrece cada selector (``?para=``). Se arma con las
+# mismas reglas del modelo, así que el buscador y la validación no pueden
+# discrepar: lo que el buscador no ofrece, el modelo tampoco lo acepta.
+TIPOS_PARA_BUSQUEDA = {
+    # La receta de un elaborado o producido: sólo insumos.
+    'receta': (COMPONENTES_ADMITIDOS[TipoProducto.ELABORADO]
+               | COMPONENTES_ADMITIDOS[TipoProducto.PRODUCIDO]),
+    # El contenido de un combo: lo vendible, sin insumos ni otros combos.
+    'combo': COMPONENTES_ADMITIDOS[TipoProducto.COMBO],
+    # El regalo de un beneficio en especie: algo que se pueda vender.
+    'beneficio': TIPOS_VENDIBLES,
+}
 
 # ---------------------------------------------------------------------------
 #  BÚSQUEDA DE PRODUCTOS (para la receta de los beneficios)
@@ -70,6 +90,15 @@ def buscar_productos(request):
         return JsonResponse({'results': [], 'pagination': {'more': False}})
     productos = Producto.objects.filter(
         borrado_logico=False).select_related('id_marca')
+    # ?para=receta|combo|beneficio: lo decide el SERVIDOR qué tipos puede
+    # elegir cada pantalla (STK-01 / FID-01). Un cliente que mande otro
+    # ?tipos= o ?excluir= sólo puede achicar la lista, nunca ampliarla.
+    para = request.GET.get('para', '')
+    if para:
+        permitidos = TIPOS_PARA_BUSQUEDA.get(para)
+        if permitidos is None:
+            return JsonResponse({'detail': 'Ese selector de productos no existe.'}, status=400)
+        productos = productos.filter(tipo_producto__in=permitidos)
     # ?excluir=COMBO,INSUMO  /  ?tipos=REVENTA,INSUMO: el selector de una
     # receta no ofrece combos; el del mostrador no ofrece insumos.
     excluir = [t for t in request.GET.get('excluir', '').split(',') if t and '\x00' not in t]

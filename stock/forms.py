@@ -3,7 +3,6 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from django.urls import reverse_lazy
-from django.utils.text import format_lazy
 
 from compras.models import Proveedor, TipoProveedor
 from nucleo.formularios import FormularioMaestro, SelectorConBusqueda, vigentes_mas_el_actual
@@ -345,11 +344,19 @@ class ComposicionForm(forms.ModelForm):
         vigentes_mas_el_actual(self, 'id_componente', Producto.objects.filter(
             borrado_logico=False).exclude(
             tipo_producto=TipoProducto.COMBO).select_related('id_marca'))
+        # El selector se adapta al tipo del producto que se está armando:
+        # una receta (elaborado/producido) ofrece SÓLO insumos; un combo
+        # ofrece lo vendible. cafeto.js lee data-para-segun / data-para-mapa
+        # y le pasa ``?para=`` al buscador; el servidor decide qué tipos
+        # corresponden a cada uno (STK-01). Sin JS rige ``receta``, lo más
+        # restrictivo.
+        mapa = ','.join((f'{TipoProducto.ELABORADO.value}:receta',
+                         f'{TipoProducto.PRODUCIDO.value}:receta',
+                         f'{TipoProducto.COMBO.value}:combo'))
         campo.widget = SelectorConBusqueda(
-            url_busqueda=format_lazy('{}?excluir={}',
-                                     reverse_lazy('stock:buscar_productos'),
-                                     TipoProducto.COMBO),
-            attrs={'class': 'form-select js-catalogo'})
+            url_busqueda=reverse_lazy('stock:buscar_productos'),
+            attrs={'class': 'form-select js-catalogo', 'data-para': 'receta',
+                   'data-para-segun': 'tipo_producto', 'data-para-mapa': mapa})
         campo.widget.choices = campo.choices
         campo.empty_label = '— Buscá un producto —'
         self.fields['cantidad'].widget.attrs.update(

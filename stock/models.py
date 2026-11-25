@@ -302,11 +302,14 @@ TIPOS_COMPUESTOS = TIPOS_CON_RECETA | {TipoProducto.COMBO}
 TIPOS_CON_COMPOSICION_OBLIGATORIA = frozenset({TipoProducto.PRODUCIDO,
                                                TipoProducto.COMBO})
 # Qué puede llevar adentro cada tipo compuesto.
+#
+# Una RECETA (elaborado o producido) se arma sólo con INSUMOS: la harina, la
+# muzzarella, el café en grano. Un producto de reventa (el yogur, la gaseosa)
+# se vende tal cual, no se «cocina»: meterlo en una receta descontaría
+# mercadería del mostrador y falsearía el costo del plato (STK-01).
 COMPONENTES_ADMITIDOS = {
-    TipoProducto.ELABORADO: frozenset({TipoProducto.INSUMO,
-                                       TipoProducto.REVENTA}),
-    TipoProducto.PRODUCIDO: frozenset({TipoProducto.INSUMO,
-                                       TipoProducto.REVENTA}),
+    TipoProducto.ELABORADO: frozenset({TipoProducto.INSUMO}),
+    TipoProducto.PRODUCIDO: frozenset({TipoProducto.INSUMO}),
     TipoProducto.COMBO: frozenset({TipoProducto.REVENTA,
                                    TipoProducto.ELABORADO,
                                    TipoProducto.PRODUCIDO}),
@@ -919,11 +922,13 @@ class ComposicionProducto(models.Model):
                 f'"{compuesto}" no es un elaborado, un producido ni un '
                 'combo: no lleva composición.')
         if componente.tipo_producto not in admitidos:
-            nombres = ', '.join(sorted(TipoProducto(t).name.lower()
+            nombres = ', '.join(sorted(TipoProducto(t).label.split(' (')[0].lower()
                                        for t in admitidos))
+            tipo_componente = TipoProducto(componente.tipo_producto).label.split(' (')[0].lower()
+            tipo_compuesto = compuesto.get_tipo_producto_display().split(' (')[0].lower()
             raise ValidationError({'id_componente': (
-                f'Un {compuesto.get_tipo_producto_display().split(" (")[0].lower()} '
-                f'sólo puede llevar: {nombres}.')})
+                f'"{componente}" es de tipo {tipo_componente}: un {tipo_compuesto} '
+                f'sólo puede llevar {nombres}.')})
         if componente.borrado_logico:
             raise ValidationError({'id_componente': (
                 f'"{componente}" está dado de baja.')})
