@@ -261,3 +261,61 @@ class BeneficiosTest(BaseApi):
         self.assertEqual(datos['puntos'], 0)
         self.assertEqual(datos['categoria'], 'Silver')
         self.assertEqual(datos['detalle'], '5% de descuento: se aplica solo al pagar')
+
+
+# ===========================================================================
+class ImagenesYCacheBustingTest(BaseCatalogo):
+    """Las fotos salen con ?v=<timestamp> y con esquema https:// detrás del túnel."""
+
+    def test_imagen_lleva_version_y_cambia_al_reemplazar_archivo_o_registro(self):
+        import os
+        import shutil
+        import tempfile
+        from pathlib import Path
+        from urllib.parse import parse_qs, urlsplit
+
+        from django.test import override_settings
+
+        media_tmp = tempfile.mkdtemp(prefix='cafeto-cat-img-')
+        self.addCleanup(shutil.rmtree, media_tmp, True)
+        carpeta = Path(media_tmp) / 'productos'
+        carpeta.mkdir(parents=True, exist_ok=True)
+        archivo = carpeta / 'cafe.jpg'
+        archivo.write_bytes(b'foto-1')
+        os.utime(archivo, (1732620000, 1732620000))
+
+        with override_settings(
+            MEDIA_ROOT=media_tmp,
+            CAFETO_URL_PUBLICA='',
+            ALLOWED_HOSTS=['*'],
+            SECURE_PROXY_SSL_HEADER=('HTTP_X_FORWARDED_PROTO', 'https'),
+        ):
+            Producto.objects.filter(pk=self.gaseosa.pk).update(imagen='productos/cafe.jpg')
+            # Fijar fecha_modificacion anterior al archivo para comprobar que manda el mayor
+            from datetime import datetime, timezone as dt_tz
+            Producto.objects.filter(pk=self.gaseosa.pk).update(
+                fecha_modificacion=datetime(2024, 1, 1, tzinfo=dt_tz.utc))
+
+            pub = self.client.get(
+                '/api/movil/catalogo/productos/',
+                {'seccion': 'MINISUPER', 'q': 'coca'},
+                HTTP_HOST='cafeto-local.trycloudflare.com',
+                HTTP_X_FORWARDED_PROTO='https',
+            ).json()['resultados'][0]
+            self.assertEqual(
+                pub['imagen'],
+                'https://cafeto-local.trycloudflare.com/media/productos/cafe.jpg?v=1732620000',
+            )
+
+            # Si se reemplaza el archivo con el mismo nombre en disco, cambia ?v=
+            os.utime(archivo, (1732620555, 1732620555))
+            stock_item = self.pedir(
+                'get', '/stock/productos/', {'codigo': '7790895000782'},
+                como=self.operador,
+                HTTP_HOST='cafeto-local.trycloudflare.com',
+                HTTP_X_FORWARDED_PROTO='https',
+            ).json()['resultados'][0]
+            partes = urlsplit(stock_item['imagen'])
+            self.assertEqual((partes.scheme, partes.netloc, partes.path),
+                             ('https', 'cafeto-local.trycloudflare.com', '/media/productos/cafe.jpg'))
+            self.assertEqual(parse_qs(partes.query)['v'], ['1732620555'])

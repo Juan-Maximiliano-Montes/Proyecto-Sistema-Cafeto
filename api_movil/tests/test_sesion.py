@@ -64,6 +64,7 @@ class IngresoTest(Base):
 
     def test_entra_con_el_dni_o_el_usuario_como_en_la_web(self):
         self.assertEqual(self.entrar('40000001').status_code, 200)
+        self.assertEqual(self.entrar('40.000.001').status_code, 200)
         self.assertEqual(
             self.entrar(self.operador.nombre_usuario.upper()).status_code, 200)
 
@@ -399,3 +400,20 @@ class PermisosTest(Base):
                              reverse('seguridad:login'),
                              fetch_redirect_response=False)
         self.assertTrue(reverse('api_movil:sesion').startswith(PREFIJO_API_MOVIL))
+
+
+# ===========================================================================
+class SaludTest(Base):
+    """GET /api/movil/salud/: público, exento de token y sin consultas a la base."""
+
+    def test_responde_ok_sin_token_y_sin_tocar_la_base(self):
+        with self.assertNumQueries(0):
+            respuesta = self.client.get('/api/movil/salud/')
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.json(), {'ok': True})
+        self.assertIn('no-store', respuesta.get('Cache-Control', ''))
+
+    def test_solo_acepta_get(self):
+        respuesta = self.pedir('post', '/salud/', {})
+        self.assertEqual(respuesta.status_code, 405)
+        self.assertEqual(respuesta['Allow'], 'GET')

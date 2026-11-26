@@ -526,6 +526,9 @@ class Cliente(ConSaldosDerivados, ConSelloDeModificacion,
     uid_firebase = models.CharField(
         'Cuenta de la app', max_length=128, null=True, blank=True,
         editable=False)
+    acepta_promociones = models.BooleanField(
+        'Acepta promociones', default=False,
+        help_text='Si el cliente acepta recibir promociones y novedades del club.')
     qr_cliente = models.CharField('Código QR', max_length=64)
     puntos_acumulados = models.IntegerField(
         'Puntos acumulados', default=0, editable=False)

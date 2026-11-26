@@ -42,21 +42,59 @@ if not SECRET_KEY or 'insecure' in SECRET_KEY:
     SECRET_KEY = SECRET_KEY or 'django-insecure-solo-para-desarrollo-local'
 
 # Los nombres con los que se entra al sistema (la IP del NAS, su nombre en
-# la red del local, el dominio del acceso remoto). En producción no hay
-# comodín: un Host desconocido se rechaza.
+# la red del local, el dominio del acceso remoto o de Cloudflare Tunnel). En
+# producción no hay comodín: un Host desconocido se rechaza.
+from urllib.parse import urlsplit as _urlsplit  # noqa: E402
+
+
+def _sin_repetidos(valores):
+    return list(dict.fromkeys(v for v in valores if v))
+
+
+def _dominio_limpio(valor):
+    texto = (valor or '').strip().lower()
+    if '://' in texto:
+        texto = _urlsplit(texto).hostname or ''
+    texto = texto.strip('/')
+    if texto.startswith('*.'):
+        texto = texto[1:]
+    return texto
+
+
+TUNNEL_DOMINIO = _dominio_limpio(os.environ.get('CAFETO_TUNNEL_DOMINIO', ''))
+_url_publica_inicial = os.environ.get('CAFETO_URL_PUBLICA', '').strip().rstrip('/')
+_partes_publica = _urlsplit(_url_publica_inicial) if '://' in _url_publica_inicial else None
+
 ALLOWED_HOSTS = _lista('DJANGO_ALLOWED_HOSTS', '*' if DEBUG else '')
+if TUNNEL_DOMINIO and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = _sin_repetidos([*ALLOWED_HOSTS, TUNNEL_DOMINIO])
+if _partes_publica and _partes_publica.hostname and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = _sin_repetidos([*ALLOWED_HOSTS, _partes_publica.hostname])
+if DEBUG and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = _sin_repetidos([*ALLOWED_HOSTS, '.trycloudflare.com'])
 if not DEBUG and (not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS):
     raise ImproperlyConfigured(
         'En producción DJANGO_ALLOWED_HOSTS tiene que listar los nombres '
-        'reales (por ejemplo: 192.168.0.10,cafeto.local).')
+        'reales (por ejemplo: 192.168.0.10,cafeto.local,cafeto.midominio.com).')
 
 # Orígenes desde los que se aceptan formularios (con esquema):
-# https://cafeto.midominio.com.ar. En producción, sólo los del entorno.
-CSRF_TRUSTED_ORIGINS = _lista('DJANGO_CSRF_TRUSTED_ORIGINS') + (
-    ['https://*.trycloudflare.com', 'http://localhost:8000', 'http://127.0.0.1:8000'] if DEBUG else [])
-# Detrás de Nginx (VPS) o de un túnel: la IP del cliente sale de
+# https://cafeto.midominio.com.ar. En producción, los del entorno y el túnel.
+_origenes_extra = []
+if TUNNEL_DOMINIO:
+    _host_tunel = f'*{TUNNEL_DOMINIO}' if TUNNEL_DOMINIO.startswith('.') else TUNNEL_DOMINIO
+    _origenes_extra.append(f'https://{_host_tunel}')
+if _partes_publica and _partes_publica.scheme and _partes_publica.netloc:
+    _origenes_extra.append(f'{_partes_publica.scheme}://{_partes_publica.netloc}')
+if DEBUG:
+    _origenes_extra.extend([
+        'https://*.trycloudflare.com',
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+    ])
+CSRF_TRUSTED_ORIGINS = _sin_repetidos([*_lista('DJANGO_CSRF_TRUSTED_ORIGINS'), *_origenes_extra])
+# Detrás de Nginx (VPS) o de Cloudflare Tunnel: la IP del cliente sale de
 # X-Forwarded-For leído desde la derecha (PROXIES_DE_CONFIANZA saltos) y el
-# esquema, de X-Forwarded-Proto. CF-Connecting-IP sólo si se pide con
+# esquema https://, de X-Forwarded-Proto. CF-Connecting-IP sólo si se pide con
 # CAFETO_ENCABEZADO_IP: en un VPS con Nginx al frente lo escribe cualquiera.
 CONFIAR_EN_PROXY = _bool('DJANGO_CONFIAR_EN_PROXY', True)
 ENCABEZADO_IP_CLIENTE = os.environ.get('CAFETO_ENCABEZADO_IP', '')

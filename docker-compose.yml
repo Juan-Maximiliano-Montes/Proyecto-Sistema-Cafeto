@@ -104,6 +104,7 @@ services:
       # con «CSRF verification failed» y la IP del cliente salía la del proxy.
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
       DJANGO_CONFIAR_EN_PROXY: ${DJANGO_CONFIAR_EN_PROXY:-True}
+      CAFETO_TUNNEL_DOMINIO: ${CAFETO_TUNNEL_DOMINIO:-}
       # En desarrollo los estáticos se sirven desde el código montado.
       CAFETO_ESTATICOS_CON_HASH: "False"
       # Correo para los enlaces de clave. Vacío en desarrollo: los correos

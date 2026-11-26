@@ -9,6 +9,8 @@ from api_movil import views, views_catalogo, views_clientes, views_tareas
 app_name = 'api_movil'
 
 urlpatterns = [
+    # Alcance real en la red del local (pantalla SinConexion)
+    path('salud/', views.salud, name='salud'),
     # Equipo: sesión y ABM liviano
     path('sesion/', views.sesion, name='sesion'),
     path('marcas/', views.marcas, name='marcas'),

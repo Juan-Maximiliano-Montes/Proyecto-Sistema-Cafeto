@@ -28,7 +28,7 @@ def _seccion(request):
 
 @publica
 def destacados(request):
-    return respuestas.lista(catalogo.destacados(timezone.localdate()))
+    return respuestas.lista(catalogo.destacados(timezone.localdate(), request=request))
 
 
 @publica
@@ -47,7 +47,7 @@ def productos(request):
     hoy = timezone.localdate()
     return respuestas.paginar(
         request, consulta.order_by('nombre_producto', 'pk'),
-        lambda producto: catalogo.a_json(producto, hoy))
+        lambda producto: catalogo.a_json(producto, hoy, request=request))
 
 
 @publica
@@ -93,7 +93,7 @@ def consulta(request):
             request.GET.get('q', '').strip())
 
     def ficha(producto):
-        datos = catalogo.a_json(producto, hoy)
+        datos = catalogo.a_json(producto, hoy, request=request)
         lote = catalogo.proximo_lote(producto, hoy)
         con_stock = producto.tiene_stock_propio
         datos.update({

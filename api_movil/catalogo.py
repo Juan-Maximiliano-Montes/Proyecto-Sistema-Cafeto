@@ -225,22 +225,66 @@ def marca(producto):
     return {'id': producto.id_marca_id, 'nombre': producto.id_marca.nombre_marca}
 
 
-def imagen(producto):
-    """La foto como dirección completa, o None.
+def _version_de_imagen(producto):
+    """Timestamp entero de modificación del archivo en disco o del registro."""
+    from pathlib import Path
+    from django.conf import settings
+    from stock import imagenes
+
+    marcas = []
+    modificado = getattr(producto, 'fecha_modificacion', None)
+    if modificado is not None:
+        marcas.append(int(modificado.timestamp()))
+    ruta_relativa = producto.imagen or ''
+    if ruta_relativa.startswith(imagenes.CARPETA + '/'):
+        try:
+            marcas.append(int((Path(settings.MEDIA_ROOT) / ruta_relativa).stat().st_mtime))
+        except OSError:
+            pass
+    return max(marcas) if marcas else 0
+
+
+def _con_version(url, version):
+    if not version:
+        return url
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    partes = urlsplit(url)
+    parametros = parse_qsl(partes.query, keep_blank_values=True)
+    if any(clave == 'v' for clave, _ in parametros):
+        return url
+    parametros.append(('v', str(version)))
+    return urlunsplit((partes.scheme, partes.netloc, partes.path,
+                       urlencode(parametros), partes.fragment))
+
+
+def imagen(producto, request=None):
+    """La foto como dirección completa con versión de caché (``?v=…``), o None.
 
     Una foto de otro servidor ya es ``https://…``. Una subida al sistema
-    necesita el dominio adelante: la app no comparte origen con el servidor,
-    así que se arma con ``CAFETO_URL_PUBLICA``."""
+    necesita el dominio adelante: se arma con ``CAFETO_URL_PUBLICA`` o, si
+    no está fija, con el origen del propio pedido (``https://`` detrás del
+    túnel gracias a ``SECURE_PROXY_SSL_HEADER``). El parámetro ``v`` invalida
+    la caché cuando se reemplaza el archivo o se actualiza el registro."""
     from django.conf import settings
     from stock import imagenes
 
     url = imagenes.url_de(producto)
-    if url and url.startswith('/'):
-        url = settings.CAFETO_URL_PUBLICA + url
+    if not url:
+        return None
+    url = _con_version(url, _version_de_imagen(producto))
+    if url.startswith('/'):
+        base = (settings.CAFETO_URL_PUBLICA or '').rstrip('/')
+        if base:
+            if request is not None and request.is_secure() and base.startswith('http://'):
+                base = 'https://' + base[len('http://'):]
+            url = base + url
+        elif request is not None:
+            url = request.build_absolute_uri(url)
     return url
 
 
-def a_json(producto, hoy, motivo=None):
+def a_json(producto, hoy, motivo=None, request=None):
     """Un producto como lo muestra el catálogo de la app."""
     precio_oferta, porcentaje = oferta(producto, hoy)
     datos = {
@@ -257,7 +301,7 @@ def a_json(producto, hoy, motivo=None):
                   'nombre': producto.id_rubro.nombre_rubro},
         'marca': marca(producto),
         # Una dirección completa o None; con None la app muestra el ícono.
-        'imagen': imagen(producto),
+        'imagen': imagen(producto, request=request),
         'icono': ICONOS.get(producto.tipo_producto),
         'disponible': disponible(producto, hoy),
     }
@@ -269,7 +313,7 @@ def a_json(producto, hoy, motivo=None):
 # ---------------------------------------------------------------------------
 #  Lo que arma cada pantalla
 # ---------------------------------------------------------------------------
-def destacados(hoy):
+def destacados(hoy, request=None):
     """El carrusel del Inicio: los combos y después las ofertas del día.
 
     Las ofertas van de la rebaja más grande a la más chica. Nada agotado,
@@ -278,7 +322,7 @@ def destacados(hoy):
     elegidos = []
     for producto in publicables().filter(
             tipo_producto=TipoProducto.COMBO).order_by('nombre_producto', 'pk'):
-        datos = a_json(producto, hoy, 'COMBO')
+        datos = a_json(producto, hoy, 'COMBO', request=request)
         if datos['disponible']:
             elegidos.append(datos)
         if len(elegidos) == MAXIMO_DESTACADOS:
@@ -288,7 +332,7 @@ def destacados(hoy):
     # Sólo lo que controla vencimiento puede tener rebaja por vencimiento.
     for producto in publicables().filter(controla_vencimiento=True).order_by(
             'nombre_producto', 'pk'):
-        datos = a_json(producto, hoy, 'OFERTA')
+        datos = a_json(producto, hoy, 'OFERTA', request=request)
         if datos['precio_oferta'] is not None and datos['disponible']:
             ofertas.append(datos)
     ofertas.sort(key=lambda datos: -datos['porcentaje_oferta'])

@@ -102,3 +102,24 @@ class ProduccionTest(SimpleTestCase):
 
     def test_sin_origenes_cors_en_produccion_no_se_abre_a_nadie(self):
         self.assertEqual(self.configuracion()['cors'], [])
+
+    def test_cloudflare_tunnel_suma_host_y_origen_https(self):
+        codigo = (
+            'import json, django; from django.conf import settings as s; django.setup();'
+            'print(json.dumps({"hosts": s.ALLOWED_HOSTS, "origenes": s.CSRF_TRUSTED_ORIGINS,'
+            ' "proxy": list(getattr(s, "SECURE_PROXY_SSL_HEADER", None) or [])}))')
+        base = {k: v for k, v in os.environ.items() if not k.startswith(('DJANGO_', 'CAFETO_'))}
+        base.update({
+            'DJANGO_SETTINGS_MODULE': 'cafeto.settings',
+            'DJANGO_DEBUG': 'False',
+            'DJANGO_SECRET_KEY': 'una-clave-larga-de-prueba-para-produccion-1234567890',
+            'DJANGO_ALLOWED_HOSTS': '192.168.0.10,cafeto.local',
+            'CAFETO_TUNNEL_DOMINIO': 'cafeto.midominio.com.ar',
+        })
+        salida = subprocess.run([sys.executable, '-c', codigo], env=base,
+                                capture_output=True, text=True, cwd=settings.BASE_DIR, check=True)
+        import json
+        datos = json.loads(salida.stdout.strip().splitlines()[-1])
+        self.assertIn('cafeto.midominio.com.ar', datos['hosts'])
+        self.assertIn('https://cafeto.midominio.com.ar', datos['origenes'])
+        self.assertEqual(datos['proxy'], ['HTTP_X_FORWARDED_PROTO', 'https'])

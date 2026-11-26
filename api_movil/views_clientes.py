@@ -1,7 +1,8 @@
-"""Los clientes del club desde la app: su QR real, sus puntos y sus movimientos.
+"""Los clientes del club desde la app: su QR real, sus puntos, sus movimientos y su perfil.
 
-    GET  /clientes/yo/          la ficha de la cuenta
-    POST /clientes/vincular/    la vincula (con el DNI si hace falta) o la da de alta
+    GET   /clientes/yo/         la ficha de la cuenta
+    PATCH /clientes/yo/         actualiza los datos editables de su ficha
+    POST  /clientes/vincular/   la vincula (con el DNI si hace falta) o la da de alta
 
 Cómo se encuentra la ficha de una cuenta de la app (``api_movil.firebase``):
 
@@ -22,7 +23,7 @@ presente (pantalla de Clientes) y la app la encuentra sola.
 """
 import math
 import re
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -36,7 +37,11 @@ from api_movil import catalogo, firebase, respuestas
 from api_movil.models import IntentoDeVinculacion
 from fidelizacion.forms import ClienteForm
 from fidelizacion.models import Cliente
-from nucleo.validaciones import normalizar_telefono
+from nucleo.validaciones import (
+    nombre_de_persona,
+    normalizar_telefono,
+    validar_edad,
+)
 from seguridad.servicios import instantanea, registrar_auditoria
 
 MOVIMIENTOS = 20
@@ -52,6 +57,7 @@ DEMASIADOS_INTENTOS = ('Probaste demasiados DNI. Esperá un rato o acercate a la
                        'caja para que te vinculen la ficha.')
 TELEFONO_DE_OTRO_CLIENTE = ('Ese teléfono ya está en otra ficha del club. '
                             'Acercate a la caja para que la vinculen con tu cuenta.')
+TELEFONO_EN_OTRA_FICHA = 'Ese teléfono ya está registrado en otra ficha.'
 DNI_DE_OTRO_CLIENTE = ('Ese DNI ya está en otra ficha del club. '
                        'Acercate a la caja para que la vinculen con tu cuenta.')
 FICHA_DADA_DE_BAJA = 'Tu ficha del club está dada de baja. Acercate a la caja.'
@@ -64,6 +70,8 @@ FICHA_DE_OTRA_CUENTA = ('Esa ficha del club ya está vinculada a otra cuenta de 
 CAMPOS = {'apellido': 'apellido_cliente', 'nombre': 'nombre_cliente',
           'telefono': 'telefono_cliente', 'dni': 'dni_cliente',
           'fecha_nacimiento': 'fecha_nacimiento'}
+COLUMNAS_EDITABLES = ('nombre_cliente', 'apellido_cliente', 'telefono_cliente',
+                      'fecha_nacimiento', 'acepta_promociones')
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +97,7 @@ def _concepto(movimiento):
 
 
 def cuenta(cliente):
-    """Lo que la app muestra en «Mi QR» y «Mis puntos»."""
+    """Lo que la app muestra en «Mi QR», «Mis puntos» y el perfil del cliente."""
     todas = list(catalogo.categorias_vigentes())
     actual = cliente.id_categoria
     proxima = next((c for c in todas if c.puntos_minimos > actual.puntos_minimos), None)
@@ -97,6 +105,12 @@ def cuenta(cliente):
                    .order_by('-fecha_movimiento', '-pk')[:MOVIMIENTOS])
     return {
         'qr': cliente.qr_cliente,
+        'nombre': cliente.nombre_cliente,
+        'apellido': cliente.apellido_cliente,
+        'telefono': cliente.telefono_cliente or '',
+        'fecha_nacimiento': (cliente.fecha_nacimiento.isoformat()
+                             if cliente.fecha_nacimiento else None),
+        'acepta_promociones': bool(cliente.acepta_promociones),
         'categoria': actual.nombre_categoria,
         'puntos_disponibles': cliente.puntos_disponibles,
         'puntos_acumulados': cliente.puntos_acumulados,
@@ -215,16 +229,164 @@ def _dni_de_otro_cliente(dni):
     return 7 <= len(digitos) <= 8 and Cliente.objects.filter(dni_cliente=digitos).exists()
 
 
+def _leer_fecha_nacimiento(valor):
+    if valor in (None, ''):
+        return None
+    if not isinstance(valor, str):
+        raise ValidationError('Ingresá una fecha de nacimiento válida (AAAA-MM-DD).')
+    texto = valor.strip()
+    if not texto:
+        return None
+    nac = None
+    try:
+        nac = date.fromisoformat(texto)
+    except ValueError:
+        try:
+            nac = datetime.strptime(texto, '%d/%m/%Y').date()
+        except ValueError:
+            pass
+    if nac is None or nac < date(1900, 1, 1):
+        raise ValidationError('Ingresá una fecha de nacimiento válida (AAAA-MM-DD).')
+    return validar_edad(nac, timezone.localdate())
+
+
+def _validar_edicion_ficha(ficha, datos):
+    """Valida y asigna en ``ficha`` los campos enviados en ``PATCH /clientes/yo/``.
+
+    Devuelve ``(errores_por_campo, telefono_ajeno)``.
+    """
+    errores = {}
+    telefono_ajeno = False
+
+    if 'nombre' in datos:
+        valor = datos['nombre']
+        if valor is not None and not isinstance(valor, str):
+            errores['nombre'] = ['Tiene que ser un texto.']
+        else:
+            try:
+                ficha.nombre_cliente = nombre_de_persona(valor, 'El nombre')
+            except ValidationError as error:
+                errores['nombre'] = list(error.messages)
+
+    if 'apellido' in datos:
+        valor = datos['apellido']
+        if valor is not None and not isinstance(valor, str):
+            errores['apellido'] = ['Tiene que ser un texto.']
+        else:
+            try:
+                ficha.apellido_cliente = nombre_de_persona(valor, 'El apellido')
+            except ValidationError as error:
+                errores['apellido'] = list(error.messages)
+
+    if 'telefono' in datos:
+        valor = datos['telefono']
+        if valor is not None and not isinstance(valor, str):
+            errores['telefono'] = ['Tiene que ser un texto.']
+        else:
+            texto = (valor or '').strip()
+            if not texto:
+                if not ficha.dni_cliente:
+                    errores['telefono'] = [
+                        'Cargá el teléfono: es con lo que se identifica al '
+                        'cliente en el mostrador.']
+                else:
+                    ficha.telefono_cliente = None
+            elif re.search(r'[^\d\s().+-]', texto):
+                errores['telefono'] = ['El teléfono no puede llevar letras.']
+            else:
+                digitos = normalizar_telefono(texto)
+                if not digitos or not 7 <= len(digitos) <= 15:
+                    errores['telefono'] = [
+                        'El teléfono debe tener entre 7 y 15 dígitos.']
+                elif (Cliente.objects.filter(telefono_cliente=digitos)
+                      .exclude(pk=ficha.pk).exists()):
+                    telefono_ajeno = True
+                    errores['telefono'] = [TELEFONO_EN_OTRA_FICHA]
+                else:
+                    ficha.telefono_cliente = digitos
+
+    if 'fecha_nacimiento' in datos:
+        try:
+            ficha.fecha_nacimiento = _leer_fecha_nacimiento(datos['fecha_nacimiento'])
+        except ValidationError as error:
+            errores['fecha_nacimiento'] = list(error.messages)
+
+    if 'acepta_promociones' in datos:
+        if not isinstance(datos['acepta_promociones'], bool):
+            errores['acepta_promociones'] = [
+                'Indicá si aceptás recibir promociones.']
+        else:
+            ficha.acepta_promociones = datos['acepta_promociones']
+
+    return errores, telefono_ajeno
+
+
+def _actualizar_yo(request, de_la_app):
+    datos = respuestas.cuerpo(request)
+    if datos is None:
+        return respuestas.error(respuestas.DATOS_INVALIDOS, 400)
+    with transaction.atomic():
+        try:
+            encontrada = buscar_ficha(request, de_la_app)
+        except firebase.CuentaRechazada as rechazo:
+            transaction.set_rollback(True)
+            return _rechazo(rechazo)
+        if encontrada is None:
+            transaction.set_rollback(True)
+            return respuestas.error(SIN_VINCULAR, 404)
+        ficha = (Cliente.objects.select_for_update()
+                 .select_related('id_categoria')
+                 .filter(pk=encontrada.pk).first())
+        if ficha is None or ficha.borrado_logico:
+            transaction.set_rollback(True)
+            return _rechazo(firebase.CuentaRechazada(
+                404, FICHA_DADA_DE_BAJA, codigo='FICHA_DADA_DE_BAJA'))
+
+        antes = instantanea(ficha)
+        errores, telefono_ajeno = _validar_edicion_ficha(ficha, datos)
+        if errores:
+            transaction.set_rollback(True)
+            cuerpo = {'errores': errores}
+            if telefono_ajeno:
+                cuerpo['codigo'] = 'TELEFONO_DE_OTRO_CLIENTE'
+            return JsonResponse(cuerpo, status=400)
+
+        despues = instantanea(ficha, COLUMNAS_EDITABLES)
+        cambiados = [col for col in COLUMNAS_EDITABLES if antes[col] != despues[col]]
+        if cambiados:
+            try:
+                with transaction.atomic():
+                    ficha.save(update_fields=cambiados)
+            except IntegrityError:
+                transaction.set_rollback(True)
+                if ('telefono_cliente' in cambiados and ficha.telefono_cliente
+                        and Cliente.objects.filter(telefono_cliente=ficha.telefono_cliente)
+                        .exclude(pk=ficha.pk).exists()):
+                    return JsonResponse({
+                        'codigo': 'TELEFONO_DE_OTRO_CLIENTE',
+                        'errores': {'telefono': [TELEFONO_EN_OTRA_FICHA]},
+                    }, status=400)
+                raise
+            ficha = Cliente.objects.select_related('id_categoria').get(pk=ficha.pk)
+            registrar_auditoria(
+                request, 'MODIFICACION', 'CLIENTE', instancia=ficha,
+                anterior=antes, nuevo=instantanea(ficha),
+                detalle=f'Actualizó sus datos desde la app ({de_la_app.correo}).')
+    return JsonResponse(cuenta(ficha))
+
+
 # ---------------------------------------------------------------------------
 #  Endpoints
 # ---------------------------------------------------------------------------
 @csrf_exempt
 def yo(request):
-    if request.method != 'GET':
-        return respuestas.metodo_no_permitido(('GET',))
+    if request.method not in ('GET', 'PATCH'):
+        return respuestas.metodo_no_permitido(('GET', 'PATCH'))
     de_la_app, error = _cuenta_del_pedido(request)
     if error:
         return error
+    if request.method == 'PATCH':
+        return _actualizar_yo(request, de_la_app)
     try:
         ficha = buscar_ficha(request, de_la_app)
     except firebase.CuentaRechazada as rechazo:
@@ -251,17 +413,24 @@ def vincular(request):
     if ficha is not None:
         return JsonResponse(cuenta(ficha))
 
+    promos_invalido = ('acepta_promociones' in datos
+                       and not isinstance(datos['acepta_promociones'], bool))
     formulario = ClienteForm({
-        **{del_form: datos.get(campo) or '' for campo, del_form in CAMPOS.items()},
+        **{del_form: datos.get(campo) if isinstance(datos.get(campo), str) else (
+            '' if datos.get(campo) is None else str(datos.get(campo)))
+           for campo, del_form in CAMPOS.items()},
         # El correo es el VERIFICADO de la cuenta, nunca uno tipeado.
         'email_cliente': de_la_app.correo,
     })
-    if not formulario.is_valid():
+    if not formulario.is_valid() or promos_invalido:
         de_la_app_campos = {del_form: campo for campo, del_form in CAMPOS.items()}
         errores = {de_la_app_campos.get(campo, campo): mensajes
                    for campo, mensajes in formulario.errors.items()
                    if campo != '__all__'}
-        limpios = formulario.cleaned_data
+        if promos_invalido:
+            errores['acepta_promociones'] = [
+                'Indicá si aceptás recibir promociones.']
+        limpios = getattr(formulario, 'cleaned_data', {})
         if _es_de_otro_cliente(datos.get('telefono')):
             cuerpo = {'codigo': 'TELEFONO_DE_OTRO_CLIENTE',
                       'detail': TELEFONO_DE_OTRO_CLIENTE}
@@ -280,6 +449,8 @@ def vincular(request):
         return JsonResponse(cuerpo, status=400)
     cliente = formulario.save(commit=False)
     cliente.uid_firebase = de_la_app.uid
+    if 'acepta_promociones' in datos:
+        cliente.acepta_promociones = datos['acepta_promociones']
     try:
         with transaction.atomic():
             cliente.save()

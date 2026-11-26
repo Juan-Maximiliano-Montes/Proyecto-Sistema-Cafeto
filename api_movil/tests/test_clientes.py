@@ -96,8 +96,9 @@ class ConCuenta(Base):
 class SinCredencialTest(Base):
 
     def test_sin_la_cuenta_de_servicio_responde_503_sin_romper(self):
-        for metodo, ruta in (('get', '/clientes/yo/'), ('post', '/clientes/vincular/')):
-            with self.subTest(ruta=ruta):
+        for metodo, ruta in (('get', '/clientes/yo/'), ('patch', '/clientes/yo/'),
+                             ('post', '/clientes/vincular/')):
+            with self.subTest(metodo=metodo, ruta=ruta):
                 respuesta = self.pedir_cliente(metodo, ruta, {})
                 self.assertEqual(respuesta.status_code, 503)
                 self.assertEqual(respuesta.json(), {'detail': firebase.NO_DISPONIBLE,
@@ -173,13 +174,24 @@ class CuentaTest(ConCuenta):
         self.assertTrue(cliente.qr_cliente.startswith('CAF-'))
         cuenta = respuesta.json()
         self.assertEqual(cuenta['qr'], cliente.qr_cliente)
+        self.assertEqual(cuenta['nombre'], 'Sofía')
+        self.assertEqual(cuenta['apellido'], 'López')
+        self.assertEqual(cuenta['telefono'], '3874123456')
+        self.assertEqual(cuenta['fecha_nacimiento'], '1995-04-12')
+        self.assertFalse(cuenta['acepta_promociones'])
         self.assertEqual(Cliente.identificar(cuenta['qr']), cliente)          # lo lee la caja
         self.assertEqual((cuenta['categoria'], cuenta['proxima_categoria'],
                           cuenta['puntos_proxima_categoria']), ('Bronze', 'Silver', 1000))
         self.assertTrue(LogAuditoria.objects.filter(operacion_realizada='ALTA DE CLIENTE',
                                                     id_registro=cliente.pk).exists())
         # Después, la misma cuenta: no se da de alta dos veces.
-        self.assertEqual(self.yo().json()['qr'], cliente.qr_cliente)
+        datos_yo = self.yo().json()
+        self.assertEqual(datos_yo['qr'], cliente.qr_cliente)
+        self.assertEqual(
+            (datos_yo['nombre'], datos_yo['apellido'], datos_yo['telefono'],
+             datos_yo['fecha_nacimiento'], datos_yo['acepta_promociones']),
+            ('Sofía', 'López', '3874123456', '1995-04-12', False),
+        )
         self.assertEqual(self.vincular().status_code, 200)
         self.assertEqual(Cliente.objects.filter(email_cliente=CORREO).count(), 1)
 
@@ -319,3 +331,97 @@ class VinculoTest(ConCuenta):
         respuesta = self.yo()
         self.assertEqual(respuesta.status_code, 404)
         self.assertEqual(respuesta.json()['codigo'], 'FICHA_DADA_DE_BAJA')
+
+
+# ===========================================================================
+@override_settings(FIREBASE_CREDENCIAL='/run/secrets/firebase.json')
+class EditarPerfilClienteTest(ConCuenta):
+    """PATCH /api/movil/clientes/yo/: validación de dominio, teléfono único y auditoría."""
+
+    def actualizar(self, datos, token='token-de-firebase'):
+        return self.pedir_cliente('patch', '/clientes/yo/', datos, token=token)
+
+    def test_sin_token_401_y_metodo_invalido_405(self):
+        self.assertEqual(self.actualizar({}, token=None).status_code, 401)
+        mal = self.pedir_cliente('delete', '/clientes/yo/')
+        self.assertEqual(mal.status_code, 405)
+        self.assertEqual(mal['Allow'], 'GET, PATCH')
+
+    def test_sin_ficha_vinculada_responde_404(self):
+        self.assertEqual(self.actualizar({'nombre': 'Sofía'}).status_code, 404)
+
+    def test_actualiza_datos_deja_auditoria_y_devuelve_cuenta_completa(self):
+        self.vincular()
+        cliente = Cliente.objects.get(uid_firebase=UID)
+        respuesta = self.actualizar({
+            'nombre': '  Sofía   María ',
+            'apellido': 'López-Gómez',
+            'telefono': '+54 387 15 499-8877',
+            'fecha_nacimiento': '1994-08-20',
+            'acepta_promociones': True,
+        })
+        self.assertEqual(respuesta.status_code, 200)
+        datos = respuesta.json()
+        self.assertEqual(datos['qr'], cliente.qr_cliente)
+        self.assertEqual(datos['nombre'], 'Sofía María')
+        self.assertEqual(datos['apellido'], 'López-Gómez')
+        self.assertEqual(datos['telefono'], '3874998877')
+        self.assertEqual(datos['fecha_nacimiento'], '1994-08-20')
+        self.assertTrue(datos['acepta_promociones'])
+        self.assertIn('puntos_disponibles', datos)
+        self.assertIn('movimientos', datos)
+
+        cliente.refresh_from_db()
+        self.assertEqual(
+            (cliente.nombre_cliente, cliente.apellido_cliente,
+             cliente.telefono_cliente, cliente.fecha_nacimiento.isoformat(),
+             cliente.acepta_promociones),
+            ('Sofía María', 'López-Gómez', '3874998877', '1994-08-20', True),
+        )
+        asiento = LogAuditoria.objects.get(
+            operacion_realizada='MODIFICACION DE CLIENTE', id_registro=cliente.pk)
+        self.assertEqual(asiento.registro_anterior['telefono_cliente'], '3874123456')
+        self.assertFalse(asiento.registro_anterior['acepta_promociones'])
+        self.assertEqual(asiento.registro_nuevo['telefono_cliente'], '3874998877')
+        self.assertTrue(asiento.registro_nuevo['acepta_promociones'])
+
+        # Limpiar fecha_nacimiento a null funciona y mandar lo mismo no duplica auditoría.
+        limpieza = self.actualizar({'fecha_nacimiento': None})
+        self.assertEqual(limpieza.status_code, 200)
+        self.assertIsNone(limpieza.json()['fecha_nacimiento'])
+        cantidad_auditorias = LogAuditoria.objects.filter(
+            operacion_realizada='MODIFICACION DE CLIENTE').count()
+        igual = self.actualizar({'nombre': 'Sofía María', 'telefono': '387 499-8877'})
+        self.assertEqual(igual.status_code, 200)
+        self.assertEqual(
+            LogAuditoria.objects.filter(operacion_realizada='MODIFICACION DE CLIENTE').count(),
+            cantidad_auditorias,
+        )
+
+    def test_telefono_de_otra_ficha_vigente_responde_400_con_codigo_y_error_exacto(self):
+        self.vincular()
+        ficha(apellido_cliente='Pérez', nombre_cliente='Ana', telefono_cliente='3875556677')
+        respuesta = self.actualizar({'telefono': '(0387) 15 555-6677'})
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.json(), {
+            'codigo': 'TELEFONO_DE_OTRO_CLIENTE',
+            'errores': {
+                'telefono': ['Ese teléfono ya está registrado en otra ficha.'],
+            },
+        })
+        self.assertEqual(Cliente.objects.get(uid_firebase=UID).telefono_cliente, '3874123456')
+
+    def test_reutiliza_las_validaciones_de_dominio(self):
+        self.vincular()
+        respuesta = self.actualizar({
+            'nombre': 'Sofía123',
+            'apellido': 'X',
+            'telefono': 'abc',
+            'fecha_nacimiento': '2025-01-01',
+            'acepta_promociones': 'si',
+        })
+        self.assertEqual(respuesta.status_code, 400)
+        errores = respuesta.json()['errores']
+        for campo in ('nombre', 'apellido', 'telefono', 'fecha_nacimiento', 'acepta_promociones'):
+            self.assertIn(campo, errores)
+        self.assertNotIn('codigo', respuesta.json())

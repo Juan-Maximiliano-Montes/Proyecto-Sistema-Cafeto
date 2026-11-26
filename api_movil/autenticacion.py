@@ -28,6 +28,7 @@ del ingreso en el Registro de Actividad. El bloqueo es de la CUENTA y no
 del canal: quien prueba claves en el celular queda frenado también en la
 web, y al revés.
 """
+import re
 import secrets
 from datetime import timedelta
 from functools import wraps
@@ -225,6 +226,10 @@ def ingresar(request, identificador, clave):
     Levanta ``IngresoRechazado`` si no corresponde dejarlo entrar.
     """
     ip = ip_del_request(request)
+    dni = (re.sub(r'\D', '', identificador)
+           if re.fullmatch(r'[\d.\s]+', identificador) else None)
+    if dni and 7 <= len(dni) <= 8:
+        identificador = dni
     usuario = (Usuario.objects.select_related('id_perfil', 'id_perfil_temporal')
                .filter(Q(dni_usuario=identificador)
                        | Q(nombre_usuario__iexact=identificador))

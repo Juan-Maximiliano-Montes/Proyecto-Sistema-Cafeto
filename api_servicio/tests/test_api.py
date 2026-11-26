@@ -76,6 +76,37 @@ class ApiDeServicioTest(TestCase):
                          'https://images.openfoodfacts.org/a.jpg')
         self.assertEqual(self.pedir('productos_sin_foto').json()['productos'], [])
 
+    def test_subir_foto_binaria_desde_n8n_genera_url_nueva_al_reemplazar(self):
+        import base64
+        import io
+        import shutil
+        import tempfile
+
+        from PIL import Image
+
+        media_tmp = tempfile.mkdtemp(prefix='cafeto-n8n-img-')
+        self.addCleanup(shutil.rmtree, media_tmp, True)
+        proveedor = fabrica.proveedor()
+        galleta = fabrica.producto('Galleta artesanal', prov=proveedor)
+
+        def imagen_b64(color):
+            buf = io.BytesIO()
+            Image.new('RGB', (120, 120), color).save(buf, 'JPEG')
+            return base64.b64encode(buf.getvalue()).decode('ascii')
+
+        with override_settings(MEDIA_ROOT=media_tmp):
+            r1 = self.pedir('foto_de_producto', galleta.pk,
+                            cuerpo={'archivo': imagen_b64((200, 50, 50)), 'nombre': 'f1.jpg'})
+            self.assertEqual(r1.status_code, 200)
+            primera = r1.json()['imagen']
+            self.assertTrue(primera.startswith('productos/'))
+
+            r2 = self.pedir('foto_de_producto', galleta.pk,
+                            cuerpo={'archivo': imagen_b64((50, 200, 50)), 'nombre': 'f1.jpg'})
+            self.assertEqual(r2.status_code, 200)
+            segunda = r2.json()['imagen']
+            self.assertNotEqual(primera, segunda)
+
     def test_no_hay_nada_mas_que_eso(self):
         """La credencial de servicio no abre el resto del sistema."""
         for ruta in ('/stock/productos/', '/ventas/caja/', '/usuarios/'):

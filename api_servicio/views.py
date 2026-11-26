@@ -164,19 +164,35 @@ def productos_sin_foto(request):
 @de_servicio
 @require_POST
 def foto_de_producto(request, pk):
-    """Le pone a un producto la dirección https:// de su foto."""
+    """Le pone a un producto su foto: por archivo subido/base64 (nombre único)
+    o por dirección https://."""
+    import base64
+    import binascii
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
     from seguridad.servicios import registrar_auditoria
     from stock import imagenes
     from stock.models import Producto
 
     producto = get_object_or_404(Producto, pk=pk, borrado_logico=False)
+    antes = producto.imagen
     try:
-        datos = json_seguro.del_pedido(request)
-        url = json_seguro.campo(datos, 'url', str, 'La dirección de la foto ("url")')
-        antes = producto.imagen
-        imagenes.poner_url(producto, url)
-    except (ValueError, TypeError, ValidationError) as error:
-        mensaje = ' '.join(getattr(error, 'messages', ['El cuerpo tiene que ser {"url": "https://…"}.']))
+        if request.FILES.get('foto'):
+            imagenes.guardar_foto(producto, request.FILES['foto'])
+        else:
+            datos = json_seguro.del_pedido(request)
+            archivo_b64 = json_seguro.campo(
+                datos, 'archivo', str, 'El archivo ("archivo", en base64)')
+            if archivo_b64:
+                binario = base64.b64decode(archivo_b64, validate=True)
+                nombre = (json_seguro.campo(datos, 'nombre', str, 'El nombre')
+                          or 'foto.jpg')
+                imagenes.guardar_foto(producto, SimpleUploadedFile(nombre, binario))
+            else:
+                url = json_seguro.campo(datos, 'url', str, 'La dirección de la foto ("url")')
+                imagenes.poner_url(producto, url)
+    except (ValueError, TypeError, binascii.Error, ValidationError) as error:
+        mensaje = ' '.join(getattr(error, 'messages', ['El cuerpo tiene que ser {"url": "https://…"} o traer la foto.']))
         return JsonResponse({'detail': mensaje}, status=400)
     registrar_auditoria(
         None, 'MODIFICACION', 'PRODUCTO', instancia=producto,

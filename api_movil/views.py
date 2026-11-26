@@ -1,6 +1,7 @@
-"""Endpoints del equipo: entrar, salir y el ABM liviano de marcas y rubros.
+"""Endpoints del equipo: salud LAN, entrar, salir y el ABM liviano de marcas y rubros.
 
-    POST   /sesion/              entrar (mismo usuario y clave que la web)
+    GET    /salud/               alcance real al servidor (público, sin consultas)
+    POST   /sesion/              entrar (mismo usuario o DNI sin puntos y clave que la web)
     DELETE /sesion/              salir
     GET    /marcas/  /rubros/    listar los vigentes, de a 20
     POST   /marcas/  /rubros/    dar de alta
@@ -11,7 +12,9 @@ Lo pesado (ventas, compras, stock, precios, usuarios) queda en la web.
 """
 import math
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 
 from api_movil import abm, respuestas
@@ -22,9 +25,18 @@ from api_movil.autenticacion import (
     datos_de_sesion,
     ingresar,
     para_el_equipo,
+    publica,
 )
 
 FALTAN_DATOS = 'Escribí tu usuario y tu contraseña.'
+
+
+@transaction.non_atomic_requests
+@never_cache
+@publica
+def salud(request):
+    """Healthcheck liviano para verificar alcance al servidor en la LAN del local."""
+    return JsonResponse({'ok': True})
 
 
 @csrf_exempt
