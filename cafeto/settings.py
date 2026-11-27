@@ -90,6 +90,7 @@ if DEBUG:
         'https://*.trycloudflare.com',
         'http://localhost:8000',
         'http://127.0.0.1:8000',
+        'https://sistema-cafeto-iota.vercel.app',
     ])
 CSRF_TRUSTED_ORIGINS = _sin_repetidos([*_lista('DJANGO_CSRF_TRUSTED_ORIGINS'), *_origenes_extra])
 # Detrás de Nginx (VPS) o de Cloudflare Tunnel: la IP del cliente sale de
@@ -198,7 +199,7 @@ CORS_ALLOW_CREDENTIALS = False
 CORS_ALLOWED_ORIGINS = [
     o.strip().rstrip('/') for o in (
         os.environ.get('CAFETO_CORS_ORIGINS')
-        or ('http://localhost:5173,http://127.0.0.1:5173' if DEBUG else '')).split(',')
+        or ('http://localhost:5173,http://127.0.0.1:5173,https://sistema-cafeto-iota.vercel.app' if DEBUG else '')).split(',')
     if o.strip()]
 CORS_ALLOW_HEADERS = (*default_headers, 'idempotency-key')
 
